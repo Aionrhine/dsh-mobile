@@ -557,7 +557,8 @@ struct ConversationView: View {
 
     private var emptyState: some View {
         VStack(spacing: 14) {
-            DeepSeekWhaleIcon(size: 52).foregroundStyle(DSHColor.ocean)
+            WhalenessOrcaIcon(size: 52)
+                .foregroundStyle(colorScheme == .dark ? Color.white : Color.black)
             Text("操作远端 DSH Agent").font(.title3.weight(.semibold))
             Text("发送任务后，工具调用、推理进度和最终回复会通过 Mobile Gateway 实时返回。")
                 .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
@@ -606,6 +607,9 @@ struct ConversationView: View {
     /// 在每个 token 重算。Viewport 只在空/非空边界通知这里，
     /// 确保首批历史行可见时立即撤掉全屏遮罩。
     private var hasVisibleConversationContent: Bool {
+        if store.selectedSession?.isRunning == true && !isLoadingSelectedHistory {
+            return true
+        }
         guard historyPresentationSessionID == store.selectedSessionId else {
             // Session 身份刚切换时，不得沿用上一个 viewport 的可用性。
             return !conversationItems.isEmpty
@@ -1684,7 +1688,7 @@ struct ConversationView: View {
     }
 
     private func makeConversationViewportEntries(from items: [ConversationItem]) -> [ConversationViewportEntry] {
-        ConversationDisplayEntry.make(from: items).flatMap { entry in
+        var entries = ConversationDisplayEntry.make(from: items).flatMap { entry in
             let revision = viewportEntryRevision(entry)
             if case .message(let item) = entry.content,
                item.kind == .assistant,
@@ -1735,6 +1739,28 @@ struct ConversationView: View {
                 return processViewportEntries(for: group)
             }
         }
+        if store.selectedSession?.isRunning == true {
+            let previousReplyIndex = items.lastIndex {
+                $0.kind == .assistant && $0.title != L10n.streamingAssistantTitle
+            } ?? -1
+            let latestUser = items.dropFirst(previousReplyIndex + 1).first { $0.kind == .user }
+                ?? items.last { $0.kind == .user }
+            let latestUserIndex = items.lastIndex { $0.kind == .user } ?? -1
+            let cues = items.dropFirst(latestUserIndex + 1).compactMap(DeepSearchProgressCue.init)
+            var hasher = Hasher()
+            hasher.combine(latestUser?.id)
+            for cue in cues {
+                hasher.combine(cue.id)
+                hasher.combine(cue.kind)
+                hasher.combine(cue.isError)
+            }
+            entries.append(ConversationViewportEntry(
+                id: "deep-search-progress",
+                revision: hasher.finalize(),
+                content: AnyView(DeepSearchProgressRow(startDate: latestUser?.date ?? .now, cues: cues))
+            ))
+        }
+        return entries
     }
 
     private func processViewportEntries(for group: ConversationProcessGroup) -> [ConversationViewportEntry] {
@@ -1850,6 +1876,135 @@ struct ConversationView: View {
         }
         return hasher.finalize()
     }
+}
+
+private struct DeepSearchProgressCue: Hashable {
+    enum Kind: Hashable { case context, reasoning, tool, toolResult, assistant, status }
+
+    let id: String
+    let kind: Kind
+    let date: Date
+    let isError: Bool
+
+    init?(item: ConversationItem) {
+        switch item.kind {
+        case .context: kind = .context
+        case .reasoning: kind = .reasoning
+        case .tool, .jsonTool: kind = .tool
+        case .toolResult: kind = .toolResult
+        case .assistant: kind = .assistant
+        case .status: kind = .status
+        case .user, .system: return nil
+        }
+        id = item.id
+        date = item.date
+        isError = item.isError
+    }
+}
+
+private struct DeepSearchProgressRow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
+
+    let startDate: Date
+    let cues: [DeepSearchProgressCue]
+
+    private enum Activity: Hashable { case thinking, gathering, exploring, reviewing, revisiting, composing, working }
+    private static let phraseIntervalSeconds = 30
+    private static let phrases: [Activity: [String]] = [
+        .thinking: ["梳理脉络中", "推敲细节中", "酝酿下一步中", "沿着思路前行中"],
+        .gathering: ["翻阅已有线索中", "收拢相关信息中", "寻找切入点中", "铺开问题脉络中"],
+        .exploring: ["向外寻找线索中", "打捞新线索中", "沿途探查中", "搜集更多拼图中"],
+        .reviewing: ["对照新发现中", "拼合新线索中", "检视所得中", "把发现串起来中"],
+        .revisiting: ["回看已有线索中", "重新校准方向中", "再推敲一遍中", "换个角度审视中"],
+        .composing: ["组织回应中", "整理表达中", "将思路落成文字中", "勾勒答案中"],
+        .working: ["继续推进中", "稳步探索中", "梳理当前进展中", "逐步展开中"]
+    ]
+
+    private func phrase(for elapsed: Int) -> String {
+        let bucket = elapsed / Self.phraseIntervalSeconds
+        let cutoff = startDate.addingTimeInterval(TimeInterval(bucket * Self.phraseIntervalSeconds))
+        var activity = Activity.thinking
+        var hasReasoned = false
+        var hasToolResult = false
+        for cue in cues where cue.date < cutoff {
+            switch cue.kind {
+            case .context: activity = .gathering
+            case .reasoning:
+                activity = hasReasoned || hasToolResult ? .revisiting : .thinking
+                hasReasoned = true
+            case .tool: activity = .exploring
+            case .toolResult:
+                activity = cue.isError ? .revisiting : .reviewing
+                hasToolResult = true
+            case .assistant: activity = .composing
+            case .status: activity = .working
+            }
+        }
+        let options = Self.phrases[activity] ?? ["梳理脉络中"]
+        return options[(Int(startDate.timeIntervalSince1970) + bucket) % options.count]
+    }
+
+    var body: some View {
+        let base = colorScheme == .dark
+            ? Color(red: 0.659, green: 0.745, blue: 0.859)
+            : Color(red: 0.094, green: 0.212, blue: 0.353)
+        let highlight = colorScheme == .dark
+            ? Color(red: 0.835, green: 0.890, blue: 0.957)
+            : Color(red: 0.357, green: 0.498, blue: 0.663)
+        VStack(alignment: .leading, spacing: 0) {
+            Rectangle()
+                .fill(Color.primary.opacity(0.025))
+                .frame(height: 0.5)
+
+            TimelineView(.animation(minimumInterval: reduceMotion ? 1 : 1.0 / 30.0)) { timeline in
+                let elapsed = max(0, Int(timeline.date.timeIntervalSince(startDate)))
+                let phrase = phrase(for: elapsed)
+                let phase = reduceMotion ? -1.0 :
+                    timeline.date.timeIntervalSinceReferenceDate
+                        .truncatingRemainder(dividingBy: 2.2) / 2.2 * 1.8 - 0.4
+
+                HStack(spacing: 8) {
+                    // 与 Web UI 的 APNG 鲸尾共用逐帧素材；减少动态效果时停在首帧。
+                    Image(uiImage: RunningWhaleTailFrames.images[
+                        reduceMotion ? 0 : Int(timeline.date.timeIntervalSinceReferenceDate * 20) % RunningWhaleTailFrames.images.count
+                    ])
+                        .resizable()
+                        .renderingMode(.template)
+                        .foregroundStyle(base)
+                        .frame(width: 18, height: 18)
+                        .accessibilityHidden(true)
+                    Text("\(phrase)，用时 \(elapsed) 秒…")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [base, reduceMotion ? base : highlight, base],
+                                startPoint: UnitPoint(x: phase - 0.24, y: 0.5),
+                                endPoint: UnitPoint(x: phase + 0.24, y: 0.5)
+                            )
+                        )
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                }
+                .padding(.top, 13)
+                .accessibilityElement(children: .combine)
+            }
+        }
+        .padding(.top, 8)
+        .frame(height: 56, alignment: .top)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityIdentifier("deep-search-progress")
+    }
+}
+
+private enum RunningWhaleTailFrames {
+    static let images: [UIImage] = {
+        guard let sprite = UIImage(named: "RunningWhaleTailSprite")?.cgImage else { return [UIImage()] }
+        return (0..<60).map { index in
+            let frame = sprite.cropping(to: CGRect(x: index * 28, y: 0, width: 28, height: 28)) ?? sprite
+            return UIImage(cgImage: frame)
+        }
+    }()
 }
 
 /// Keeps both session pages mounted and only changes their horizontal offset.
@@ -3468,14 +3623,6 @@ struct ConversationRow: View {
             )
         case .assistant:
             VStack(alignment: .leading, spacing: 7) {
-                HStack(spacing: 9) {
-                    DeepSeekWhaleIcon(size: 26).foregroundStyle(.primary)
-                    Text(item.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 2)
-                .padding(.vertical, 5)
                 if !item.images.isEmpty {
                     AttachmentImageGrid(attachments: item.images, imageData: imageData)
                 }

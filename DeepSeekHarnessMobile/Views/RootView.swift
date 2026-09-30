@@ -126,7 +126,7 @@ private struct RootNavigationHost: View, Equatable {
         case .settings:
             SettingsView()
         case .plugins:
-            WorkspaceDrawerDestination(title: "插件", message: "插件功能尚未接入")
+            PluginsView(store: store)
         case .scheduledTasks:
             ScheduledTasksView(store: store) { sessionID in
                 let session = store.sessions.first(where: { $0.id == sessionID }) ?? SessionSummary(
@@ -232,8 +232,35 @@ private struct WorkspaceDrawerDestination: View {
     }
 }
 
+enum ScheduledTaskStatusFilter: String, CaseIterable {
+    case all, active, ended
+
+    var title: String {
+        switch self {
+        case .all: "全部"
+        case .active: "已开启"
+        case .ended: "已结束"
+        }
+    }
+}
+
+func filteredScheduledTasks(
+    _ tasks: [ScheduledTask], status: ScheduledTaskStatusFilter, query: String
+) -> [ScheduledTask] {
+    let search = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    return tasks.filter { task in
+        let matchesStatus: Bool
+        switch status {
+        case .all: matchesStatus = true
+        case .active: matchesStatus = task.status == "active"
+        case .ended: matchesStatus = task.status != "active"
+        }
+        return matchesStatus && (search.isEmpty || task.title.localizedStandardContains(search) ||
+            task.prompt.localizedStandardContains(search))
+    }
+}
+
 private struct ScheduledTasksView: View {
-    @Environment(\.colorScheme) private var colorScheme
     private enum ActiveAlert: Identifiable {
         case delete(ScheduledTask)
         case error(String)
@@ -248,90 +275,102 @@ private struct ScheduledTasksView: View {
 
     @ObservedObject var store: AppStore
     let onOpenSession: (String) -> Void
-    @Environment(\.dismiss) private var dismiss
     @State private var expandedTaskIDs: Set<String> = []
     @State private var revealedTaskID: String?
     @State private var editingTask: ScheduledTask?
     @State private var activeAlert: ActiveAlert?
-    private var headerButtonBackground: Color {
-        colorScheme == .dark ? Color(uiColor: .secondarySystemBackground) : .white
+    @State private var statusFilter: ScheduledTaskStatusFilter = .all
+    @State private var searchQuery = ""
+    @State private var isSearching = false
+    @FocusState private var searchIsFocused: Bool
+    private var visibleTasks: [ScheduledTask] {
+        filteredScheduledTasks(store.scheduledTasks, status: statusFilter, query: searchQuery)
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            ScrollView {
-                LazyVStack(spacing: 16) {
-                    if store.scheduledTasksLoading && store.scheduledTasks.isEmpty {
-                        ProgressView("正在加载定时任务…")
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 72)
-                    } else if let error = store.scheduledTasksError, store.scheduledTasks.isEmpty {
-                        ContentUnavailableView {
-                            Label("无法显示定时任务", systemImage: "wifi.exclamationmark")
-                        } description: {
-                            Text(error)
-                        } actions: {
-                            Button("重试") { store.refreshScheduledTasks() }
-                        }
+        ScrollView {
+            LazyVStack(spacing: 16) {
+                if store.scheduledTasksLoading && store.scheduledTasks.isEmpty {
+                    ProgressView("正在加载定时任务…")
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 72)
+                } else if let error = store.scheduledTasksError, store.scheduledTasks.isEmpty {
+                    ContentUnavailableView {
+                        Label("无法显示定时任务", systemImage: "wifi.exclamationmark")
+                    } description: {
+                        Text(error)
+                    } actions: {
+                        Button("重试") { store.refreshScheduledTasks() }
+                    }
+                    .padding(.top, 40)
+                } else if store.scheduledTasks.isEmpty {
+                    ContentUnavailableView("暂无定时任务", systemImage: "clock", description: Text("在会话中创建的定时任务会显示在这里"))
                         .padding(.top, 40)
-                    } else if store.scheduledTasks.isEmpty {
-                        ContentUnavailableView("暂无定时任务", systemImage: "clock", description: Text("在会话中创建的定时任务会显示在这里"))
-                            .padding(.top, 40)
-                    } else {
-                        ForEach(store.scheduledTasks) { task in
-                            ScheduledTaskCard(
-                                task: task,
-                                sessionTitle: store.sessions.first(where: { $0.id == task.sessionID })?.title ?? task.sessionID,
-                                expanded: expandedTaskIDs.contains(task.id),
-                                revealedTaskID: $revealedTaskID,
-                                onOpen: {
-                                    if revealedTaskID == task.id {
-                                        withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
-                                            revealedTaskID = nil
-                                        }
-                                    } else {
-                                        revealedTaskID = nil
-                                        onOpenSession(task.sessionID)
-                                    }
-                                },
-                                onEdit: {
+                } else if visibleTasks.isEmpty {
+                    ContentUnavailableView(
+                        "没有符合条件的定时任务",
+                        systemImage: "line.3.horizontal.decrease.circle",
+                        description: Text(searchQuery.isEmpty ? "试试其他任务状态" : "试试其他关键词或任务状态")
+                    )
+                        .padding(.top, 40)
+                } else {
+                    ForEach(visibleTasks) { task in
+                        ScheduledTaskCard(
+                            task: task,
+                            sessionTitle: store.sessions.first(where: { $0.id == task.sessionID })?.title ?? task.sessionID,
+                            expanded: expandedTaskIDs.contains(task.id),
+                            revealedTaskID: $revealedTaskID,
+                            onOpen: {
+                                if revealedTaskID == task.id {
                                     withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
                                         revealedTaskID = nil
                                     }
-                                    editingTask = task
-                                },
-                                onDelete: {
-                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
-                                        revealedTaskID = nil
-                                    }
-                                    activeAlert = .delete(task)
-                                },
-                                busy: store.scheduledTaskPendingID == task.id,
-                                onExpand: {
-                                    if revealedTaskID == task.id {
-                                        withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
-                                            revealedTaskID = nil
-                                        }
-                                        return
-                                    }
-                                    withAnimation(.easeInOut(duration: 0.22)) {
-                                        if !expandedTaskIDs.insert(task.id).inserted { expandedTaskIDs.remove(task.id) }
-                                    }
+                                } else {
+                                    revealedTaskID = nil
+                                    onOpenSession(task.sessionID)
                                 }
-                            )
-                        }
+                            },
+                            onEdit: {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
+                                    revealedTaskID = nil
+                                }
+                                editingTask = task
+                            },
+                            onDelete: {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
+                                    revealedTaskID = nil
+                                }
+                                activeAlert = .delete(task)
+                            },
+                            busy: store.scheduledTaskPendingID == task.id,
+                            onExpand: {
+                                if revealedTaskID == task.id {
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
+                                        revealedTaskID = nil
+                                    }
+                                    return
+                                }
+                                withAnimation(.easeInOut(duration: 0.22)) {
+                                    if !expandedTaskIDs.insert(task.id).inserted { expandedTaskIDs.remove(task.id) }
+                                }
+                            }
+                        )
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 18)
-                .padding(.bottom, 28)
             }
-            .refreshable { store.refreshScheduledTasks() }
+            .padding(.horizontal, 20)
+            .padding(.top, 18)
+            .padding(.bottom, 28)
         }
+        .refreshable { store.refreshScheduledTasks() }
         .background(Color(uiColor: .systemBackground))
-        .navigationBarBackButtonHidden()
-        .toolbar(.hidden, for: .navigationBar)
+        .navigationTitle(isSearching ? "" : "定时任务")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                searchAndFilterControl
+            }
+        }
         .task {
             if !store.gateway.state.isConnected { store.refreshScheduledTasks() }
         }
@@ -363,36 +402,76 @@ private struct ScheduledTasksView: View {
         }
     }
 
-    private var header: some View {
-        HStack {
-            Button(action: { dismiss() }) {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 18, weight: .semibold))
-                    .frame(width: 46, height: 46)
-                    .background(headerButtonBackground.opacity(0.92), in: Circle())
-                    .glassSurface(radius: 23, clear: true)
-                    .overlay(Circle().stroke(Color.primary.opacity(0.08), lineWidth: 0.7))
-                    .shadow(color: .black.opacity(0.06), radius: 10, y: 4)
+    private var searchAndFilterControl: some View {
+        HStack(spacing: 0) {
+            if isSearching {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 14)
+                TextField("搜索定时任务", text: $searchQuery)
+                    .font(.system(size: 15))
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.search)
+                    .focused($searchIsFocused)
+                    .padding(.leading, 8)
+                    .accessibilityLabel("搜索定时任务")
+                    .onAppear { searchIsFocused = true }
+                Button {
+                    searchIsFocused = false
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                        searchQuery = ""
+                        isSearching = false
+                    }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 40, height: 46)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("关闭搜索")
+            } else {
+                Button {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                        isSearching = true
+                    }
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 18, weight: .medium))
+                        .frame(width: 46, height: 46)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("搜索定时任务")
+                Menu {
+                    ForEach(ScheduledTaskStatusFilter.allCases, id: \.self) { option in
+                        Button {
+                            statusFilter = option
+                        } label: {
+                            if statusFilter == option {
+                                Label(option.title, systemImage: "checkmark")
+                            } else {
+                                Text(option.title)
+                            }
+                        }
+                    }
+                } label: {
+                    Image(systemName: "line.3.horizontal.decrease")
+                        .font(.system(size: 18, weight: .medium))
+                        .frame(width: 46, height: 46)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("筛选定时任务，当前\(statusFilter.title)")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("返回")
-            Spacer()
-            Text("定时任务")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(.primary)
-            Spacer()
-            Color.clear.frame(width: 46, height: 46)
-                .accessibilityHidden(true)
         }
-        .foregroundStyle(.primary)
-        .padding(.horizontal, 20)
-        .padding(.top, 8)
-        .padding(.bottom, 12)
+        .frame(width: isSearching ? 238 : 92, height: 46)
+        .animation(.spring(response: 0.32, dampingFraction: 0.86), value: isSearching)
     }
 }
 
 private struct ScheduledTaskCard: View {
-    @Environment(\.colorScheme) private var colorScheme
     let task: ScheduledTask
     let sessionTitle: String
     let expanded: Bool
@@ -412,10 +491,6 @@ private struct ScheduledTaskCard: View {
     private var isRevealed: Bool { revealedTaskID == task.id }
     private var currentOffset: CGFloat { dragOffset ?? (settledOpen ? -revealWidth : 0) }
     private var revealProgress: CGFloat { -currentOffset / revealWidth }
-    private var cardBackground: Color {
-        colorScheme == .dark ? Color(uiColor: .secondarySystemBackground) : .white
-    }
-
     var body: some View {
         ZStack(alignment: .trailing) {
             HStack(spacing: 10) {
@@ -488,7 +563,7 @@ private struct ScheduledTaskCard: View {
             .padding(.top, 20)
             .padding(.bottom, 18)
 
-            Rectangle().fill(Color.primary.opacity(0.09)).frame(height: 1)
+            Divider()
                 .padding(.horizontal, 20)
             Button {
                 guard Date.now >= suppressCardTapUntil else { return }
@@ -525,9 +600,7 @@ private struct ScheduledTaskCard: View {
                 .accessibilityHidden(!expanded)
                 .allowsHitTesting(expanded)
         }
-        .background(cardBackground, in: RoundedRectangle(cornerRadius: 28))
-        .overlay(RoundedRectangle(cornerRadius: 28).stroke(Color.primary.opacity(0.07)))
-        .shadow(color: .black.opacity(0.045), radius: 18, y: 8)
+        .glassSurface(radius: 28)
         .onPreferenceChange(ScheduledTaskDetailsHeightKey.self) { height in
             guard height > 0, abs(height - detailsHeight) > 0.5 else { return }
             if expanded {

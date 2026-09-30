@@ -2,8 +2,8 @@
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:drawable="@color/splash_background" />
     <item
-        android:width="124dp"
-        android:height="93dp"
-        android:drawable="@drawable/deepseek_whale"
+        android:width="100dp"
+        android:height="100dp"
+        android:drawable="@drawable/dsh_orca_mark"
         android:gravity="center" />
 </layer-list>

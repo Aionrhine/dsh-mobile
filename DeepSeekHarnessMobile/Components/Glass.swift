@@ -73,30 +73,40 @@ struct ConnectionDot: View {
 }
 
 struct HarnessMark: View {
+    var onDarkBackground = true
+    var width: CGFloat = 216
+
     var body: some View {
-        HStack(spacing: 7) {
-            DeepSeekWhaleIcon(size: 27)
-            Text("deepseek").font(.system(size: 22, weight: .semibold, design: .rounded))
-            Text("HARNESS")
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .padding(.horizontal, 5).padding(.vertical, 3)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .stroke(Color.white, lineWidth: 1)
-                }
+        HStack(spacing: 4) {
+            WhalenessOrcaIcon(size: 29)
+                .foregroundStyle(onDarkBackground ? Color.white : Color.black)
+            Image("WhalenessHarnessWordmark")
+                .resizable()
+                .scaledToFit()
+                .colorInvertIfNeeded(onDarkBackground)
+                .frame(maxWidth: .infinity, maxHeight: 29, alignment: .leading)
         }
+        .frame(width: width, height: 29, alignment: .leading)
+        .accessibilityLabel("Whaleness Harness")
     }
 }
 
-struct DeepSeekWhaleIcon: View {
+struct WhalenessOrcaIcon: View {
     var size: CGFloat
 
     var body: some View {
-        Image("DeepSeekWhale")
+        Image("DshOrcaMark")
             .renderingMode(.template)
             .resizable()
             .scaledToFit()
-            .frame(width: size, height: size * 0.743)
+            .frame(width: size, height: size)
             .accessibilityHidden(true)
+    }
+}
+
+extension View {
+    @ViewBuilder
+    func colorInvertIfNeeded(_ inverted: Bool) -> some View {
+        if inverted { colorInvert() } else { self }
     }
 }

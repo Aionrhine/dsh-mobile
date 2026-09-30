@@ -3,6 +3,11 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var store: AppStore
     @State private var pendingPermission: DefaultPermissionChoice?
+    @State private var observedGatewayState: ConnectionState?
+
+    private var gatewayState: ConnectionState {
+        observedGatewayState ?? store.gateway.state
+    }
 
     private var selectedPresetName: String {
         guard let id = store.agentPresetDefault else { return String(localized: "未读取") }
@@ -63,7 +68,7 @@ struct SettingsView: View {
                         isLoading: defaultsAreLoading
                     )
                 }
-                .disabled(!store.gateway.state.isConnected)
+                .disabled(!gatewayState.isConnected)
 
                 NavigationLink {
                     DefaultModelSelectionView()
@@ -74,7 +79,7 @@ struct SettingsView: View {
                         isLoading: defaultModelIsLoading
                     )
                 }
-                .disabled(!store.gateway.state.isConnected)
+                .disabled(!gatewayState.isConnected)
 
                 Menu {
                     ForEach(store.permissionDefaultOptions.map(DefaultPermissionChoice.init)) { option in
@@ -97,7 +102,7 @@ struct SettingsView: View {
                     .contentShape(Rectangle())
                 }
                 .tint(.primary)
-                .disabled(!store.gateway.state.isConnected || store.defaultConfigurationLoadingKinds.contains("set-default"))
+                .disabled(!gatewayState.isConnected || store.defaultConfigurationLoadingKinds.contains("set-default"))
             } header: {
                 Text("新会话默认配置")
             } footer: {
@@ -110,16 +115,16 @@ struct SettingsView: View {
                     .keyboardType(.URL)
                     .autocorrectionDisabled()
                 HStack {
-                    ConnectionDot(state: store.gateway.state)
-                    Text(store.gateway.state.label)
+                    ConnectionDot(state: gatewayState)
+                    Text(gatewayState.label)
                     Spacer()
                     if let port = store.gateway.serverPort {
                         Text("Port \(port)").foregroundStyle(.secondary)
                     }
                 }
-                Button(store.gateway.state.isConnected ? String(localized: "断开连接") : String(localized: "连接")) {
-                    if store.gateway.state.isConnected {
-                        store.gateway.disconnect()
+                Button(gatewayState.isConnected ? String(localized: "断开连接") : String(localized: "连接")) {
+                    if gatewayState.isConnected {
+                        store.disconnect()
                     } else {
                         store.connect()
                     }
@@ -171,8 +176,10 @@ struct SettingsView: View {
         .task {
             store.refreshDefaultConfiguration()
         }
-        .onChange(of: store.gateway.state) { _, state in
-            if state.isConnected {
+        .onReceive(store.gateway.$state) { state in
+            let wasConnected = observedGatewayState?.isConnected ?? state.isConnected
+            observedGatewayState = state
+            if !wasConnected && state.isConnected {
                 store.refreshDefaultConfiguration()
             }
         }

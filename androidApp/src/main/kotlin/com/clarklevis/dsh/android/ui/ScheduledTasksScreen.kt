@@ -6,6 +6,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -23,12 +24,17 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,6 +42,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -57,13 +65,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.dropShadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.DpOffset
@@ -82,6 +99,27 @@ import kotlinx.coroutines.launch
 
 private val scheduleBlue = Color(0xFF0A84FF)
 
+internal enum class ScheduledTaskStatusFilter(val title: String) {
+    ALL("全部"), ACTIVE("已开启"), ENDED("已结束")
+}
+
+internal fun filteredScheduledTasks(
+    tasks: List<MobileScheduledTask>,
+    status: ScheduledTaskStatusFilter,
+    query: String
+): List<MobileScheduledTask> {
+    val search = query.trim()
+    return tasks.filter { task ->
+        val matchesStatus = when (status) {
+            ScheduledTaskStatusFilter.ALL -> true
+            ScheduledTaskStatusFilter.ACTIVE -> task.status == "active"
+            ScheduledTaskStatusFilter.ENDED -> task.status != "active"
+        }
+        matchesStatus && (search.isEmpty() || task.title.contains(search, ignoreCase = true) ||
+            task.prompt.contains(search, ignoreCase = true))
+    }
+}
+
 @Composable
 internal fun ScheduledTasksScreen(
     stateHolder: AndroidSharedStateHolder,
@@ -93,6 +131,10 @@ internal fun ScheduledTasksScreen(
     var deletingTask by remember { mutableStateOf<MobileScheduledTask?>(null) }
     var revealedTaskId by remember { mutableStateOf<String?>(null) }
     var showsMutationError by remember { mutableStateOf(false) }
+    var statusFilter by rememberSaveable { mutableStateOf(ScheduledTaskStatusFilter.ALL) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var isSearching by rememberSaveable { mutableStateOf(false) }
+    val visibleTasks = filteredScheduledTasks(stateHolder.scheduledTasks, statusFilter, searchQuery)
     val connection = stateHolder.gatewayState.connection
     LaunchedEffect(connection) {
         if (connection == GatewayConnectionState.CONNECTED) stateHolder.refreshScheduledTasks()
@@ -103,16 +145,23 @@ internal fun ScheduledTasksScreen(
             .background(if (dark) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.surface)
             .statusBarsPadding().navigationBarsPadding()
     ) {
-        Row(
-            Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TopBarCircleButton(R.drawable.ic_back_chevron, "返回", onBack)
-            Spacer(Modifier.weight(1f))
-            Text("定时任务", fontSize = 20.sp, fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onBackground)
-            Spacer(Modifier.weight(1f))
-            Spacer(Modifier.size(46.dp))
+        Box(Modifier.fillMaxWidth().height(66.dp).padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 12.dp)) {
+            TopBarCircleButton(R.drawable.ic_back_chevron, "返回", onBack,
+                modifier = Modifier.align(Alignment.CenterStart))
+            if (!isSearching) {
+                Text("定时任务", fontSize = 20.sp, fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.align(Alignment.Center))
+            }
+            ScheduledTaskSearchAndFilter(
+                query = searchQuery,
+                onQueryChange = { searchQuery = it; revealedTaskId = null },
+                isSearching = isSearching,
+                onSearchingChange = { isSearching = it },
+                status = statusFilter,
+                onStatusChange = { statusFilter = it; revealedTaskId = null },
+                modifier = Modifier.align(Alignment.CenterEnd)
+            )
         }
         when {
             stateHolder.scheduledTasksLoading && stateHolder.scheduledTasks.isEmpty() -> {
@@ -135,13 +184,22 @@ internal fun ScheduledTasksScreen(
                     Text("暂无定时任务", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+            visibleTasks.isEmpty() -> {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("没有符合条件的定时任务", fontWeight = FontWeight.SemiBold)
+                        Text(if (searchQuery.isBlank()) "试试其他任务状态" else "试试其他关键词或任务状态",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
             else -> LazyColumn(
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(
                     start = 20.dp, end = 20.dp, top = 18.dp, bottom = 28.dp
                 ),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                items(stateHolder.scheduledTasks, key = { it.id }) { task ->
+                items(visibleTasks, key = { it.id }) { task ->
                     ScheduledTaskCard(
                         task = task,
                         sessionTitle = stateHolder.snapshot.sessions.firstOrNull { it.id == task.sessionId }?.title
@@ -196,6 +254,116 @@ internal fun ScheduledTasksScreen(
             text = { Text(stateHolder.scheduledTaskMutationError ?: "请稍后重试") },
             confirmButton = { TextButton(onClick = { showsMutationError = false }) { Text("好") } }
         )
+    }
+}
+
+@Composable
+private fun ScheduledTaskSearchAndFilter(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    isSearching: Boolean,
+    onSearchingChange: (Boolean) -> Unit,
+    status: ScheduledTaskStatusFilter,
+    onStatusChange: (ScheduledTaskStatusFilter) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val dark = isSystemInDarkTheme()
+    val focusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    var filterExpanded by remember { mutableStateOf(false) }
+    val width by animateDpAsState(if (isSearching) 238.dp else 92.dp, label = "schedule-search-width")
+    LaunchedEffect(isSearching) {
+        if (isSearching) focusRequester.requestFocus()
+    }
+
+    Row(
+        modifier.width(width).height(46.dp)
+            .dropShadow(RoundedCornerShape(23.dp), Shadow(
+                radius = 12.dp,
+                color = Color.Black.copy(alpha = if (dark) 0.24f else 0.075f),
+                offset = DpOffset(0.dp, 4.dp)
+            ))
+            .clip(RoundedCornerShape(23.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = if (dark) 0.82f else 0.94f))
+            .border(0.7.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = if (dark) 0.13f else 0.055f),
+                RoundedCornerShape(23.dp)),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (isSearching) {
+            Icon(painterResource(R.drawable.ic_search), null,
+                Modifier.padding(start = 12.dp).size(19.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            BasicTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                modifier = Modifier.weight(1f).padding(start = 7.dp).focusRequester(focusRequester)
+                    .semantics { contentDescription = "搜索定时任务" },
+                singleLine = true,
+                textStyle = TextStyle(fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurface),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { keyboardController?.hide() }),
+                decorationBox = { innerTextField ->
+                    Box(contentAlignment = Alignment.CenterStart) {
+                        if (query.isEmpty()) Text("搜索定时任务", fontSize = 15.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        innerTextField()
+                    }
+                }
+            )
+            Box(
+                Modifier.size(40.dp).clickable {
+                    focusManager.clearFocus()
+                    keyboardController?.hide()
+                    onQueryChange("")
+                    onSearchingChange(false)
+                }.semantics { contentDescription = "关闭搜索" },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(painterResource(R.drawable.ic_close), null, Modifier.size(18.dp))
+            }
+        } else {
+            Box(
+                Modifier.size(46.dp).clickable { onSearchingChange(true) }
+                    .semantics { contentDescription = "搜索定时任务" },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(painterResource(R.drawable.ic_search), null, Modifier.size(20.dp))
+            }
+            Box {
+                Box(
+                    Modifier.size(46.dp).clickable { filterExpanded = true }
+                        .semantics { contentDescription = "筛选定时任务，当前${status.title}" },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(painterResource(R.drawable.ic_filter_list), null, Modifier.size(21.dp))
+                }
+                DropdownMenu(
+                    expanded = filterExpanded,
+                    onDismissRequest = { filterExpanded = false },
+                    modifier = Modifier.width(170.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 0.dp,
+                    shadowElevation = 8.dp
+                ) {
+                    ScheduledTaskStatusFilter.entries.forEach { option ->
+                        DropdownMenuItem(
+                            text = { Text(option.title) },
+                            onClick = {
+                                onStatusChange(option)
+                                filterExpanded = false
+                            },
+                            trailingIcon = {
+                                if (status == option) Icon(painterResource(R.drawable.ic_menu_check), null,
+                                    Modifier.size(18.dp))
+                            }
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -345,9 +345,9 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
     }
 
     private func render(_ snapshot: ConversationTimeline.Snapshot) {
-        let hasContent = !snapshot.items.isEmpty
         guard let makeEntries else { return }
         let entries = supplementalEntries + makeEntries(snapshot.items)
+        let hasContent = !snapshot.items.isEmpty || entries.contains { $0.id == "deep-search-progress" }
         apply(
             entries: entries,
             revision: snapshot.revision,
@@ -664,7 +664,10 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
         }
         let lightweightChanged = Set(streamingChanged + stableUserMessageChanged)
         let configuredChanged = changed.filter { !lightweightChanged.contains($0) }
-        let keepTail = isPinnedToBottom && revision != lastAppliedRevision
+        let keepTail = isPinnedToBottom && (
+            revision != lastAppliedRevision ||
+                (hasStructureChange && ids.last == "deep-search-progress")
+        )
         let interactionGeneration = userInteractionGeneration
         lastAppliedRevision = revision
         previousRevisions = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0.revision) })
@@ -2248,22 +2251,6 @@ private final class ZoomingImageViewController: UIViewController, UIScrollViewDe
 final class StreamingAssistantCell: StableSelfSizingCollectionViewCell {
     static let reuseIdentifier = "StreamingAssistantCell"
 
-    private let whaleView: UIImageView = {
-        let view = UIImageView(image: UIImage(named: "DeepSeekWhale")?.withRenderingMode(.alwaysTemplate))
-        view.tintColor = .secondaryLabel
-        view.contentMode = .scaleAspectFit
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
-
-    private let titleLabel: UILabel = {
-        let label = UILabel()
-        label.font = .preferredFont(forTextStyle: .subheadline).withWeight(.semibold)
-        label.textColor = .secondaryLabel
-        label.adjustsFontForContentSizeCategory = true
-        return label
-    }()
-
     private let textView: UITextView = {
         let view = UITextView()
         view.backgroundColor = .clear
@@ -2275,6 +2262,7 @@ final class StreamingAssistantCell: StableSelfSizingCollectionViewCell {
         view.font = .preferredFont(forTextStyle: .body)
         view.textColor = .label
         view.adjustsFontForContentSizeCategory = true
+        view.translatesAutoresizingMaskIntoConstraints = false
         view.setContentCompressionResistancePriority(.required, for: .vertical)
         return view
     }()
@@ -2299,7 +2287,7 @@ final class StreamingAssistantCell: StableSelfSizingCollectionViewCell {
                 context: nil
             ).height)
         }
-        return ceil(15 + 26 + 7 + textHeight + 15)
+        return ceil(15 + textHeight + 15 + 2)
     }
 
     override init(frame: CGRect) {
@@ -2307,25 +2295,13 @@ final class StreamingAssistantCell: StableSelfSizingCollectionViewCell {
         backgroundColor = .clear
         contentView.backgroundColor = .clear
 
-        let header = UIStackView(arrangedSubviews: [whaleView, titleLabel])
-        header.axis = .horizontal
-        header.alignment = .center
-        header.spacing = 9
-
-        let stack = UIStackView(arrangedSubviews: [header, textView])
-        stack.axis = .vertical
-        stack.alignment = .fill
-        stack.spacing = 7
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(stack)
+        contentView.addSubview(textView)
 
         NSLayoutConstraint.activate([
-            whaleView.widthAnchor.constraint(equalToConstant: 26),
-            whaleView.heightAnchor.constraint(equalToConstant: 26),
-            stack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 2),
-            stack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -2),
-            stack.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 15),
-            stack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -15)
+            textView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 2),
+            textView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -2),
+            textView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 15),
+            textView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -15)
         ])
     }
 
@@ -2339,7 +2315,6 @@ final class StreamingAssistantCell: StableSelfSizingCollectionViewCell {
 
     @discardableResult
     func apply(_ payload: ConversationViewportEntry.StreamingAssistant) -> Bool {
-        titleLabel.text = payload.title
         guard payload.text != renderedText else { return false }
 
         if payload.text.hasPrefix(renderedText) {

@@ -239,6 +239,8 @@ final class GatewayClient: ObservableObject {
         socket = nil
         pairingCode = nil
         isManualPairingAttempt = false
+        serverPort = nil
+        clientCount = nil
         state = .disconnected
     }
 

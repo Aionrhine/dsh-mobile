@@ -309,6 +309,14 @@ final class AppStore: ObservableObject {
     @Published private(set) var scheduledTaskPendingID: String?
     @Published private(set) var scheduledTaskCompletedRequestID: String?
     @Published private(set) var scheduledTaskMutationError: String?
+    @Published private(set) var pluginCatalog: MobilePluginCatalog?
+    @Published private(set) var pluginsLoading = false
+    @Published private(set) var pluginsError: String?
+    @Published private(set) var pluginPendingName: String?
+    @Published private(set) var pluginNotice: String?
+    private var pluginCatalogRequestID: String?
+    private var pluginToggleRequestID: String?
+    private var pluginPageVisited = false
     private var scheduledTaskMutationRequestID: String?
     private var scheduledTaskMutationKind: String?
     @Published var workspaces: [GatewayWorkspace] = []
@@ -864,10 +872,20 @@ final class AppStore: ObservableObject {
     }
 
     func connect() {
+        preferences.automaticallyConnect = true
         resetOutstandingRequests()
         presentsNextConnectionFailureAsAlert = true
         lastError = nil
         gateway.connect(to: endpoint)
+    }
+
+    func disconnect() {
+        preferences.automaticallyConnect = false
+        gateway.disconnect()
+    }
+
+    func allowAutomaticConnection() {
+        preferences.automaticallyConnect = true
     }
 
     /// Restores a previously paired gateway without turning the initial,
@@ -875,6 +893,7 @@ final class AppStore: ObservableObject {
     func connectOnColdLaunchIfPaired() {
         guard !hasHandledColdLaunchConnection else { return }
         hasHandledColdLaunchConnection = true
+        guard preferences.automaticallyConnect else { return }
         guard gateway.hasStoredCredential(for: endpoint) else {
             lastError = String(localized: "尚未连接到 DeepSeek Harness。请点击主页右上角的 🔑 按钮，扫描配对二维码或手动输入 Token 进行连接。")
             return
@@ -908,6 +927,7 @@ final class AppStore: ObservableObject {
         presentsNextConnectionFailureAsAlert = presentsFailureAlert
         lastError = nil
         endpoint = payload.publicUrl
+        allowAutomaticConnection()
         gateway.connectForPairing(payload)
     }
 
@@ -1022,6 +1042,88 @@ final class AppStore: ObservableObject {
                   self.scheduledTasksLoading else { return }
             self.scheduledTasksLoading = false
             self.scheduledTasksError = "定时任务请求超时，请重试"
+        }
+    }
+
+    func refreshPlugins() {
+        pluginPageVisited = true
+        guard gateway.state.isConnected else {
+            pluginsLoading = false
+            pluginsError = "连接网关后可查看插件"
+            return
+        }
+        let requestID = UUID().uuidString
+        pluginCatalogRequestID = requestID
+        pluginsLoading = true
+        pluginsError = nil
+        gateway.sendRequestPayload("{\"type\":\"plugin-catalog\",\"requestId\":\"\(requestID)\"}")
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(12))
+            guard let self, self.pluginCatalogRequestID == requestID, self.pluginsLoading else { return }
+            self.pluginsLoading = false
+            self.pluginsError = "插件目录请求超时，请重试"
+        }
+    }
+
+    func setPluginEnabled(name: String, enabled: Bool, entryID: String? = nil) {
+        guard gateway.state.isConnected, pluginCatalog?.managementAvailable == true,
+              pluginToggleRequestID == nil else { return }
+        let requestID = UUID().uuidString
+        pluginToggleRequestID = requestID
+        pluginPendingName = name
+        pluginNotice = nil
+        let payload: [String: Any] = entryID.map {
+            ["type": "plugin-entry-set-enabled", "requestId": requestID, "entryId": $0, "enabled": enabled]
+        } ?? ["type": "plugin-bundle-set-enabled", "requestId": requestID, "name": name, "enabled": enabled]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return }
+        gateway.sendRequestPayload(String(decoding: data, as: UTF8.self))
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(15))
+            guard let self, self.pluginToggleRequestID == requestID else { return }
+            self.pluginToggleRequestID = nil
+            self.pluginPendingName = nil
+            self.pluginNotice = "操作结果待确认，请刷新插件目录"
+            self.refreshPlugins()
+        }
+    }
+
+    func clearPluginNotice() { pluginNotice = nil }
+
+    private func acceptPluginFrame(_ frame: GatewayFrame) {
+        switch frame.kind {
+        case "plugin-catalog" where frame.requestId == pluginCatalogRequestID:
+            pluginCatalog = MobilePluginCatalog(
+                managementAvailable: frame.managementAvailable == true,
+                settingsWritable: frame.settingsWritable == true,
+                bundles: (frame.bundles ?? []).map(MobilePluginBundle.init),
+                plugins: (frame.plugins ?? []).map(MobilePluginEntry.init),
+                officialItems: (frame.officialItems ?? []).map(MobileOfficialPlugin.init)
+            )
+            pluginsLoading = false
+            pluginsError = frame.managementAvailable == true ? nil : "当前 Host 不支持插件管理"
+        case "plugins-changed":
+            if pluginPageVisited { refreshPlugins() }
+        case "plugin-bundle-set-enabled", "plugin-entry-set-enabled":
+            guard frame.requestId == pluginToggleRequestID else { return }
+            let application = frame.result?["application"]?.stringValue
+            switch application {
+            case "applied": pluginNotice = nil
+            case "restart-required": pluginNotice = "设置已保存，请重启 DSH Web 后刷新目录"
+            case "overridden": pluginNotice = "插件状态被其他配置覆盖，请检查 Host 配置"
+            default: pluginNotice = frame.result?["error"]?.stringValue ?? "插件操作未生效"
+            }
+            pluginToggleRequestID = nil
+            pluginPendingName = nil
+            refreshPlugins()
+        case "error" where frame.requestType == "plugin-catalog" && frame.requestId == pluginCatalogRequestID:
+            pluginsLoading = false
+            pluginsError = frame.message ?? "插件目录加载失败"
+        case "error" where ["plugin-bundle-set-enabled", "plugin-entry-set-enabled"].contains(frame.requestType ?? "") && frame.requestId == pluginToggleRequestID:
+            pluginToggleRequestID = nil
+            pluginPendingName = nil
+            pluginNotice = frame.message ?? "插件操作失败"
+            refreshPlugins()
+        default: break
         }
     }
 
@@ -1666,6 +1768,12 @@ final class AppStore: ObservableObject {
     }
 
     private func handle(_ frame: GatewayFrame) {
+        if frame.kind == "plugin-catalog" || frame.kind == "plugins-changed" ||
+            frame.kind == "plugin-bundle-set-enabled" || frame.kind == "plugin-entry-set-enabled" ||
+            (frame.kind == "error" && frame.requestType?.hasPrefix("plugin-") == true) {
+            acceptPluginFrame(frame)
+            return
+        }
         if frame.kind == scheduledTaskMutationKind,
            frame.requestId == scheduledTaskMutationRequestID {
             let succeeded = frame.kind == "schedule-update" ? frame.updated == true : frame.deleted == true
@@ -1712,6 +1820,7 @@ final class AppStore: ObservableObject {
         if ["session-queues", "session-queue", "queue-item-updated"].contains(frame.kind) { return }
         if frame.kind == "hello" {
             usesAssistantStream = frame.capabilities?.contains("assistant-stream-v1") == true
+            if pluginPageVisited { refreshPlugins() }
         }
         if frame.subscriptionId != nil { drainKMPEventDeliveries() }
         defer { if frame.subscriptionId != nil { drainKMPEventDeliveries() } }
@@ -3022,6 +3131,13 @@ final class AppStore: ObservableObject {
     }
 
     private func handleConnectionFailure(_ detail: String) {
+        if pluginToggleRequestID != nil {
+            pluginNotice = pluginPendingName == "dsh-plugin-mobile-gateway"
+                ? "网关连接已断开，停用结果待重连确认。若已停用，请从 DSH Web 或 CLI 重新开启。"
+                : "连接已断开，操作结果待重连确认"
+            pluginToggleRequestID = nil
+            pluginPendingName = nil
+        }
         messageSubmissionTimeout?.cancel()
         messageSubmissionPending = false
         queueActionTimeout?.cancel()

@@ -1,6 +1,7 @@
 package com.clarklevis.dsh.android.ui
 
 import android.app.Activity
+import android.net.Uri
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import androidx.compose.animation.AnimatedContentTransitionScope
@@ -18,12 +19,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
@@ -103,6 +105,8 @@ private const val ROUTE_SETTINGS = "settings"
 private const val ROUTE_SETTINGS_AGENT_PRESETS = "settings/agent-presets"
 private const val ROUTE_SETTINGS_DEFAULT_MODEL = "settings/default-model"
 private const val ROUTE_PLUGINS = "plugins"
+private const val ROUTE_PLUGIN_BUNDLE = "plugins/bundle/{bundleName}"
+private const val ROUTE_PLUGIN_OFFICIAL = "plugins/official/{pluginId}"
 private const val ROUTE_SCHEDULED_TASKS = "scheduled-tasks"
 
 @Composable
@@ -189,7 +193,26 @@ internal fun DshProductApp(
             DefaultModelSelectionScreen(stateHolder, navController::popBackStack)
         }
         composable(ROUTE_PLUGINS) {
-            DrawerDestinationScreen("插件", "插件功能尚未接入", navController::popBackStack)
+            PluginsScreen(
+                stateHolder = stateHolder,
+                onBack = navController::popBackStack,
+                onOpenBundle = { navController.navigate("plugins/bundle/${Uri.encode(it)}") },
+                onOpenOfficial = { navController.navigate("plugins/official/${Uri.encode(it)}") }
+            )
+        }
+        composable(ROUTE_PLUGIN_BUNDLE) { entry ->
+            PluginBundleDetailScreen(
+                stateHolder = stateHolder,
+                bundleName = entry.arguments?.getString("bundleName").orEmpty(),
+                onBack = navController::popBackStack
+            )
+        }
+        composable(ROUTE_PLUGIN_OFFICIAL) { entry ->
+            OfficialPluginDetailScreen(
+                stateHolder = stateHolder,
+                pluginId = entry.arguments?.getString("pluginId").orEmpty(),
+                onBack = navController::popBackStack
+            )
         }
         composable(ROUTE_SCHEDULED_TASKS) {
             ScheduledTasksScreen(
@@ -301,7 +324,8 @@ private fun WorkspaceScreen(
             background = { backdropModifier -> HarnessAnimatedBackground(backdropModifier) }
         ) {
             LazyColumn(
-                modifier = Modifier.fillMaxSize().safeDrawingPadding(),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = WindowInsets.safeDrawing.asPaddingValues(),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 userScrollEnabled = canScrollVertically
             ) {
@@ -335,7 +359,9 @@ private fun WorkspaceScreen(
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.semantics { heading() }.testTag("workspace-hero-title")
                             )
-                            Text("DeepSeek Harness 预览版", color = Color.White.copy(alpha = 0.65f), fontSize = 14.sp)
+                            if (stateHolder.gatewayState.connection == GatewayConnectionState.CONNECTED) {
+                                Text("已连接Deepseek Harness预览版", color = Color.White.copy(alpha = 0.65f), fontSize = 14.sp)
+                            }
                         }
                         Box(Modifier.fillMaxWidth()) {
                             WorkspaceCard(
@@ -432,30 +458,23 @@ private fun HarnessMark(onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(7.dp)
     ) {
-        WhaleIcon(Modifier.width(27.dp).height(20.dp), Color.White)
-        Text("deepseek", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-        Text(
-            "HARNESS",
-            color = Color.White,
-            fontSize = 9.sp,
-            lineHeight = 9.sp,
-            fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace,
-            style = TextStyle(platformStyle = PlatformTextStyle(includeFontPadding = false)),
-            modifier = Modifier.border(1.dp, Color.White, RoundedCornerShape(3.dp))
-                .padding(horizontal = 4.dp, vertical = 1.5.dp)
+        WhalenessOrcaIcon(Modifier.size(29.dp), Color.White)
+        Image(
+            painter = painterResource(R.drawable.dsh_whaleness_wordmark_dark),
+            contentDescription = null,
+            modifier = Modifier.size(width = 183.dp, height = 29.dp)
         )
     }
 }
 
 @Composable
-internal fun WhaleIcon(
+internal fun WhalenessOrcaIcon(
     modifier: Modifier = Modifier,
     tint: Color = MaterialTheme.colorScheme.onSurface
 ) {
     Image(
-        painter = painterResource(R.drawable.deepseek_whale),
-        contentDescription = "DeepSeek",
+        painter = painterResource(R.drawable.dsh_orca_mark_mask),
+        contentDescription = "Whaleness",
         modifier = modifier,
         colorFilter = ColorFilter.tint(tint)
     )

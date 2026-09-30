@@ -2,6 +2,7 @@ import Foundation
 
 protocol AppPreferences: AnyObject {
     var endpoint: String { get set }
+    var automaticallyConnect: Bool { get set }
     var selectedWorkspaceID: String? { get set }
 
     func loadSessions() -> [SessionSummary]
@@ -14,6 +15,7 @@ final class UserDefaultsAppPreferences: AppPreferences {
 
     private enum Key {
         static let endpoint = "gateway.endpoint"
+        static let automaticallyConnect = "gateway.automaticallyConnect"
         static let selectedWorkspaceID = "gateway.selectedWorkspaceId"
         static let sessions = "gateway.sessions"
         static let conversationScrollAnchors = "gateway.conversationScrollAnchors"
@@ -32,6 +34,11 @@ final class UserDefaultsAppPreferences: AppPreferences {
     var endpoint: String {
         get { userDefaults.string(forKey: key(Key.endpoint)) ?? Self.defaultEndpoint }
         set { userDefaults.set(newValue, forKey: key(Key.endpoint)) }
+    }
+
+    var automaticallyConnect: Bool {
+        get { userDefaults.object(forKey: key(Key.automaticallyConnect)) as? Bool ?? true }
+        set { userDefaults.set(newValue, forKey: key(Key.automaticallyConnect)) }
     }
 
     var selectedWorkspaceID: String? {

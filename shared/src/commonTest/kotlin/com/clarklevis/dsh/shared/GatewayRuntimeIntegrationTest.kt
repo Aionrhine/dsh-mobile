@@ -1105,6 +1105,36 @@ class GatewayRuntimeIntegrationTest {
     }
 
     @Test
+    fun manualDisconnectStopsStoredAutoConnectUntilExplicitConnect() = runTest {
+        val preferences = FakePreferences()
+        val credentials = FakeCredentials().apply {
+            tokens["ws://127.0.0.1:3080/ws/mobile"] = "stored-token"
+        }
+        val transport = FakeTransport()
+        val runtime = GatewayRuntime(
+            transport, preferences, credentials, FakeAttachmentCache(),
+            FakeNetworkMonitor(), FakeClock(0), backgroundScope
+        )
+        runCurrent()
+        assertTrue(runtime.connectStoredIfPaired())
+        runtime.disconnect()
+        assertFalse(preferences.load().automaticallyConnect)
+
+        val restartedTransport = FakeTransport()
+        val restarted = GatewayRuntime(
+            restartedTransport, preferences, credentials, FakeAttachmentCache(),
+            FakeNetworkMonitor(), FakeClock(0), backgroundScope
+        )
+        runCurrent()
+        assertFalse(restarted.connectStoredIfPaired())
+        assertTrue(restartedTransport.connectionSpecs.isEmpty())
+
+        restarted.connect("ws://127.0.0.1:3080/ws/mobile")
+        assertTrue(preferences.load().automaticallyConnect)
+        assertEquals(1, restartedTransport.connectionSpecs.size)
+    }
+
+    @Test
     fun attachmentFifoDeliversThreeItemsAndIgnoresDuplicateTerminal() = runTest {
         val transport = FakeTransport()
         val cache = FakeAttachmentCache()

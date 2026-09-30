@@ -162,7 +162,7 @@ class GatewayRuntime(
         requireWebSocketEndpoint(endpoint)
         require(trustedEndpoints.isEmpty() || endpoint in trustedEndpoints) { "地址未经此主机确认" }
         val existing = preferences.load()
-        preferences.update(existing.copy(endpoint = endpoint))
+        preferences.update(existing.copy(endpoint = endpoint, automaticallyConnect = true))
         this.endpoint = endpoint
         pairingCode = null
         isManualPairingAttempt = false
@@ -179,7 +179,7 @@ class GatewayRuntime(
         GatewayIdentity.validate(expectedGatewayId, payload.gatewayId)
         expectedGatewayId = payload.gatewayId ?: expectedGatewayId
         val existing = preferences.load()
-        preferences.update(existing.copy(endpoint = payload.publicUrl))
+        preferences.update(existing.copy(endpoint = payload.publicUrl, automaticallyConnect = true))
         endpoint = payload.publicUrl
         pairingCode = payload.pairingCode
         isManualPairingAttempt = true
@@ -193,6 +193,7 @@ class GatewayRuntime(
 
     suspend fun connectStoredIfPaired(): Boolean = serialized {
         val stored = preferences.load()
+        if (!stored.automaticallyConnect) return@serialized false
         if (
             desiredConnection && endpoint == stored.endpoint &&
             mutableState.value.connection in IDEMPOTENT_CONNECTION_STATES
@@ -236,6 +237,8 @@ class GatewayRuntime(
             reconnectAttempt = 0,
             lastError = null
         )
+        val stored = preferences.load()
+        preferences.update(stored.copy(automaticallyConnect = false))
     }
 
     suspend fun applicationDidEnterBackground() = serialized {

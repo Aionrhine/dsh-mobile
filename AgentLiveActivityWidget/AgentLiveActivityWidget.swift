@@ -153,7 +153,7 @@ private enum AgentActivityMetrics {
     ) -> CGFloat {
         let showsApprovalButtons = state.phase == .awaitingApproval && !isStale
         let showsFailureButtons = state.phase == .failed && state.command?.isEmpty == false
-        return showsApprovalButtons || showsFailureButtons ? 18 : 12
+        return showsApprovalButtons || showsFailureButtons ? 22 : 18
     }
 }
 
@@ -181,7 +181,7 @@ private struct AgentDynamicIslandExpandedContent: View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Text(displaySessionTitle)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 16, weight: .semibold))
                     .tracking(-0.2)
                     .lineLimit(1)
                 Spacer(minLength: 8)
@@ -222,7 +222,6 @@ private struct AgentDynamicIslandExpandedContent: View {
         }
         .foregroundStyle(AgentActivityColors.islandText)
         .frame(maxWidth: .infinity, alignment: .top)
-        .fixedSize(horizontal: false, vertical: true)
     }
 
     private var approvalOperation: some View {
@@ -242,14 +241,14 @@ private struct AgentDynamicIslandExpandedContent: View {
     }
 
     private func resultRow(symbol: String, text: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 Image(systemName: symbol)
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(AgentActivityColors.status(for: state.phase))
                     .frame(width: 16, height: 16, alignment: .center)
                 Text(text)
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(AgentActivityColors.islandText)
                     .lineLimit(1)
                 Spacer(minLength: 0)
@@ -263,8 +262,8 @@ private struct AgentDynamicIslandExpandedContent: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 5)
-        .padding(.bottom, 5)
+        .padding(.top, 7)
+        .padding(.bottom, 7)
     }
 
     /// 运行中的具体步骤对判断实时进展有用；终态和过期状态保持精简，

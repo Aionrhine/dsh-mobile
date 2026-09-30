@@ -134,6 +134,19 @@ class AndroidSharedStateHolder(
         private set
     var scheduledTaskMutationError: String? by mutableStateOf(null)
         private set
+    var pluginCatalog: MobilePluginCatalog? by mutableStateOf(null)
+        private set
+    var pluginsLoading: Boolean by mutableStateOf(false)
+        private set
+    var pluginsError: String? by mutableStateOf(null)
+        private set
+    var pluginPendingName: String? by mutableStateOf(null)
+        private set
+    var pluginNotice: String? by mutableStateOf(null)
+        private set
+    private var pluginCatalogRequestId: String? = null
+    private var pluginToggleRequestId: String? = null
+    private var pluginPageVisited = false
     private var scheduledTaskMutationRequestId: String? = null
     private var scheduledTaskMutationKind: String? = null
     var endpoint: String by mutableStateOf(AndroidGatewayPreferences.DEFAULT_ENDPOINT)
@@ -313,6 +326,14 @@ class AndroidSharedStateHolder(
                             if (didReconnect) {
                                 shouldCatchUpSelectedHistory = snapshot.selectedSessionId != null
                                 sessionIdToRefresh = snapshot.selectedSessionId
+                                if (pluginPageVisited) refreshPlugins()
+                            }
+                            if (state.connection != GatewayConnectionState.CONNECTED && pluginToggleRequestId != null) {
+                                pluginNotice = if (pluginPendingName == "dsh-plugin-mobile-gateway") {
+                                    "网关连接已断开，停用结果待重连确认。若已停用，请从 DSH Web 或 CLI 重新开启。"
+                                } else "连接已断开，操作结果待重连确认"
+                                pluginToggleRequestId = null
+                                pluginPendingName = null
                             }
                             lastObservedConnection = state.connection
                         }
@@ -342,6 +363,7 @@ class AndroidSharedStateHolder(
                                             } else event.frame
                                         ))
                                         handleSessionCancellationFrame(event.frame)
+                                        acceptPluginFrame(event.frame)
                                         if (event.frame.kind == scheduledTaskMutationKind &&
                                             event.frame.requestId == scheduledTaskMutationRequestId
                                         ) {
@@ -782,6 +804,113 @@ class AndroidSharedStateHolder(
             if (!sent) withContext(Dispatchers.Main.immediate) {
                 scheduledTasksLoading = false
                 scheduledTasksError = "定时任务请求未发送，请重试"
+            }
+        }
+    }
+
+    fun refreshPlugins() {
+        pluginPageVisited = true
+        val appGraph = graph
+        if (appGraph == null || gatewayState.connection != GatewayConnectionState.CONNECTED) {
+            pluginsLoading = false
+            pluginsError = "连接网关后可查看插件"
+            return
+        }
+        val requestId = UUID.randomUUID().toString()
+        pluginCatalogRequestId = requestId
+        pluginsLoading = true
+        pluginsError = null
+        appGraph.gatewayScope.launch {
+            val sent = appGraph.gatewayRuntime.sendRequest(GatewayRequests.pluginCatalog(requestId))
+            if (!sent) withContext(Dispatchers.Main.immediate) {
+                if (pluginCatalogRequestId == requestId) {
+                    pluginsLoading = false
+                    pluginsError = "插件目录请求未发送，请重试"
+                }
+            }
+        }
+        scope?.launch {
+            delay(12000)
+            if (pluginCatalogRequestId == requestId && pluginsLoading) {
+                pluginsLoading = false
+                pluginsError = "插件目录请求超时，请重试"
+            }
+        }
+    }
+
+    fun setPluginEnabled(name: String, enabled: Boolean, entryId: String? = null) {
+        val appGraph = graph ?: return
+        if (gatewayState.connection != GatewayConnectionState.CONNECTED ||
+            pluginCatalog?.managementAvailable != true || pluginToggleRequestId != null) return
+        val requestId = UUID.randomUUID().toString()
+        pluginToggleRequestId = requestId
+        pluginPendingName = name
+        pluginNotice = null
+        appGraph.gatewayScope.launch {
+            val request = if (entryId == null) {
+                GatewayRequests.pluginBundleSetEnabled(requestId, name, enabled)
+            } else GatewayRequests.pluginEntrySetEnabled(requestId, entryId, enabled)
+            val sent = appGraph.gatewayRuntime.sendRequest(request)
+            if (!sent) withContext(Dispatchers.Main.immediate) {
+                if (pluginToggleRequestId == requestId) {
+                    pluginToggleRequestId = null
+                    pluginPendingName = null
+                    pluginNotice = "操作未发送，请重试"
+                }
+            }
+        }
+        scope?.launch {
+            delay(15000)
+            if (pluginToggleRequestId == requestId) {
+                pluginToggleRequestId = null
+                pluginPendingName = null
+                pluginNotice = "操作结果待确认，请刷新插件目录"
+                refreshPlugins()
+            }
+        }
+    }
+
+    fun clearPluginNotice() { pluginNotice = null }
+
+    private fun acceptPluginFrame(frame: GatewayFrame) {
+        when {
+            frame.kind == "plugin-catalog" && frame.requestId == pluginCatalogRequestId -> {
+                pluginCatalog = MobilePluginCatalog(
+                    managementAvailable = frame.managementAvailable == true,
+                    settingsWritable = frame.settingsWritable == true,
+                    bundles = frame.bundles.orEmpty().map(::MobilePluginBundle),
+                    plugins = frame.plugins.orEmpty().map(::MobilePluginEntry),
+                    officialItems = frame.officialItems.orEmpty().map(::MobileOfficialPlugin)
+                )
+                pluginsLoading = false
+                pluginsError = if (frame.managementAvailable == true) null else "当前 Host 不支持插件管理"
+            }
+            frame.kind == "plugins-changed" && pluginPageVisited -> refreshPlugins()
+            frame.kind in setOf("plugin-bundle-set-enabled", "plugin-entry-set-enabled") &&
+                frame.requestId == pluginToggleRequestId -> {
+                val application = frame.result?.get("application")?.stringValue
+                pluginNotice = when (application) {
+                    "applied" -> null
+                    "restart-required" -> "设置已保存，请重启 DSH Web 后刷新目录"
+                    "overridden" -> "插件状态被其他配置覆盖，请检查 Host 配置"
+                    else -> frame.result?.get("error")?.stringValue ?: "插件操作未生效"
+                }
+                pluginToggleRequestId = null
+                pluginPendingName = null
+                refreshPlugins()
+            }
+            frame.kind == "error" && frame.requestType == "plugin-catalog" &&
+                frame.requestId == pluginCatalogRequestId -> {
+                pluginsLoading = false
+                pluginsError = frame.message ?: "插件目录加载失败"
+            }
+            frame.kind == "error" && frame.requestType in setOf(
+                "plugin-bundle-set-enabled", "plugin-entry-set-enabled"
+            ) && frame.requestId == pluginToggleRequestId -> {
+                pluginToggleRequestId = null
+                pluginPendingName = null
+                pluginNotice = frame.message ?: "插件操作失败"
+                refreshPlugins()
             }
         }
     }

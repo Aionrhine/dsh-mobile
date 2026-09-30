@@ -15,8 +15,8 @@
                         <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <subviews>
-                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" image="DeepSeekWhale" translatesAutoresizingMaskIntoConstraints="NO" id="launch-whale">
-                                <rect key="frame" x="134.5" y="379.5" width="124" height="93"/>
+                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" image="DshOrcaMark" translatesAutoresizingMaskIntoConstraints="NO" id="launch-whale">
+                                <rect key="frame" x="146.5" y="376" width="100" height="100"/>
                                 <color key="tintColor" systemColor="labelColor"/>
                             </imageView>
                         </subviews>
@@ -25,8 +25,8 @@
                         <constraints>
                             <constraint firstItem="launch-whale" firstAttribute="centerX" secondItem="launch-root" secondAttribute="centerX" id="launch-center-x"/>
                             <constraint firstItem="launch-whale" firstAttribute="centerY" secondItem="launch-root" secondAttribute="centerY" id="launch-center-y"/>
-                            <constraint firstItem="launch-whale" firstAttribute="width" constant="124" id="launch-width"/>
-                            <constraint firstItem="launch-whale" firstAttribute="height" constant="93" id="launch-height"/>
+                            <constraint firstItem="launch-whale" firstAttribute="width" constant="100" id="launch-width"/>
+                            <constraint firstItem="launch-whale" firstAttribute="height" constant="100" id="launch-height"/>
                         </constraints>
                     </view>
                 </viewController>
@@ -36,7 +36,7 @@
         </scene>
     </scenes>
     <resources>
-        <image name="DeepSeekWhale" width="96" height="72"/>
+        <image name="DshOrcaMark" width="100" height="100"/>
         <systemColor name="labelColor">
             <color white="0.0" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
         </systemColor>

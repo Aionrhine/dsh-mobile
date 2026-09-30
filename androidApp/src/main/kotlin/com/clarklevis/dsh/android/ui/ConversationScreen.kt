@@ -6,9 +6,16 @@ import androidx.compose.ui.focus.focusRequester
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.graphics.BitmapFactory
+import android.provider.Settings
 import android.util.Base64
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -17,6 +24,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -103,6 +111,7 @@ import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.ImageBitmap
@@ -125,6 +134,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -703,9 +713,11 @@ private fun ConversationTimeline(
             entry.id to entry.images.mapTo(mutableSetOf()) { it.attachmentId }
         }
     }
-    val hasInitialContent = timelineEntries.isNotEmpty()
+    val hasInitialContent = timelineEntries.isNotEmpty() || selectedSessionIsRunning
     val lastTimelineIndex = (
-        timelineEntries.lastIndex + if (hasHistoryLoadingRow) 1 else 0
+        timelineEntries.lastIndex +
+            (if (hasHistoryLoadingRow) 1 else 0) +
+            (if (selectedSessionIsRunning) 1 else 0)
     ).coerceAtLeast(0)
     val listState = rememberLazyListState(
         initialFirstVisibleItemIndex = lastTimelineIndex
@@ -792,7 +804,7 @@ private fun ConversationTimeline(
         initialPositionApplied,
         hasStreamingItem
     ) {
-        if (initialPositionApplied && isPinnedToBottom && timelineEntries.isNotEmpty()) {
+        if (initialPositionApplied && isPinnedToBottom && hasInitialContent) {
             programmaticScrollCount += 1
             try {
                 listState.scrollToTimelineBottom(
@@ -805,7 +817,7 @@ private fun ConversationTimeline(
         }
     }
     LaunchedEffect(scrollToBottomToken) {
-        if (scrollToBottomToken > 0 && timelineEntries.isNotEmpty()) {
+        if (scrollToBottomToken > 0 && hasInitialContent) {
             programmaticScrollCount += 1
             try {
                 listState.scrollToTimelineBottom(lastTimelineIndex, animated = true)
@@ -868,7 +880,7 @@ private fun ConversationTimeline(
                 }
             }
     ) {
-        if (items.isEmpty() && !stateHolder.snapshot.selectedHistoryIsLoading) {
+        if (items.isEmpty() && !selectedSessionIsRunning && !stateHolder.snapshot.selectedHistoryIsLoading) {
             val error = stateHolder.snapshot.selectedHistoryError
             if (error == null) {
                 EmptyConversation(Modifier.align(Alignment.Center).padding(bottom = 150.dp))
@@ -946,9 +958,167 @@ private fun ConversationTimeline(
                     }
                 }
             }
+            if (selectedSessionIsRunning) {
+                item(key = "deep-search-progress", contentType = "deep-search-progress") {
+                    val previousReplyIndex = items.indexOfLast {
+                        it.kind == ConversationItemKind.ASSISTANT && it.id != activeStreamingMessageId
+                    }
+                    val turnItems = items.drop(previousReplyIndex + 1)
+                    DeepSearchProgressRow(
+                        startEpochSeconds = turnItems.firstOrNull { it.kind == ConversationItemKind.USER }
+                            ?.epochSeconds
+                            ?: items.lastOrNull { it.kind == ConversationItemKind.USER }?.epochSeconds,
+                        cues = items.drop(items.indexOfLast { it.kind == ConversationItemKind.USER } + 1)
+                            .filter { it.kind != ConversationItemKind.SYSTEM }
+                            .map { DeepSearchProgressCue(it.kind, it.epochSeconds, it.isError) }
+                    )
+                }
+            }
         }
     }
 }
+
+@Composable
+private fun DeepSearchProgressRow(
+    startEpochSeconds: Double?,
+    cues: List<DeepSearchProgressCue>
+) {
+    val startMilliseconds = remember(startEpochSeconds) {
+        startEpochSeconds?.takeIf { it > 0.0 }?.times(1_000)?.toLong()
+            ?: System.currentTimeMillis()
+    }
+    var elapsedSeconds by remember(startMilliseconds) { mutableIntStateOf(0) }
+    LaunchedEffect(startMilliseconds) {
+        while (true) {
+            elapsedSeconds = ((System.currentTimeMillis() - startMilliseconds) / 1_000)
+                .coerceAtLeast(0)
+                .coerceAtMost(Int.MAX_VALUE.toLong())
+                .toInt()
+            delay(1_000)
+        }
+    }
+    val bucket = elapsedSeconds / DEEP_SEARCH_PHRASE_INTERVAL_SECONDS
+    // 同一 30 秒窗口内锁定文案，工具事件和流式 token 不会触发中途换词。
+    val phrase = remember(startMilliseconds, bucket) {
+        val cutoff = startMilliseconds / 1_000.0 + bucket * DEEP_SEARCH_PHRASE_INTERVAL_SECONDS
+        val activity = deepSearchActivityAt(cues, cutoff)
+        val options = DEEP_SEARCH_PHRASES.getValue(activity)
+        options[((startMilliseconds / 1_000L + bucket) % options.size).toInt()]
+    }
+
+    val darkTheme = isSystemInDarkTheme()
+    val base = if (darkTheme) Color(0xFFA8BEDB) else Color(0xFF18365A)
+    val highlight = if (darkTheme) Color(0xFFD5E3F4) else Color(0xFF5B7FA9)
+    val context = LocalContext.current
+    val reduceMotion = remember(context) {
+        Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
+    }
+    val whaleSprite = remember(context) {
+        BitmapFactory.decodeResource(context.resources, R.drawable.running_whale_tail_sprite).asImageBitmap()
+    }
+    val whaleFrame by rememberInfiniteTransition(label = "running-whale-tail").animateFloat(
+        initialValue = 0f,
+        targetValue = 60f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3_000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "running-whale-tail-frame"
+    )
+    val shimmer by rememberInfiniteTransition(label = "deep-search-shimmer").animateFloat(
+        initialValue = -0.4f,
+        targetValue = 1.4f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2_200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "deep-search-shimmer-position"
+    )
+    var textWidth by remember { mutableIntStateOf(1) }
+    val shimmerBrush = Brush.linearGradient(
+        colors = listOf(base, highlight, base),
+        start = Offset((shimmer - 0.24f) * textWidth, 0f),
+        end = Offset((shimmer + 0.24f) * textWidth, 0f)
+    )
+
+    Column(
+        Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 16.dp)
+            .testTag("deep-search-progress")
+    ) {
+        HorizontalDivider(
+            thickness = 0.5.dp,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.025f)
+        )
+        Row(
+            modifier = Modifier.padding(top = 13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Web UI 的运行鲸尾是 60 帧 APNG 遮罩；这里使用同源帧图保持外观和时序。
+            Canvas(modifier = Modifier.size(17.dp)) {
+                drawImage(
+                    image = whaleSprite,
+                    srcOffset = IntOffset((if (reduceMotion) 0 else whaleFrame.toInt().coerceIn(0, 59)) * 28, 0),
+                    srcSize = IntSize(28, 28),
+                    dstSize = IntSize(size.width.toInt(), size.height.toInt()),
+                    colorFilter = ColorFilter.tint(base)
+                )
+            }
+            Text(
+                text = "$phrase，用时 $elapsedSeconds 秒…",
+                modifier = Modifier.onSizeChanged { textWidth = it.width.coerceAtLeast(1) },
+                style = TextStyle(brush = shimmerBrush, fontSize = 14.sp, fontWeight = FontWeight.Medium),
+                maxLines = 1
+            )
+        }
+    }
+}
+
+private const val DEEP_SEARCH_PHRASE_INTERVAL_SECONDS = 30
+
+private data class DeepSearchProgressCue(
+    val kind: ConversationItemKind,
+    val epochSeconds: Double,
+    val isError: Boolean
+)
+
+private enum class DeepSearchActivity { THINKING, GATHERING, EXPLORING, REVIEWING, REVISITING, COMPOSING, WORKING }
+
+private fun deepSearchActivityAt(cues: List<DeepSearchProgressCue>, cutoff: Double): DeepSearchActivity {
+    var activity = DeepSearchActivity.THINKING
+    var hasReasoned = false
+    var hasToolResult = false
+    for (cue in cues) {
+        if (cue.epochSeconds >= cutoff) continue
+        activity = when (cue.kind) {
+            ConversationItemKind.CONTEXT -> DeepSearchActivity.GATHERING
+            ConversationItemKind.REASONING -> {
+                val next = if (hasReasoned || hasToolResult) DeepSearchActivity.REVISITING else DeepSearchActivity.THINKING
+                hasReasoned = true
+                next
+            }
+            ConversationItemKind.TOOL, ConversationItemKind.JSON_TOOL -> DeepSearchActivity.EXPLORING
+            ConversationItemKind.TOOL_RESULT -> {
+                hasToolResult = true
+                if (cue.isError) DeepSearchActivity.REVISITING else DeepSearchActivity.REVIEWING
+            }
+            ConversationItemKind.ASSISTANT -> DeepSearchActivity.COMPOSING
+            ConversationItemKind.STATUS -> DeepSearchActivity.WORKING
+            ConversationItemKind.USER, ConversationItemKind.SYSTEM -> activity
+        }
+    }
+    return activity
+}
+
+private val DEEP_SEARCH_PHRASES = mapOf(
+    DeepSearchActivity.THINKING to listOf("梳理脉络中", "推敲细节中", "酝酿下一步中", "沿着思路前行中"),
+    DeepSearchActivity.GATHERING to listOf("翻阅已有线索中", "收拢相关信息中", "寻找切入点中", "铺开问题脉络中"),
+    DeepSearchActivity.EXPLORING to listOf("向外寻找线索中", "打捞新线索中", "沿途探查中", "搜集更多拼图中"),
+    DeepSearchActivity.REVIEWING to listOf("对照新发现中", "拼合新线索中", "检视所得中", "把发现串起来中"),
+    DeepSearchActivity.REVISITING to listOf("回看已有线索中", "重新校准方向中", "再推敲一遍中", "换个角度审视中"),
+    DeepSearchActivity.COMPOSING to listOf("组织回应中", "整理表达中", "将思路落成文字中", "勾勒答案中"),
+    DeepSearchActivity.WORKING to listOf("继续推进中", "稳步探索中", "梳理当前进展中", "逐步展开中")
+)
 
 private const val TIMELINE_STREAM_RESUME_DELAY_MILLISECONDS = 80L
 private const val MARKDOWN_PREFETCH_ROWS = 24
@@ -1068,7 +1238,7 @@ internal fun ScrollToBottomButton(isGenerating: Boolean, onClick: () -> Unit) {
 @Composable
 private fun EmptyConversation(modifier: Modifier = Modifier) {
     Column(modifier.padding(horizontal = 28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        WhaleIcon(Modifier.width(52.dp).height(39.dp))
+        WhalenessOrcaIcon(Modifier.size(52.dp))
         Text("操作远端 DSH Agent", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
         Text(
             "发送任务后，工具调用、推理进度和最终回复会通过 Mobile Gateway 实时返回。",
@@ -2756,7 +2926,7 @@ private fun AssistantMessage(
     onRetry: (String) -> Unit
 ) {
     Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-        AssistantMessageHeaderContent(item, thumbnails, states, onRetry)
+        AttachmentGrid(item.images, thumbnails, states, onRetry)
         if (item.text.isNotEmpty()) {
             DshStreamingAwareMarkdownText(
                 markdown = item.text,
@@ -2779,27 +2949,8 @@ private fun AssistantMessageHeader(
         Modifier.fillMaxWidth().padding(top = 12.dp),
         verticalArrangement = Arrangement.spacedBy(7.dp)
     ) {
-        AssistantMessageHeaderContent(item, thumbnails, states, onRetry)
+        AttachmentGrid(item.images, thumbnails, states, onRetry)
     }
-}
-
-@Composable
-private fun AssistantMessageHeaderContent(
-    item: ConversationItem,
-    thumbnails: Map<String, ImageBitmap>,
-    states: Map<String, AttachmentLoadState>,
-    onRetry: (String) -> Unit
-) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-        WhaleIcon(Modifier.width(26.dp).height(20.dp))
-        Text(
-            item.title,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-            fontSize = 14.sp,
-            fontWeight = FontWeight.SemiBold
-        )
-    }
-    AttachmentGrid(item.images, thumbnails, states, onRetry)
 }
 
 @Composable

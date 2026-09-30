@@ -89,7 +89,9 @@ internal fun makeConversationTimelineEntries(
             return@forEach
         }
 
-        add(ConversationTimelineEntry.AssistantHeader(item))
+        if (item.images.isNotEmpty()) {
+            add(ConversationTimelineEntry.AssistantHeader(item))
+        }
         splitMarkdownForLazyLayout(item.text).forEachIndexed { index, markdown ->
             add(
                 ConversationTimelineEntry.AssistantMarkdown(

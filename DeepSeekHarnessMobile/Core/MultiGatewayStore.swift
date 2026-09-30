@@ -174,6 +174,7 @@ final class MultiGatewayStore: ObservableObject {
         }
         var normalized = payload
         normalized.publicUrl = endpoints[0]
+        store.allowAutomaticConnection()
         store.gateway.connectForPairing(normalized)
     }
 

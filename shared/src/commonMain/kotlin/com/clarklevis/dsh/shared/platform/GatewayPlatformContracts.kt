@@ -84,7 +84,8 @@ interface GatewayNetworkMonitor {
 data class GatewayPreferencesSnapshot(
     val endpoint: String = "ws://127.0.0.1:3080/ws/mobile",
     val selectedWorkspaceId: String? = null,
-    val sessionsJson: String? = null
+    val sessionsJson: String? = null,
+    val automaticallyConnect: Boolean = true
 )
 
 /** 仅保存非敏感配置；token 与 device id 不得进入该存储。 */

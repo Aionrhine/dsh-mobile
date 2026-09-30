@@ -74,6 +74,28 @@ data class GatewayRequest(
 
 /** 请求字段逐项复制现有 iOS GatewayClient 与 Mobile Gateway 已验证协议。 */
 object GatewayRequests {
+    fun pluginCatalog(requestId: String): GatewayRequest = request(
+        "plugin-catalog", "plugin-catalog", correlationId = requestId
+    ) { put("requestId", requestId) }
+
+    fun pluginBundleSetEnabled(requestId: String, name: String, enabled: Boolean): GatewayRequest = request(
+        "plugin-bundle-set-enabled", "plugin-bundle-set-enabled", correlationId = requestId,
+        lanePolicy = GatewayRequestLanePolicy.FIFO
+    ) {
+        put("requestId", requestId)
+        put("name", name)
+        put("enabled", enabled)
+    }
+
+    fun pluginEntrySetEnabled(requestId: String, entryId: String, enabled: Boolean): GatewayRequest = request(
+        "plugin-entry-set-enabled", "plugin-entry-set-enabled", correlationId = requestId,
+        lanePolicy = GatewayRequestLanePolicy.FIFO
+    ) {
+        put("requestId", requestId)
+        put("entryId", entryId)
+        put("enabled", enabled)
+    }
+
     fun sessionAgentPreset(sessionId: String, requestId: String): GatewayRequest = request(
         "session-agent-preset", "session-agent-preset", targetSessionId = sessionId,
         correlationId = requestId

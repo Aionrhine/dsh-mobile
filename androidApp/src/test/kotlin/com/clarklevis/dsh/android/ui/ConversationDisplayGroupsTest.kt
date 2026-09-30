@@ -49,7 +49,7 @@ class ConversationDisplayGroupsTest {
             activeStreamingAssistantMessageId = "stream-text-7-9"
         )
 
-        assertTrue(timeline.first() is ConversationTimelineEntry.AssistantHeader)
+        assertTrue(timeline.first() is ConversationTimelineEntry.AssistantMarkdown)
         assertTrue(timeline.any { it is ConversationTimelineEntry.AssistantMarkdown })
         assertFalse(timeline.any { it is ConversationTimelineEntry.AssistantFooter })
         assertEquals(
@@ -172,7 +172,7 @@ class ConversationDisplayGroupsTest {
             )
         )
 
-        assertTrue(timeline.first() is ConversationTimelineEntry.AssistantHeader)
+        assertTrue(timeline.first() is ConversationTimelineEntry.AssistantMarkdown)
         assertTrue(timeline.last() is ConversationTimelineEntry.AssistantFooter)
         val markdownRows = timeline.filterIsInstance<ConversationTimelineEntry.AssistantMarkdown>()
         assertTrue(markdownRows.size > 1)

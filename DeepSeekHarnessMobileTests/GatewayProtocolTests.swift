@@ -3199,6 +3199,19 @@ final class GatewayProtocolTests: XCTestCase {
         XCTAssertEqual(sessionID, "s1")
     }
 
+    func testScheduleCatalogSupportsStatusAndKeywordSearch() throws {
+        let catalog = try GatewayWireDecoder.decode(Data(
+            #"{"kind":"schedule-catalog","items":[{"id":"active-1","sessionId":"s1","status":"active","kind":"daily","title":"每日新闻汇总","prompt":"科技和金融新闻","scheduledAt":"2099-01-01T00:00:00.000Z"},{"id":"ended-1","sessionId":"s2","status":"ended","kind":"at","title":"构建检查","prompt":"检查发布结果","scheduledAt":"2098-01-01T00:00:00.000Z"}]}"#.utf8
+        ))
+        let tasks = try XCTUnwrap(catalog.items).compactMap(ScheduledTask.init)
+
+        XCTAssertEqual(filteredScheduledTasks(tasks, status: .all, query: "新闻").map(\.id), ["active-1"])
+        XCTAssertEqual(filteredScheduledTasks(tasks, status: .active, query: " 金融 ").map(\.id), ["active-1"])
+        XCTAssertEqual(filteredScheduledTasks(tasks, status: .ended, query: "检查").map(\.id), ["ended-1"])
+        XCTAssertTrue(filteredScheduledTasks(tasks, status: .active, query: "构建").isEmpty)
+        XCTAssertEqual(filteredScheduledTasks(tasks, status: .all, query: " ").count, 2)
+    }
+
     func testScheduleFramesPreserveCatalogHistoryAndConflict() throws {
         let catalog = try GatewayWireDecoder.decode(Data(
             #"{"kind":"schedule-catalog","items":[{"id":"task-1","sessionId":"s1","status":"active","kind":"every","title":"检查构建","prompt":"检查结果","everySeconds":300,"scheduledAt":"2099-01-01T00:00:00.000Z"}]}"#.utf8
@@ -6613,6 +6626,7 @@ private final class GatewayQuestionEffectExecutorSpy: GatewayQuestionEffectExecu
 
 private final class AppPreferencesSpy: AppPreferences {
     var endpoint: String
+    var automaticallyConnect = true
     var selectedWorkspaceID: String?
     private let sessions: [SessionSummary]
     private(set) var savedSessionSnapshots: [[SessionSummary]] = []
@@ -6632,6 +6646,39 @@ private final class AppPreferencesSpy: AppPreferences {
 
     func performMigrations() {
         performMigrationsCallCount += 1
+    }
+}
+
+final class ManualGatewayDisconnectTests: XCTestCase {
+    @MainActor
+    func testManualDisconnectSuppressesColdLaunchConnection() {
+        let preferences = AppPreferencesSpy(
+            endpoint: "ws://127.0.0.1:3080/ws/mobile", selectedWorkspaceID: nil, sessions: []
+        )
+        let store = AppStore(preferences: preferences)
+        defer { store.deactivateGateway() }
+
+        store.disconnect()
+        XCTAssertFalse(preferences.automaticallyConnect)
+        let restarted = AppStore(preferences: preferences)
+        defer { restarted.deactivateGateway() }
+        restarted.connectOnColdLaunchIfPaired()
+        restarted.handleScenePhase(.active)
+        XCTAssertNil(restarted.lastError)
+        XCTAssertFalse(restarted.gateway.state.isConnected)
+    }
+
+    func testDisconnectPreferencePersistsPerGateway() throws {
+        let suite = "manual-disconnect-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let first = UserDefaultsAppPreferences(userDefaults: defaults, gatewayID: "first")
+        let second = UserDefaultsAppPreferences(userDefaults: defaults, gatewayID: "second")
+        XCTAssertTrue(first.automaticallyConnect)
+        first.automaticallyConnect = false
+
+        XCTAssertFalse(UserDefaultsAppPreferences(userDefaults: defaults, gatewayID: "first").automaticallyConnect)
+        XCTAssertTrue(second.automaticallyConnect)
     }
 }
 
@@ -7081,5 +7128,22 @@ final class SessionHistoryVisibilityTests: XCTestCase {
         blank.hasConversation = false
         let restored = try JSONDecoder().decode(SessionSummary.self, from: JSONEncoder().encode(blank))
         XCTAssertFalse(restored.isVisibleInHistory)
+    }
+}
+
+final class MobilePluginBundleTests: XCTestCase {
+    func testExperimentalBadgeUsesGatewayFlagOnly() {
+        let flagged = MobilePluginBundle(raw: .object([
+            "name": .string("flagged"), "experimental": .bool(true)
+        ]))
+        let unflagged = MobilePluginBundle(raw: .object([
+            "name": .string("@deepseek-ai/dsh-experimental-unflagged"),
+            "experimental": .bool(false)
+        ]))
+        let legacy = MobilePluginBundle(raw: .object(["name": .string("legacy")]))
+
+        XCTAssertTrue(flagged.experimental)
+        XCTAssertFalse(unflagged.experimental)
+        XCTAssertFalse(legacy.experimental)
     }
 }

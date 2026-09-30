@@ -50,6 +50,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.sp
@@ -114,12 +116,23 @@ internal fun WorkspaceDrawer(
                     .then(if (progress == 0f) Modifier.clearAndSetSemantics {} else Modifier),
                 verticalArrangement = Arrangement.Top
             ) {
-                Image(
-                    painter = painterResource(R.drawable.dsh_brand_wordmark),
-                    contentDescription = "DeepSeek Harness",
+                Row(
                     modifier = Modifier.padding(start = 12.dp, bottom = 16.dp)
-                        .size(width = 216.dp, height = 28.5.dp)
-                )
+                        .size(width = 216.dp, height = 29.dp)
+                        .semantics { contentDescription = "Whaleness Harness" },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    WhalenessOrcaIcon(
+                        modifier = Modifier.size(29.dp),
+                        tint = if (dark) Color.White else Color.Black
+                    )
+                    Image(
+                        painter = painterResource(R.drawable.dsh_whaleness_wordmark),
+                        contentDescription = null,
+                        modifier = Modifier.size(width = 183.dp, height = 29.dp)
+                    )
+                }
                 DrawerItem("插件", R.drawable.ic_drawer_plugin, "drawer-plugins") {
                     onPlugins()
                 }

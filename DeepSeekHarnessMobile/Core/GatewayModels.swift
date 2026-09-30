@@ -232,6 +232,11 @@ struct GatewayFrame: Codable, Sendable {
     var canOpenPath: Bool?
     var path: String?
     var requestId: String?
+    var managementAvailable: Bool?
+    var settingsWritable: Bool?
+    var bundles: [JSONValue]?
+    var plugins: [JSONValue]?
+    var officialItems: [JSONValue]?
     var transferId: String?
     var name: String?
     var mediaType: String?
@@ -295,6 +300,134 @@ struct GatewayFrame: Codable, Sendable {
     // Image attachment protocol (Mobile Gateway v0.6.0 / protocol 3).
     var attachment: GatewayImageAttachment?
     var data: String?
+}
+
+private let hiddenPluginProfileBundles: Set<String> = [
+    "@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "@deepseek-ai/dsh-headless",
+    "@deepseek-ai/dsh-sdk-app", "@deepseek-ai/dsh-acp-app", "@deepseek-ai/dsh-sdk-minimal"
+]
+
+private func localizedPluginText(_ value: JSONValue?) -> String? {
+    if let text = value?.stringValue, !text.isEmpty { return text }
+    guard let translations = value?.objectValue else { return nil }
+    let language = Locale.current.language.languageCode?.identifier ?? "en"
+    return (translations[language] ?? translations["en"] ?? translations.values.first)?.stringValue
+}
+
+struct MobilePluginBundle: Identifiable {
+    let raw: JSONValue
+    var id: String { name }
+    var name: String { raw["name"]?.stringValue ?? "" }
+    var version: String? { raw["version"]?.stringValue }
+    var enabled: Bool { raw["enabled"]?.boolValue == true }
+    var installed: Bool { raw["installed"]?.boolValue == true }
+    var optional: Bool { raw["optional"]?.boolValue == true }
+    var experimental: Bool { raw["experimental"]?.boolValue == true }
+    var removable: Bool { raw["removable"]?.boolValue == true }
+    var readOnlyReason: String? { raw["readOnlyReason"]?.stringValue }
+    var error: String? { raw["error"]?["diagnostic"]?.stringValue ?? raw["error"]?["code"]?.stringValue }
+    var title: String { localizedPluginText(raw["meta"]?["title"]) ?? name }
+    var description: String {
+        localizedPluginText(raw["meta"]?["description"]) ?? raw["description"]?.stringValue ?? ""
+    }
+    var icon: String? { raw["meta"]?["icon"]?.stringValue }
+    var rows: [JSONValue] { raw["rows"]?.arrayValue ?? [] }
+    var visible: Bool { !hiddenPluginProfileBundles.contains(name) && (installed || optional || error != nil) }
+    var isOfficial: Bool { optional && !installed }
+}
+
+struct MobilePluginEntry: Identifiable {
+    let raw: JSONValue
+    var id: String { raw["entryId"]?.stringValue ?? raw["id"]?.stringValue ?? "" }
+    var name: String { localizedPluginText(raw["meta"]?["title"]) ?? raw["name"]?.stringValue ?? id }
+    var description: String {
+        localizedPluginText(raw["meta"]?["description"]) ?? raw["description"]?.stringValue ?? ""
+    }
+    var enabled: Bool { raw["enabled"]?.boolValue == true }
+    var readOnlyReason: String? { raw["readOnlyReason"]?.stringValue }
+    var icon: String? { raw["meta"]?["icon"]?.stringValue }
+    var fiberPhase: String? { raw["fiberPhase"]?.stringValue }
+}
+
+struct MobilePluginRow: Identifiable {
+    let raw: JSONValue
+    let live: MobilePluginEntry?
+    var id: String { raw["rowId"]?.stringValue ?? "" }
+    var entryID: String? { raw["entryId"]?.stringValue }
+    var moduleName: String { raw["moduleName"]?.stringValue ?? "" }
+    var name: String { localizedPluginText(raw["meta"]?["title"]) ?? live?.name ?? id }
+    var description: String {
+        localizedPluginText(raw["meta"]?["description"]) ?? live?.description ?? ""
+    }
+    var icon: String? { raw["meta"]?["icon"]?.stringValue ?? live?.icon }
+    var enabled: Bool { live?.enabled == true }
+    var phase: String? { live?.fiberPhase }
+    var readOnlyReason: String? { live?.readOnlyReason }
+    var rowIdAndModule: String { moduleName.isEmpty ? id : "\(id) · \(moduleName)" }
+    var statusText: String {
+        guard enabled else { return "已停用" }
+        switch phase {
+        case "active": return "运行中"
+        case "failed": return "运行失败"
+        case "loading": return "加载中"
+        case "unloading": return "卸载中"
+        case "pending": return "待启动"
+        default: return "空闲"
+        }
+    }
+}
+
+struct MobileOfficialPlugin: Identifiable {
+    let raw: JSONValue
+    var id: String { raw["id"]?.stringValue ?? "" }
+    var namespaces: [String] { raw["namespaces"]?.arrayValue?.compactMap(\.stringValue) ?? [] }
+    var title: String {
+        switch id {
+        case "shell": "终端"
+        case "agent-loop": "Agent 循环"
+        case "subagent": "子智能体"
+        case "web-search": "网页搜索"
+        default: id
+        }
+    }
+    var description: String {
+        switch id {
+        case "shell": "限制每条命令最多能跑多久、最多输出多少内容。"
+        case "agent-loop": "控制 Agent 派发工具调用的方式。"
+        case "subagent": "设置子智能体的递归层级、数量和模型。"
+        case "web-search": "设置 DeepSeek 的搜索提供方。"
+        default: ""
+        }
+    }
+}
+
+struct MobilePluginCatalog {
+    let managementAvailable: Bool
+    let settingsWritable: Bool
+    let bundles: [MobilePluginBundle]
+    let plugins: [MobilePluginEntry]
+    let officialItems: [MobileOfficialPlugin]
+    var officialBundles: [MobilePluginBundle] {
+        sortBundles(bundles.filter { $0.visible && $0.isOfficial })
+    }
+    var installedBundles: [MobilePluginBundle] {
+        sortBundles(bundles.filter { $0.visible && !$0.isOfficial })
+    }
+
+    private func sortBundles(_ bundles: [MobilePluginBundle]) -> [MobilePluginBundle] {
+        bundles.sorted { lhs, rhs in
+            let order = shortName(lhs.name).localizedCompare(shortName(rhs.name))
+            return order == .orderedSame ? lhs.name < rhs.name : order == .orderedAscending
+        }
+    }
+
+    private func shortName(_ name: String) -> String {
+        let unscoped = name.hasPrefix("@") ? String(name.dropFirst().split(separator: "/", maxSplits: 1).last ?? "") : name
+        for prefix in ["dsh-host-", "dsh-client-", "dsh-"] where unscoped.hasPrefix(prefix) {
+            return String(unscoped.dropFirst(prefix.count))
+        }
+        return unscoped
+    }
 }
 
 /// WebUI 的 todo_write 投影；移动端只读展示。

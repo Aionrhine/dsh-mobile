@@ -143,8 +143,10 @@ struct WorkspaceView: View {
                     VStack(alignment: .leading, spacing: 7) {
                         Text("探索未至之境")
                             .font(.system(size: 32, weight: .bold))
-                        Text("DeepSeek Harness 预览版")
-                            .font(.subheadline).foregroundStyle(.white.opacity(0.65))
+                        if connectionIsReady {
+                            Text("已连接Deepseek Harness预览版")
+                                .font(.subheadline).foregroundStyle(.white.opacity(0.65))
+                        }
                     }
                     .id("workspace-hero")
                     workspaceCard.id("workspace-card")
@@ -186,12 +188,7 @@ struct WorkspaceView: View {
 
     private func drawerContent(progress: CGFloat, topInset: CGFloat, width: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Image("DshBrandWordmark")
-                .resizable()
-                .scaledToFit()
-                .colorInvertIfNeeded(colorScheme == .dark)
-                .frame(width: min(width - 48, 216), alignment: .leading)
-                .accessibilityLabel("DeepSeek Harness")
+            HarnessMark(onDarkBackground: colorScheme == .dark, width: min(width - 48, 216))
                 .padding(.leading, 12)
                 .padding(.bottom, 16)
 
@@ -530,13 +527,6 @@ struct WorkspaceView: View {
         }
         .frame(maxWidth: .infinity).frame(height: 38)
         .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-    }
-}
-
-private extension View {
-    @ViewBuilder
-    func colorInvertIfNeeded(_ inverted: Bool) -> some View {
-        if inverted { colorInvert() } else { self }
     }
 }
 

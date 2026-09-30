@@ -1,5 +1,7 @@
 package com.clarklevis.dsh.android
 
+import com.clarklevis.dsh.android.ui.ScheduledTaskStatusFilter
+import com.clarklevis.dsh.android.ui.filteredScheduledTasks
 import com.clarklevis.dsh.shared.protocol.GatewayWireDecoder
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -22,5 +24,23 @@ class MobileScheduledTaskTest {
     fun malformedCatalogEntryIsIgnored() {
         val frame = GatewayWireDecoder.decode("""{"kind":"schedule-catalog","items":[{"id":"task-1"}]}""")
         assertNull(frame.items?.single()?.let(MobileScheduledTask::from))
+    }
+
+    @Test
+    fun filtersTasksByStatusAndTitleOrPrompt() {
+        val frame = GatewayWireDecoder.decode("""
+            {"kind":"schedule-catalog","items":[
+              {"id":"active-news","sessionId":"s1","status":"active","kind":"daily","title":"每日新闻", "prompt":"汇总科技动态","scheduledAt":"2099-01-01"},
+              {"id":"ended-news","sessionId":"s2","status":"completed","kind":"daily","title":"新闻归档", "prompt":"整理历史记录","scheduledAt":"2099-01-02"},
+              {"id":"active-weather","sessionId":"s3","status":"active","kind":"daily","title":"天气提醒", "prompt":"播报天气","scheduledAt":"2099-01-03"}
+            ]}
+        """.trimIndent())
+        val tasks = frame.items.orEmpty().mapNotNull(MobileScheduledTask::from)
+        assertEquals(listOf("active-news"), filteredScheduledTasks(tasks,
+            ScheduledTaskStatusFilter.ACTIVE, " 科技 ").map { it.id })
+        assertEquals(listOf("ended-news"), filteredScheduledTasks(tasks,
+            ScheduledTaskStatusFilter.ENDED, "新闻").map { it.id })
+        assertEquals(listOf("active-news", "ended-news"), filteredScheduledTasks(tasks,
+            ScheduledTaskStatusFilter.ALL, "新闻").map { it.id })
     }
 }

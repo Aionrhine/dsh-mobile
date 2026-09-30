@@ -3,6 +3,7 @@ package com.clarklevis.dsh.android.platform
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStoreFile
@@ -32,6 +33,7 @@ class AndroidGatewayPreferences(context: Context, gatewayId: String? = null) : G
     override suspend fun update(snapshot: GatewayPreferencesSnapshot) {
         dataStore.edit { preferences ->
             preferences[ENDPOINT] = snapshot.endpoint
+            preferences[AUTOMATICALLY_CONNECT] = snapshot.automaticallyConnect
             snapshot.selectedWorkspaceId.setOrRemove(preferences, SELECTED_WORKSPACE_ID)
             snapshot.sessionsJson.setOrRemove(preferences, SESSIONS_JSON)
         }
@@ -41,7 +43,8 @@ class AndroidGatewayPreferences(context: Context, gatewayId: String? = null) : G
         GatewayPreferencesSnapshot(
             endpoint = preferences[ENDPOINT] ?: DEFAULT_ENDPOINT,
             selectedWorkspaceId = preferences[SELECTED_WORKSPACE_ID],
-            sessionsJson = preferences[SESSIONS_JSON]
+            sessionsJson = preferences[SESSIONS_JSON],
+            automaticallyConnect = preferences[AUTOMATICALLY_CONNECT] ?: true
         )
 
     private fun String?.setOrRemove(
@@ -56,6 +59,7 @@ class AndroidGatewayPreferences(context: Context, gatewayId: String? = null) : G
 
         private const val FILE_NAME = "gateway.preferences_pb"
         private val ENDPOINT = stringPreferencesKey("gateway.endpoint")
+        private val AUTOMATICALLY_CONNECT = booleanPreferencesKey("gateway.automatically_connect")
         private val SELECTED_WORKSPACE_ID = stringPreferencesKey("gateway.selected_workspace_id")
         private val SESSIONS_JSON = stringPreferencesKey("gateway.sessions_json")
     }
