@@ -161,7 +161,7 @@ private struct AgentDynamicIslandBrand: View {
     var body: some View {
         HStack(spacing: 6) {
             AgentBrandMark(compact: false)
-            Text("DshMobile")
+            Text("Whaleness")
                 .font(.system(size: 11, weight: .semibold))
                 .lineLimit(1)
         }
@@ -281,7 +281,7 @@ private struct AgentDynamicIslandExpandedContent: View {
     /// 简单状态使用底部信息行占满展开卡片的安全区域。它既补足运行、允许、
     /// 拒绝等状态下的下半部空白，也把所有内容限制在底部圆角开始收窄之前。
     private var compactFooter: some View {
-        Text(state.sourceLabel?.isEmpty == false ? state.sourceLabel! : "DeepSeek Harness")
+        Text(state.sourceLabel?.isEmpty == false ? state.sourceLabel! : "Whaleness")
             .lineLimit(1)
             .frame(maxWidth: .infinity, alignment: .leading)
             .font(.system(size: 10))
@@ -452,7 +452,7 @@ private struct AgentActivityCard: View {
 
     private var footer: some View {
         HStack(spacing: 7) {
-            Text(state.sourceLabel?.isEmpty == false ? state.sourceLabel! : "DeepSeek Harness")
+            Text(state.sourceLabel?.isEmpty == false ? state.sourceLabel! : "Whaleness")
                 .lineLimit(1)
             Spacer(minLength: 12)
             Link(destination: AgentActivityLink.session(context)) {
@@ -615,17 +615,16 @@ private struct AgentElapsedTime: View {
 private struct AgentBrandMark: View {
     let compact: Bool
 
-    private var width: CGFloat { compact ? 20 : 21 }
-    private var height: CGFloat { width * 0.743 }
+    private var size: CGFloat { compact ? 18 : 19 }
 
     var body: some View {
-        Image("DeepSeekWhale")
+        Image("WhalenessOrcaMark")
             .renderingMode(.template)
             .resizable()
             .scaledToFit()
             .foregroundStyle(AgentActivityColors.accent)
-            .frame(width: width, height: height)
-            .frame(width: width, height: 20, alignment: .center)
+            .frame(width: size, height: size)
+            .frame(width: 20, height: 20, alignment: .center)
             .accessibilityHidden(true)
     }
 }
@@ -773,7 +772,7 @@ private func previewState(
         status: status,
         detail: detail,
         secondaryDetail: secondaryDetail,
-        sourceLabel: "Mac Studio · dsh-mobile",
+        sourceLabel: "Mac Studio · Whaleness",
         command: command,
         rpcID: command == nil ? nil : "preview-rpc",
         approvalID: command == nil ? nil : "preview-approval",

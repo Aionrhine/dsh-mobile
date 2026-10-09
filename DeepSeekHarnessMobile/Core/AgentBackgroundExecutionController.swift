@@ -17,12 +17,14 @@ final class AgentBackgroundExecutionController {
     private static let logger = Logger(subsystem: "ai.dsh.mobile.ios", category: "agent-background")
 
     private func traceBackground(_ event: String) {
-        Self.logger.notice("[AgentBackground] event=\(event, privacy: .public) background=\(self.applicationIsInBackground) turns=\(self.outstandingTurns) questions=\(self.questionAllowanceSessionIDs.count) queued=\(self.queuedSessionIDs.count) hasTask=\(self.taskIdentifier != .invalid) longKeepAlive=\(self.longRunningKeepAlive?.isKeepingAlive == true)")
+        Self.logger.notice("[AgentBackground] event=\(event, privacy: .public) background=\(self.applicationIsInBackground) turns=\(self.outstandingTurns) questions=\(self.questionAllowanceSessionIDs.count) queued=\(self.queuedSessionIDs.count) idleAllowance=\(self.holdsIdleBackgroundAllowance) hasTask=\(self.taskIdentifier != .invalid) longKeepAlive=\(self.longRunningKeepAlive?.isKeepingAlive == true)")
     }
 
     private let application: BackgroundTaskApplication
     private let longRunningKeepAlive: AgentLongRunningKeepAlive?
     private var taskIdentifier: UIBackgroundTaskIdentifier = .invalid
+    private var holdsIdleBackgroundAllowance = false
+    private var taskGeneration: UUID?
     private(set) var applicationIsInBackground = false
     private(set) var outstandingTurnsBySessionID: [String: Int] = [:]
     private(set) var unassociatedOutstandingTurns = 0
@@ -46,6 +48,9 @@ final class AgentBackgroundExecutionController {
     var onKeepAlivePulse: (() -> Void)?
 
     var keepsConnectionAlive: Bool {
+        if applicationIsInBackground && holdsIdleBackgroundAllowance {
+            return taskIdentifier != .invalid
+        }
         guard isAgentWorkActive else { return false }
         return !applicationIsInBackground
             || taskIdentifier != .invalid
@@ -80,6 +85,7 @@ final class AgentBackgroundExecutionController {
     func applicationDidBecomeActive() {
         traceBackground("become-active")
         applicationIsInBackground = false
+        holdsIdleBackgroundAllowance = false
         longRunningKeepAlive?.applicationDidBecomeActive()
         // 前台运行不需要 UIApplication 后台额度。业务 turn 计数继续保留，
         // 下次进入后台时若仍在执行会重新申请。
@@ -87,9 +93,13 @@ final class AgentBackgroundExecutionController {
     }
 
     func applicationDidEnterBackground() {
+        guard !applicationIsInBackground else { return }
         applicationIsInBackground = true
         longRunningKeepAlive?.applicationDidEnterBackground()
-        if isAgentWorkActive { beginTaskIfNeeded() }
+        // 空闲连接也申请一次有限额度；它不计入 Agent 任务，不启用定位或音频。
+        holdsIdleBackgroundAllowance = !isAgentWorkActive
+        beginTaskIfNeeded()
+        if taskIdentifier == .invalid { holdsIdleBackgroundAllowance = false }
         traceBackground("enter-background")
     }
 
@@ -152,11 +162,17 @@ final class AgentBackgroundExecutionController {
 
     private func beginTaskIfNeeded() {
         guard taskIdentifier == .invalid else { return }
+        let generation = UUID()
+        taskGeneration = generation
         taskIdentifier = application.beginBackgroundTask(
-            withName: "Complete DSH Agent Turn"
+            withName: isAgentWorkActive ? "Complete DSH Agent Turn" : "Preserve DSH Gateway Connection"
         ) { [weak self] in
-            Task { @MainActor [weak self] in self?.expire() }
+            Task { @MainActor [weak self] in
+                guard let self, self.taskGeneration == generation else { return }
+                self.expire()
+            }
         }
+        if taskIdentifier == .invalid { taskGeneration = nil }
         traceBackground("background-task-requested")
     }
 
@@ -216,6 +232,7 @@ final class AgentBackgroundExecutionController {
     }
 
     func cancel() {
+        holdsIdleBackgroundAllowance = false
         queuedSessionIDs.removeAll()
         outstandingTurnsBySessionID.removeAll()
         unassociatedOutstandingTurns = 0
@@ -226,12 +243,15 @@ final class AgentBackgroundExecutionController {
 
     private func finishIfInactive() {
         guard !isAgentWorkActive else { return }
+        // 从空闲后台窗口开始的任务复用同一额度，任务结束不提前关闭窗口。
+        guard !holdsIdleBackgroundAllowance else { return }
         endTask()
         if applicationIsInBackground { onBackgroundAllowanceExpired?() }
     }
 
     private func expire() {
         traceBackground("background-task-expired")
+        holdsIdleBackgroundAllowance = false
         let didEndTask = endTask()
         guard longRunningKeepAlive?.isKeepingAlive != true else { return }
         queuedSessionIDs.removeAll()
@@ -257,6 +277,7 @@ final class AgentBackgroundExecutionController {
         let identifier = taskIdentifier
         guard identifier != .invalid else { return false }
         taskIdentifier = .invalid
+        taskGeneration = nil
         traceBackground("end-background-task")
         application.endBackgroundTask(identifier)
         return true

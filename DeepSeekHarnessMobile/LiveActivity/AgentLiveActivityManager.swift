@@ -1,5 +1,6 @@
 import ActivityKit
 import Foundation
+import UIKit
 
 /// 将 Gateway 的会话事件串行投影为系统实时活动。
 /// 本地 ActivityKit 更新依赖 App 仍有后台执行时间；后续接入 APNs 时可复用相同状态模型。
@@ -7,6 +8,8 @@ import Foundation
 final class AgentLiveActivityManager {
     static let shared = AgentLiveActivityManager()
 
+    private let applicationState: @MainActor () -> UIApplication.State
+    private let requestActivity: @MainActor (AgentActivityAttributes, ActivityContent<AgentActivityAttributes.ContentState>) throws -> Activity<AgentActivityAttributes>
     private let staleInterval: TimeInterval = 90
     private let updateCoalescingDelay: Duration = .milliseconds(700)
     private var activities: [String: Activity<AgentActivityAttributes>] = [:]
@@ -16,12 +19,26 @@ final class AgentLiveActivityManager {
     private var updateWorkerTokens: [String: UUID] = [:]
     private var operationTails: [String: Task<Void, Never>] = [:]
     private var endingSessionKeys: Set<String> = []
+    private var deferredEndTasks: [String: Task<Void, Never>] = [:]
+    private var deferredEndTokens: [String: UUID] = [:]
+    private let turnEndGracePeriod: Duration = .seconds(30)
     private var recentlyEndedActivities: [String: Activity<AgentActivityAttributes>] = [:]
     private var recentlyEndedCleanupTasks: [String: Task<Void, Never>] = [:]
     private var dismissingActivityIDs: Set<String> = []
     private var rebuildingActivityKeys: Set<String> = []
+    private var pendingCreations: [String: AgentActivityAttributes] = [:]
+    private var failedCreationKeys: Set<String> = []
 
-    private init() {
+    init(
+        applicationState: @escaping @MainActor () -> UIApplication.State = { UIApplication.shared.applicationState },
+        requestActivity: @escaping @MainActor (AgentActivityAttributes, ActivityContent<AgentActivityAttributes.ContentState>) throws -> Activity<AgentActivityAttributes> = {
+            try Activity.request(attributes: $0, content: $1, pushType: nil)
+        },
+        restoresSystemActivities: Bool = true
+    ) {
+        self.applicationState = applicationState
+        self.requestActivity = requestActivity
+        guard restoresSystemActivities else { return }
         // ActivityKit can restore more than one activity after an app/widget
         // rebuild. The system then puts the newest one in the small secondary
         // island while a stale activity occupies the main island, which looks
@@ -50,6 +67,30 @@ final class AgentLiveActivityManager {
         }
     }
 
+    /// 普通 ActivityKit 请求只能在前台发起；后台只保留最新业务状态。
+    func applicationDidBecomeActive() {
+        guard applicationState() == .active else { return }
+        failedCreationKeys.removeAll()
+        let pending = pendingCreations
+        // 产品只显示一个 Agent 会话，优先恢复最新收到事件的会话。
+        let candidates = pending.keys.sorted {
+            (latestStates[$0]?.updatedAt ?? .distantPast) > (latestStates[$1]?.updatedAt ?? .distantPast)
+        }
+        for activityKey in candidates {
+            guard let attributes = pending[activityKey],
+                  !rebuildingActivityKeys.contains(activityKey),
+                  !endingSessionKeys.contains(activityKey),
+                  let state = latestStates[activityKey], !state.phase.isTerminal else { continue }
+            upsert(
+                gatewayID: attributes.gatewayID,
+                sessionID: attributes.sessionID,
+                title: state.sessionTitle ?? attributes.sessionTitle,
+                state: state
+            )
+            break
+        }
+    }
+
     func sessionStarted(
         gatewayID: String,
         sessionID: String,
@@ -60,10 +101,13 @@ final class AgentLiveActivityManager {
         let activityKey = key(gatewayID: gatewayID, sessionID: sessionID)
         if endingSessionKeys.remove(activityKey) != nil {
             cancelRunningUpdate(activityKey: activityKey)
-            activities[activityKey] = nil
+            deferredEndTasks.removeValue(forKey: activityKey)?.cancel()
+            deferredEndTokens[activityKey] = nil
+            // 下一轮复用尚未结束的系统活动，后台不需要重新 request。
             latestStates[activityKey] = nil
-            operationTails[activityKey] = nil
         }
+        pendingCreations[activityKey] = nil
+        failedCreationKeys.remove(activityKey)
         dismissRecentlyEndedActivity(activityKey: activityKey)
         upsert(
             gatewayID: gatewayID,
@@ -256,7 +300,7 @@ final class AgentLiveActivityManager {
             current.updatedAt = .now
             if let activity = activities[activityKey] {
                 enqueueUpdate(activityKey: activityKey, activity: activity, state: current)
-            } else if rebuildingActivityKeys.contains(activityKey) {
+            } else if rebuildingActivityKeys.contains(activityKey) || pendingCreations[activityKey] != nil {
                 latestStates[activityKey] = current
             }
         case .running, .awaitingChoice, .approved, .rejected, .completed:
@@ -277,7 +321,7 @@ final class AgentLiveActivityManager {
         current.updatedAt = .now
         if let activity = activities[activityKey] {
             enqueueUpdate(activityKey: activityKey, activity: activity, state: current)
-        } else if rebuildingActivityKeys.contains(activityKey) {
+        } else if rebuildingActivityKeys.contains(activityKey) || pendingCreations[activityKey] != nil {
             latestStates[activityKey] = current
         }
     }
@@ -390,24 +434,43 @@ final class AgentLiveActivityManager {
 
         // 一旦收到 turn/end，就从可更新集合移除并封住后续脉冲，避免较早的 running 更新反写。
         endingSessionKeys.insert(activityKey)
+        pendingCreations[activityKey] = nil
+        failedCreationKeys.remove(activityKey)
         latestStates[activityKey] = finalState
         let runningWorker = cancelRunningUpdate(activityKey: activityKey)
-        let activity = activities.removeValue(forKey: activityKey)
         recentlyEndedActivities[activityKey] = nil
         recentlyEndedCleanupTasks.removeValue(forKey: activityKey)?.cancel()
-        guard let activity else { return }
+        guard let activity = activities[activityKey] else { return }
+        let endToken = UUID()
+        deferredEndTokens[activityKey] = endToken
         enqueue(activityKey: activityKey) {
             if let runningWorker { await runningWorker.value }
-            let content = ActivityContent(state: finalState, staleDate: nil)
-            await activity.end(
-                content,
-                dismissalPolicy: .immediate
-            )
+            guard self.deferredEndTokens[activityKey] == endToken else { return }
+            await activity.update(ActivityContent(state: finalState, staleDate: nil))
+        }
+        deferredEndTasks[activityKey] = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do { try await Task.sleep(for: self.turnEndGracePeriod) } catch { return }
+            guard self.deferredEndTokens[activityKey] == endToken else { return }
+            // 排在本轮最后一次更新之后；下一轮若先到达，token 校验会取消结束。
+            self.enqueue(activityKey: activityKey) {
+                guard self.deferredEndTokens[activityKey] == endToken else { return }
+                self.activities[activityKey] = nil
+                self.deferredEndTokens[activityKey] = nil
+                self.deferredEndTasks[activityKey] = nil
+                await activity.end(ActivityContent(state: finalState, staleDate: nil), dismissalPolicy: .immediate)
+            }
         }
     }
 
     /// sessions 快照用于补偿后台重连期间可能漏掉的 turn/end。
     func reconcileSessions(gatewayID: String, runningBySessionID: [String: Bool]) {
+        for (activityKey, attributes) in pendingCreations
+            where attributes.gatewayID == gatewayID && runningBySessionID[attributes.sessionID] == false {
+            pendingCreations[activityKey] = nil
+            latestStates[activityKey] = nil
+            failedCreationKeys.remove(activityKey)
+        }
         let systemActivities = Activity<AgentActivityAttributes>.activities.filter {
             // 覆盖安装、KeyStore 恢复或网关配置迁移后，本地 gatewayID 可能
             // 与旧 Activity 属性不同。Session ID 由主机生成且唯一，只要当前
@@ -433,6 +496,9 @@ final class AgentLiveActivityManager {
                 && activity.id != newestRunningActivity?.id
             let terminal = activity.content.state.phase.isTerminal
 
+            // turn/end 的保留窗口内，不让会话快照提前结束系统实例。
+            if deferredEndTokens[activityKey] != nil,
+               activities[activityKey]?.id == activity.id { continue }
             if sessionEnded || duplicate || terminal {
                 removeTracking(activityKey: activityKey, activityID: activity.id)
                 dismissImmediately(activity)
@@ -504,6 +570,15 @@ final class AgentLiveActivityManager {
             sessionTitle: title,
             startedAt: .now
         )
+        // 先保存状态，避免每个后台 token 事件都重复调用 Activity.request。
+        latestStates[activityKey] = state
+        guard !state.phase.isTerminal else {
+            pendingCreations[activityKey] = nil
+            return
+        }
+        pendingCreations[activityKey] = attributes
+        guard applicationState() == .active,
+              !failedCreationKeys.contains(activityKey) else { return }
         if rebuildSystemActivitiesIfNeeded(
             attributes: attributes,
             activityKey: activityKey,
@@ -514,17 +589,19 @@ final class AgentLiveActivityManager {
         }
         dismissOtherActivities(except: activityKey)
         do {
-            let activity = try Activity.request(
-                attributes: attributes,
-                content: ActivityContent(
+            let activity = try requestActivity(
+                attributes,
+                ActivityContent(
                     state: state,
                     staleDate: Date().addingTimeInterval(staleInterval)
-                ),
-                pushType: nil
+                )
             )
             activities[activityKey] = activity
             latestStates[activityKey] = state
+            pendingCreations[activityKey] = nil
+            failedCreationKeys.remove(activityKey)
         } catch {
+            failedCreationKeys.insert(activityKey)
 #if DEBUG
             print("[AgentLiveActivity] 无法创建实时活动：\(error.localizedDescription)")
 #endif
@@ -686,10 +763,17 @@ final class AgentLiveActivityManager {
     /// superseded activities also prevents iOS from switching the current one
     /// to the small secondary island and leaving an obsolete main island blank.
     private func dismissOtherActivities(except activityKey: String) {
+        for key in Array(pendingCreations.keys) where key != activityKey {
+            pendingCreations[key] = nil
+            latestStates[key] = nil
+            failedCreationKeys.remove(key)
+        }
         let activeKeys = activities.keys.filter { $0 != activityKey }
         for key in activeKeys {
             guard let activity = activities.removeValue(forKey: key) else { continue }
             cancelRunningUpdate(activityKey: key)
+            deferredEndTasks.removeValue(forKey: key)?.cancel()
+            deferredEndTokens[key] = nil
             latestStates[key] = nil
             operationTails[key] = nil
             endingSessionKeys.remove(key)
@@ -725,15 +809,19 @@ final class AgentLiveActivityManager {
         maximumAllowedCount: Int
     ) -> Bool {
         let systemActivities = Activity<AgentActivityAttributes>.activities
-        guard systemActivities.count > maximumAllowedCount else { return false }
+        guard systemActivities.count > maximumAllowedCount,
+              applicationState() == .active else { return false }
 
 #if DEBUG
         print("[AgentLiveActivity] 检测到 \(systemActivities.count) 个实时活动，开始重建唯一实例")
 #endif
         latestStates[activityKey] = state
+        pendingCreations[activityKey] = attributes
         guard rebuildingActivityKeys.insert(activityKey).inserted else { return true }
 
         for key in Array(activities.keys) {
+            deferredEndTasks.removeValue(forKey: key)?.cancel()
+            deferredEndTokens[key] = nil
             cancelRunningUpdate(activityKey: key)
             operationTails[key] = nil
         }
@@ -758,20 +846,27 @@ final class AgentLiveActivityManager {
                 return
             }
 
+            // end 是异步操作，等待期间 App 可能已经进入后台。
+            guard self.applicationState() == .active else {
+                self.rebuildingActivityKeys.remove(activityKey)
+                return
+            }
             do {
-                let replacement = try Activity.request(
-                    attributes: attributes,
-                    content: ActivityContent(
+                let replacement = try self.requestActivity(
+                    attributes,
+                    ActivityContent(
                         state: latestState,
                         staleDate: Date().addingTimeInterval(self.staleInterval)
-                    ),
-                    pushType: nil
+                    )
                 )
                 self.activities[activityKey] = replacement
+                self.pendingCreations[activityKey] = nil
+                self.failedCreationKeys.remove(activityKey)
 #if DEBUG
                 print("[AgentLiveActivity] 实时活动重建完成 id=\(replacement.id)")
 #endif
             } catch {
+                self.failedCreationKeys.insert(activityKey)
 #if DEBUG
                 print("[AgentLiveActivity] 无法重建重复实时活动：\(error.localizedDescription)")
 #endif
@@ -791,6 +886,8 @@ final class AgentLiveActivityManager {
 
     private func removeTracking(activityKey: String, activityID: String) {
         if activities[activityKey]?.id == activityID {
+            deferredEndTasks.removeValue(forKey: activityKey)?.cancel()
+            deferredEndTokens[activityKey] = nil
             activities[activityKey] = nil
             latestStates[activityKey] = nil
             cancelRunningUpdate(activityKey: activityKey)

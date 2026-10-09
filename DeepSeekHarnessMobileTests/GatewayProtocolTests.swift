@@ -27,6 +27,152 @@ private enum GatewayProtocolParityFixtures {
     static let historyImage = #"{"kind":"history","events":[{"type":"user/message","seq":1,"time":1786937352,"data":{"content":[{"type":"image","attachment":{"attachmentId":"att-history","mediaType":"image/webp","bytes":42,"width":100,"height":80,"name":"image.webp"}}],"source":{"kind":"user"}}}],"hasMore":false}"#
 }
 
+@MainActor
+final class AgentIdleBackgroundAllowanceTests: XCTestCase {
+    func testIdleEntryRequestsOneAllowanceWithoutStartingAgentWork() {
+        let application = BackgroundTaskApplicationSpy()
+        let keepAlive = AgentLongRunningKeepAliveSpy()
+        let controller = AgentBackgroundExecutionController(application: application, longRunningKeepAlive: keepAlive)
+        controller.applicationDidEnterBackground()
+        controller.applicationDidEnterBackground()
+        controller.updateQueuedSessions([])
+        controller.reconcileSessions(runningBySessionID: ["session": false])
+        XCTAssertEqual(application.beginCallCount, 1)
+        XCTAssertTrue(application.endedIdentifiers.isEmpty)
+        XCTAssertTrue(controller.keepsConnectionAlive)
+        XCTAssertFalse(controller.isAgentWorkActive)
+        XCTAssertFalse(keepAlive.agentWorkIsActive)
+    }
+
+    func testIdleExpirationReleasesAllowanceWithoutRenewingInSameBackgroundVisit() async {
+        let application = BackgroundTaskApplicationSpy()
+        let controller = AgentBackgroundExecutionController(application: application)
+        controller.applicationDidEnterBackground()
+        application.expirationHandler?()
+        await Task.yield()
+        XCTAssertFalse(controller.keepsConnectionAlive)
+        XCTAssertEqual(application.endedIdentifiers.count, 1)
+        controller.applicationDidEnterBackground()
+        XCTAssertEqual(application.beginCallCount, 1)
+        controller.applicationDidBecomeActive()
+        controller.applicationDidEnterBackground()
+        XCTAssertEqual(application.beginCallCount, 2)
+    }
+
+    func testForegroundAndManualCancelReleaseIdleAllowance() {
+        let application = BackgroundTaskApplicationSpy()
+        let controller = AgentBackgroundExecutionController(application: application)
+        controller.applicationDidEnterBackground()
+        controller.applicationDidBecomeActive()
+        XCTAssertEqual(application.endedIdentifiers.count, 1)
+        XCTAssertFalse(controller.keepsConnectionAlive)
+        controller.applicationDidEnterBackground()
+        controller.cancel()
+        XCTAssertEqual(application.endedIdentifiers.count, 2)
+        XCTAssertFalse(controller.keepsConnectionAlive)
+    }
+
+    func testAgentTurnReusesIdleAllowanceUntilSystemExpiration() async {
+        let application = BackgroundTaskApplicationSpy()
+        let controller = AgentBackgroundExecutionController(application: application)
+        controller.applicationDidEnterBackground()
+        controller.begin(sessionID: "session", startsNewTurn: true)
+        controller.turnEnded(sessionID: "session")
+        XCTAssertEqual(application.beginCallCount, 1)
+        XCTAssertTrue(application.endedIdentifiers.isEmpty)
+        XCTAssertTrue(controller.keepsConnectionAlive)
+        XCTAssertFalse(controller.isAgentWorkActive)
+        application.expirationHandler?()
+        await Task.yield()
+        XCTAssertEqual(application.endedIdentifiers.count, 1)
+        XCTAssertFalse(controller.keepsConnectionAlive)
+    }
+
+    func testStaleExpirationCannotReleaseNewAllowance() async {
+        let application = BackgroundTaskApplicationSpy()
+        let controller = AgentBackgroundExecutionController(application: application)
+        controller.applicationDidEnterBackground()
+        let oldExpiration = application.expirationHandler
+        controller.applicationDidBecomeActive()
+        controller.applicationDidEnterBackground()
+        oldExpiration?()
+        await Task.yield()
+        XCTAssertEqual(application.endedIdentifiers.count, 1)
+        XCTAssertTrue(controller.keepsConnectionAlive)
+        application.expirationHandler?()
+        await Task.yield()
+        XCTAssertEqual(application.endedIdentifiers.count, 2)
+    }
+}
+
+@MainActor
+final class AgentLiveActivityLifecycleTests: XCTestCase {
+    func testBackgroundEventsWaitForForegroundAndUseLatestState() {
+        var appState: UIApplication.State = .background
+        var requestedDetails: [String?] = []
+        let manager = AgentLiveActivityManager(
+            applicationState: { appState },
+            requestActivity: { _, content in
+                requestedDetails.append(content.state.detail)
+                throw URLError(.unknown)
+            },
+            restoresSystemActivities: false
+        )
+        manager.sessionStarted(gatewayID: "gateway", sessionID: "session", title: "任务", turn: 1)
+        manager.toolStarted(gatewayID: "gateway", sessionID: "session", title: "任务", toolName: "Bash")
+        manager.applicationDidBecomeActive()
+        XCTAssertTrue(requestedDetails.isEmpty)
+        appState = .active
+        manager.applicationDidBecomeActive()
+        XCTAssertEqual(requestedDetails, ["正在执行 Bash"])
+        // 请求失败后，后续高频进度不能不断重试系统调用。
+        manager.stepStarted(gatewayID: "gateway", sessionID: "session", title: "任务", step: 2)
+        XCTAssertEqual(requestedDetails.count, 1)
+        appState = .inactive
+        manager.applicationDidBecomeActive()
+        XCTAssertEqual(requestedDetails.count, 1)
+        appState = .active
+        manager.applicationDidBecomeActive()
+        XCTAssertEqual(requestedDetails.count, 2)
+    }
+
+    func testTaskEndedInBackgroundIsNotCreatedOnReturn() {
+        var appState: UIApplication.State = .background
+        var requestCount = 0
+        let manager = AgentLiveActivityManager(
+            applicationState: { appState },
+            requestActivity: { _, _ in
+                requestCount += 1
+                throw URLError(.unknown)
+            },
+            restoresSystemActivities: false
+        )
+        manager.sessionStarted(gatewayID: "gateway", sessionID: "session", title: "任务", turn: 1)
+        manager.sessionEnded(gatewayID: "gateway", sessionID: "session", title: "任务", failed: false)
+        appState = .active
+        manager.applicationDidBecomeActive()
+        XCTAssertEqual(requestCount, 0)
+    }
+
+    func testSessionSnapshotCancelsDeferredCreation() {
+        var appState: UIApplication.State = .background
+        var requestCount = 0
+        let manager = AgentLiveActivityManager(
+            applicationState: { appState },
+            requestActivity: { _, _ in
+                requestCount += 1
+                throw URLError(.unknown)
+            },
+            restoresSystemActivities: false
+        )
+        manager.sessionStarted(gatewayID: "gateway", sessionID: "session", title: "任务", turn: 1)
+        manager.reconcileSessions(gatewayID: "gateway", runningBySessionID: ["session": false])
+        appState = .active
+        manager.applicationDidBecomeActive()
+        XCTAssertEqual(requestCount, 0)
+    }
+}
+
 final class AgentLiveActivityEventProjectionTests: XCTestCase {
     func testPendingApprovalOnlyAlertsOnceForTheSameRPC() {
         let running = activityState(phase: .running)

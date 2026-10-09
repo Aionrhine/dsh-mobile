@@ -1,7 +1,7 @@
 {
   "images" : [
     {
-      "filename" : "dsh-orca-mark.png",
+      "filename" : "dsh-orca-mark.svg",
       "idiom" : "universal"
     }
   ],
@@ -10,6 +10,7 @@
     "version" : 1
   },
   "properties" : {
-    "template-rendering-intent" : "template"
+    "template-rendering-intent" : "template",
+    "preserves-vector-representation" : true
   }
 }
