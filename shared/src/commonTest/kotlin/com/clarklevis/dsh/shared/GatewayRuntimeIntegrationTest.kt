@@ -949,7 +949,77 @@ class GatewayRuntimeIntegrationTest {
     }
 
     @Test
-    fun backgroundMessageTimeoutSuspendsIdleConnectionAndForegroundReconnects() = runTest {
+    fun idleBackgroundConnectionStaysOpenAndForegroundRecoversWithoutActiveTurn() = runTest {
+        val transport = FakeTransport()
+        val runtime = newRuntime(transport)
+        backgroundScope.launch { runtime.events.collect { } }
+        runCurrent()
+        runtime.connect("wss://gateway.example/ws/mobile")
+        transport.opened()
+        transport.receive("""{"kind":"hello","authenticated":true}""")
+        runCurrent()
+        val specCount = transport.connectionSpecs.size
+        val closeCount = transport.closeCount
+        runtime.applicationDidEnterBackground()
+        assertEquals(GatewayConnectionState.CONNECTED, runtime.state.value.connection)
+        assertEquals(closeCount, transport.closeCount)
+        assertFalse(runtime.state.value.shouldKeepAliveInBackground)
+        runtime.applicationDidBecomeActive()
+        runCurrent()
+        assertEquals(specCount, transport.connectionSpecs.size)
+        runtime.applicationDidEnterBackground()
+        transport.fail(GatewayTransportState.Failed(
+            generation = transport.connectionSpecs.last().generation,
+            reason = "websocket-failure", recoverable = true
+        ))
+        runCurrent()
+        assertEquals(specCount, transport.connectionSpecs.size, "空闲后台不主动发起连接")
+        runtime.applicationDidBecomeActive()
+        runCurrent()
+        assertEquals(specCount + 1, transport.connectionSpecs.size)
+        transport.opened()
+        transport.receive("""{"kind":"hello","authenticated":true}""")
+        runCurrent()
+        assertEquals(GatewayConnectionState.CONNECTED, runtime.state.value.connection)
+        runtime.disconnect()
+        runtime.applicationDidEnterBackground()
+        runtime.applicationDidBecomeActive()
+        runCurrent()
+        assertEquals(specCount + 1, transport.connectionSpecs.size, "手动断开后不得自动重连")
+    }
+
+    @Test
+    fun backgroundRecoveryDeadlineDoesNotBlockForegroundReconnect() = runTest {
+        val transport = FakeTransport()
+        val network = FakeNetworkMonitor()
+        val runtime = newRuntime(transport, network = network, recoveryWindowMilliseconds = 1_000)
+        backgroundScope.launch { runtime.events.collect { } }
+        runCurrent()
+        runtime.connect("wss://gateway.example/ws/mobile")
+        transport.opened()
+        transport.receive("""{"kind":"hello","authenticated":true}""")
+        runCurrent()
+        assertTrue(runtime.sendMessage("work", emptyList(), "session-a", null, "UTC"))
+        runtime.applicationDidEnterBackground()
+        network.mutableState.value = GatewayNetworkState.UNAVAILABLE
+        runCurrent()
+        advanceTimeBy(1_001)
+        runCurrent()
+        assertEquals("recovery-timeout", runtime.state.value.lastError)
+        network.mutableState.value = GatewayNetworkState.AVAILABLE
+        runCurrent()
+        val specCount = transport.connectionSpecs.size
+        runtime.applicationDidBecomeActive()
+        runCurrent()
+        assertEquals(specCount + 1, transport.connectionSpecs.size)
+        transport.opened()
+        transport.receive("""{"kind":"hello","authenticated":true}""")
+        runCurrent()
+        assertEquals(GatewayConnectionState.CONNECTED, runtime.state.value.connection)
+    }
+
+    @Test
+    fun backgroundMessageTimeoutMarksClosedConnectionAndForegroundReconnects() = runTest {
         val transport = FakeTransport()
         val runtime = newRuntime(transport, requestTimeoutMilliseconds = 1_000)
         val events = mutableListOf<GatewayRuntimeEvent>()
@@ -970,7 +1040,7 @@ class GatewayRuntimeIntegrationTest {
             it is GatewayRuntimeEvent.RequestTimedOut && it.requestType == "message" &&
                 it.targetSessionId == "session-a"
         })
-        assertEquals(GatewayConnectionState.SUSPENDED, runtime.state.value.connection)
+        assertEquals(GatewayConnectionState.FAILED, runtime.state.value.connection)
         assertFalse(runtime.state.value.shouldKeepAliveInBackground)
         assertTrue(transport.closeCount > closeBefore)
 
@@ -1263,7 +1333,7 @@ class GatewayRuntimeIntegrationTest {
     }
 
     @Test
-    fun backgroundLastTurnEndClosesImmediatelyAndStoredConnectKeepsWaitingDeadline() = runTest {
+    fun backgroundLastTurnEndKeepsConnectionAndStoredConnectKeepsWaitingDeadline() = runTest {
         val transport = FakeTransport()
         val network = FakeNetworkMonitor()
         val runtime = newRuntime(
@@ -1278,6 +1348,8 @@ class GatewayRuntimeIntegrationTest {
         transport.receive("""{"kind":"hello","authenticated":true}""")
         runCurrent()
         assertTrue(runtime.sendMessage("active", emptyList(), "session-a", null, "UTC"))
+        transport.receive("""{"kind":"sent","sessionId":"session-a"}""")
+        runCurrent()
         runtime.applicationDidEnterBackground()
         assertEquals(GatewayConnectionState.CONNECTED, runtime.state.value.connection)
         val closeBeforeEnd = transport.closeCount
@@ -1285,8 +1357,9 @@ class GatewayRuntimeIntegrationTest {
             """{"sessionId":"session-a","seq":1,"time":1,"event":{"type":"turn/end"}}"""
         )
         runCurrent()
-        assertEquals(GatewayConnectionState.SUSPENDED, runtime.state.value.connection)
-        assertTrue(transport.closeCount > closeBeforeEnd)
+        assertEquals(GatewayConnectionState.CONNECTED, runtime.state.value.connection)
+        assertFalse(runtime.state.value.shouldKeepAliveInBackground)
+        assertEquals(closeBeforeEnd, transport.closeCount)
 
         runtime.applicationDidBecomeActive()
         runCurrent()

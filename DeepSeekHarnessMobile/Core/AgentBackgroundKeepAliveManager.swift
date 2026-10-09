@@ -2,6 +2,7 @@ import ActivityKit
 import AVFoundation
 import CoreLocation
 import UIKit
+import OSLog
 
 @MainActor
 protocol AgentLongRunningKeepAlive: AnyObject {
@@ -18,6 +19,12 @@ protocol AgentLongRunningKeepAlive: AnyObject {
 /// 获得执行时间的机会。所有资源只在确有 Agent 工作时创建，并在工作结束后释放。
 @MainActor
 final class AgentBackgroundKeepAliveManager: NSObject, AgentLongRunningKeepAlive {
+    private static let logger = Logger(subsystem: "ai.dsh.mobile.ios", category: "agent-keepalive")
+
+    private func traceKeepAlive(_ event: String) {
+        Self.logger.notice("[AgentKeepAlive] event=\(event, privacy: .public) background=\(self.applicationIsInBackground) workActive=\(self.agentWorkIsActive) location=\(self.isUpdatingLocation) audio=\(self.silentAudioIsRunning) authorization=\(self.locationManager.authorizationStatus.rawValue) liveActivitiesEnabled=\(ActivityAuthorizationInfo().areActivitiesEnabled)")
+    }
+
     static let shared = AgentBackgroundKeepAliveManager()
 
     private let locationStartDelay: Duration = .seconds(15)
@@ -123,6 +130,7 @@ final class AgentBackgroundKeepAliveManager: NSObject, AgentLongRunningKeepAlive
 
     func applicationDidEnterBackground() {
         applicationIsInBackground = true
+        traceKeepAlive("enter-background")
         guard agentWorkIsActive else { return }
         startBackgroundResources()
     }
@@ -173,6 +181,7 @@ final class AgentBackgroundKeepAliveManager: NSObject, AgentLongRunningKeepAlive
         startLocationUpdatesIfAuthorized()
         if !isUpdatingLocation { scheduleLocationUpdates() }
         pulse()
+        traceKeepAlive("resources-started")
     }
 
     private var hasVisibleAgentLiveActivity: Bool {
@@ -206,6 +215,7 @@ final class AgentBackgroundKeepAliveManager: NSObject, AgentLongRunningKeepAlive
     }
 
     private func startLocationUpdatesIfAuthorized() {
+        traceKeepAlive("startLocationUpdatesIfAuthorized")
         guard agentWorkIsActive,
               applicationIsInBackground,
               !isUpdatingLocation else { return }
@@ -221,12 +231,14 @@ final class AgentBackgroundKeepAliveManager: NSObject, AgentLongRunningKeepAlive
     }
 
     private func stopLocationUpdates() {
+        traceKeepAlive("stopLocationUpdates")
         guard isUpdatingLocation else { return }
         locationManager.stopUpdatingLocation()
         isUpdatingLocation = false
     }
 
     private func startSilentAudio() {
+        traceKeepAlive("startSilentAudio")
         guard agentWorkIsActive, applicationIsInBackground else { return }
         guard !silentAudioIsRunning, !isStartingSilentAudio else { return }
         isStartingSilentAudio = true
@@ -315,6 +327,7 @@ final class AgentBackgroundKeepAliveManager: NSObject, AgentLongRunningKeepAlive
     }
 
     private func stopAllResources() {
+        traceKeepAlive("stopAllResources")
         locationStartTask?.cancel()
         locationStartTask = nil
         stopPulseTimer()
@@ -325,6 +338,7 @@ final class AgentBackgroundKeepAliveManager: NSObject, AgentLongRunningKeepAlive
     }
 
     @objc private func handleAudioInterruption(_ notification: Notification) {
+        traceKeepAlive("audio-interruption type=\((notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt) ?? UInt.max)")
         guard let rawType = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
               let type = AVAudioSession.InterruptionType(rawValue: rawType) else { return }
         if type == .began {

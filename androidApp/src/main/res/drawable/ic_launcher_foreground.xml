@@ -1,17 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- 自适应图标使用 108dp 方形画布；鲸鱼缩小后完整位于 66dp 遮罩安全区内。 -->
-    <item>
-        <shape android:shape="rectangle">
-            <size
-                android:width="108dp"
-                android:height="108dp" />
-            <solid android:color="@android:color/transparent" />
-        </shape>
-    </item>
-    <item
-        android:width="40dp"
-        android:height="30dp"
-        android:drawable="@drawable/deepseek_whale"
-        android:gravity="center" />
-</layer-list>
+<!-- 按图层边界比例居中缩放；相当于在 108dp 画布中放置 60dp 原图，避免固定 dp 在不同启动器下放大。 -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/launcher_icon_artwork"
+    android:insetLeft="22.22%"
+    android:insetTop="22.22%"
+    android:insetRight="22.22%"
+    android:insetBottom="22.22%" />

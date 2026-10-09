@@ -2,6 +2,7 @@ package com.clarklevis.dsh.android.ui
 
 import android.app.Activity
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
@@ -24,7 +25,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.AbsoluteRoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,7 +38,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
@@ -60,7 +60,7 @@ import com.clarklevis.dsh.android.R
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
-private val drawerPageShape = RoundedCornerShape(48.dp)
+private val drawerPageCornerRadius = 48.dp
 
 @Composable
 internal fun WorkspaceDrawer(
@@ -78,6 +78,12 @@ internal fun WorkspaceDrawer(
         var animationJob by remember { mutableStateOf<Job?>(null) }
         val scope = rememberCoroutineScope()
         val progress = (offsetPx / drawerWidthPx).coerceIn(0f, 1f)
+        // 页面向右移动时仅露出左侧边缘；回位过程中圆角同步收敛到零。
+        val pageCornerRadius = drawerPageCornerRadius * progress
+        val pageShape = AbsoluteRoundedCornerShape(
+            topLeft = pageCornerRadius,
+            bottomLeft = pageCornerRadius
+        )
         val dark = isSystemInDarkTheme()
         val view = LocalView.current
         SideEffect {
@@ -91,12 +97,14 @@ internal fun WorkspaceDrawer(
         fun settle(open: Boolean, velocity: Float = 0f) {
             animationJob?.cancel()
             animationJob = scope.launch {
+                val targetOffset = if (open) drawerWidthPx else 0f
                 animate(
                     initialValue = offsetPx,
-                    targetValue = if (open) drawerWidthPx else 0f,
+                    targetValue = targetOffset,
                     initialVelocity = velocity,
-                    animationSpec = spring(stiffness = 450f, dampingRatio = 0.86f)
+                    animationSpec = spring(stiffness = 450f, dampingRatio = Spring.DampingRatioNoBouncy)
                 ) { value, _ -> offsetPx = value.coerceIn(0f, drawerWidthPx) }
+                offsetPx = targetOffset
             }
         }
         BackHandler(enabled = progress > 0f) { settle(open = false) }
@@ -144,27 +152,27 @@ internal fun WorkspaceDrawer(
             Box(
                 Modifier.fillMaxSize()
                     .graphicsLayer { translationX = offsetPx }
-                    .then(
-                        if (progress > 0f) Modifier
-                            .dropShadow(
-                                shape = drawerPageShape,
-                                shadow = Shadow(
-                                    radius = 25.dp * progress,
-                                    color = Color.Black.copy(alpha = 0.18f * progress),
-                                    offset = DpOffset(x = -4.dp * progress, y = 0.dp)
-                                )
-                            )
-                            .dropShadow(
-                                shape = drawerPageShape,
-                                shadow = Shadow(
-                                    radius = 9.dp * progress,
-                                    color = Color.Black.copy(alpha = 0.12f * progress),
-                                    offset = DpOffset(x = -2.dp * progress, y = 0.dp)
-                                )
-                            )
-                            .clip(drawerPageShape)
-                        else Modifier
+                    .dropShadow(
+                        shape = pageShape,
+                        shadow = Shadow(
+                            radius = 25.dp * progress,
+                            color = Color.Black.copy(alpha = 0.18f * progress),
+                            offset = DpOffset(x = -4.dp * progress, y = 0.dp)
+                        )
                     )
+                    .dropShadow(
+                        shape = pageShape,
+                        shadow = Shadow(
+                            radius = 9.dp * progress,
+                            color = Color.Black.copy(alpha = 0.12f * progress),
+                            offset = DpOffset(x = -2.dp * progress, y = 0.dp)
+                        )
+                    )
+                    // 裁剪层始终存在，避免在零位附近增删 Modifier 引起闪烁。
+                    .graphicsLayer {
+                        shape = pageShape
+                        clip = true
+                    }
                     .draggable(
                         orientation = Orientation.Horizontal,
                         state = rememberDraggableState { delta ->

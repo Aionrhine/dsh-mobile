@@ -1,0 +1,4 @@
+// Debug 默认配置；个人真机签名由 Local.xcconfig 覆盖。
+LOCAL_BUNDLE_IDENTIFIER = com.example.dshmobile
+LOCAL_DEVELOPMENT_TEAM =
+#include? "Local.xcconfig"

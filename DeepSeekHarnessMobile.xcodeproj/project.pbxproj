@@ -19,7 +19,6 @@
 		7B8DAA4E77DE3665B7E1C087 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D98111628697EC1C4FF9878B /* SettingsView.swift */; };
 		80E777AC0855635BC3D12EA7 /* GatewayClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E61E231D0CD3E07857F861B0 /* GatewayClient.swift */; };
 		8891D9FBE23CCC096061416E /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A37B43613D712F252BA91D7 /* RootView.swift */; };
-		B10000000000000000000001 /* PluginsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000002 /* PluginsView.swift */; };
 		991D4FD90B81F84A0B8B79AD /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12863E736F832D8F502B94A0 /* Theme.swift */; };
 		A0C0FFEE0000000000000001 /* ConversationViewport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0C0FFEE0000000000000002 /* ConversationViewport.swift */; };
 		A0C0FFEE0000000000000003 /* ConversationTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0C0FFEE0000000000000004 /* ConversationTimeline.swift */; };
@@ -39,6 +38,7 @@
 		AFAE90EEB4462AD84169D356 /* GatewayModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 954FCEA4A6E71F3D1A22BB53 /* GatewayModels.swift */; };
 		B0C0FFEE0000000000000001 /* HarnessAnimatedBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0C0FFEE0000000000000002 /* HarnessAnimatedBackground.swift */; };
 		B0C0FFEE0000000000000003 /* HarnessBackground.metal in Sources */ = {isa = PBXBuildFile; fileRef = B0C0FFEE0000000000000004 /* HarnessBackground.metal */; };
+		B10000000000000000000001 /* PluginsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000002 /* PluginsView.swift */; };
 		C075849EE750C3CCD2C87FC7 /* MultiGatewayStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5FF365A80AA28B4D4CF2347 /* MultiGatewayStore.swift */; };
 		C5F737EBF5077A9BF35E9F64 /* TrajectoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65009160A0642089906B54DF /* TrajectoryView.swift */; };
 		C7A710000000000000000001 /* ChatLayout in Frameworks */ = {isa = PBXBuildFile; productRef = C7A710000000000000000003 /* ChatLayout */; };
@@ -102,7 +102,6 @@
 		430CA64DF207C7EF58574336 /* DeepSeekHarnessMobileApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DeepSeekHarnessMobileApp.swift; sourceTree = "<group>"; };
 		59B069578BB7F31AD35F601A /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		5A37B43613D712F252BA91D7 /* RootView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
-		B10000000000000000000002 /* PluginsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PluginsView.swift; sourceTree = "<group>"; };
 		61A1F439244BA594BF547C92 /* AppStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppStore.swift; sourceTree = "<group>"; };
 		65009160A0642089906B54DF /* TrajectoryView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TrajectoryView.swift; sourceTree = "<group>"; };
 		65B6B2953247E15BDA40F0BB /* GatewaySwitcherView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GatewaySwitcherView.swift; sourceTree = "<group>"; };
@@ -124,6 +123,7 @@
 		A9FE00000000000000000002 /* AgentUserNotificationManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AgentUserNotificationManager.swift; sourceTree = "<group>"; };
 		B0C0FFEE0000000000000002 /* HarnessAnimatedBackground.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HarnessAnimatedBackground.swift; sourceTree = "<group>"; };
 		B0C0FFEE0000000000000004 /* HarnessBackground.metal */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.metal; path = HarnessBackground.metal; sourceTree = "<group>"; };
+		B10000000000000000000002 /* PluginsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PluginsView.swift; sourceTree = "<group>"; };
 		B64F29E9B8346B9A678CA487 /* DeepSeekHarnessMobileTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DeepSeekHarnessMobileTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		BE407E6C6512836EB108990D /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		CA11E0000000000000000002 /* ImageAttachmentCache.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ImageAttachmentCache.swift; sourceTree = "<group>"; };
@@ -146,6 +146,7 @@
 		F1A000000000000000000015 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		F1A000000000000000000016 /* AgentLiveActivityWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AgentLiveActivityWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		F1A000000000000000000017 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		F2A000000000000000000001 /* config/Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = config/Debug.xcconfig; sourceTree = SOURCE_ROOT; };
 		FCF581253EBCFEB43865AB51 /* Glass.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Glass.swift; sourceTree = "<group>"; };
 		FEABDA4B6DAF199B320B1BA1 /* MultiGatewayTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MultiGatewayTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -247,6 +248,7 @@
 				3BAEAAE97D242C997E1AB80A /* DeepSeekHarnessMobile */,
 				F1A000000000000000000021 /* AgentLiveActivityWidget */,
 				0CABA197D44C2A9AA01CF6FF /* DeepSeekHarnessMobileTests */,
+				D141C12130786C4D0060BFC5 /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -302,6 +304,14 @@
 				65B6B2953247E15BDA40F0BB /* GatewaySwitcherView.swift */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		D141C12130786C4D0060BFC5 /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				F2A000000000000000000001 /* config/Debug.xcconfig */,
+			);
+			name = "Recovered References";
 			sourceTree = "<group>";
 		};
 		D7854C843240E809A949A26E /* Products */ = {
@@ -582,16 +592,17 @@
 /* Begin XCBuildConfiguration section */
 		0DD215C4F718C79148B6B0EE /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = F2A000000000000000000001 /* config/Debug.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CLANG_ENABLE_OBJC_WEAK = NO;
-				DEVELOPMENT_TEAM = SHVN6YQNQF;
+				DEVELOPMENT_TEAM = "$(LOCAL_DEVELOPMENT_TEAM)";
 				"FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]" = "$(SRCROOT)/shared/build/bin/iosArm64/debugFramework";
 				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*][arch=arm64]" = "$(SRCROOT)/shared/build/bin/iosSimulatorArm64/debugFramework";
 				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*][arch=x86_64]" = "$(SRCROOT)/shared/build/bin/iosX64/debugFramework";
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.clark.dshmobile.tests;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(LOCAL_BUNDLE_IDENTIFIER).tests";
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.10;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/DshMobile.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/DshMobile";
@@ -600,13 +611,14 @@
 		};
 		1B08670CCE6572CDA2FA9254 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = F2A000000000000000000001 /* config/Debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = SHVN6YQNQF;
+				DEVELOPMENT_TEAM = "$(LOCAL_DEVELOPMENT_TEAM)";
 				"FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]" = "$(SRCROOT)/shared/build/bin/iosArm64/debugFramework";
 				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*][arch=arm64]" = "$(SRCROOT)/shared/build/bin/iosSimulatorArm64/debugFramework";
 				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*][arch=x86_64]" = "$(SRCROOT)/shared/build/bin/iosX64/debugFramework";
@@ -618,7 +630,7 @@
 					"@executable_path/Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = com.clark.dshmobile;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(LOCAL_BUNDLE_IDENTIFIER)";
 				PRODUCT_MODULE_NAME = DeepSeekHarnessMobile;
 				PRODUCT_NAME = DshMobile;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -633,13 +645,13 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CLANG_ENABLE_OBJC_WEAK = NO;
-				DEVELOPMENT_TEAM = SHVN6YQNQF;
+				DEVELOPMENT_TEAM = T58RY5HUA7;
 				"FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]" = "$(SRCROOT)/shared/build/bin/iosArm64/releaseFramework";
 				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*][arch=arm64]" = "$(SRCROOT)/shared/build/bin/iosSimulatorArm64/releaseFramework";
 				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*][arch=x86_64]" = "$(SRCROOT)/shared/build/bin/iosX64/releaseFramework";
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.clark.dshmobile.tests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lichaofan.dshmobile.tests;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.10;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/DshMobile.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/DshMobile";
@@ -764,12 +776,13 @@
 		};
 		F1A000000000000000000050 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = F2A000000000000000000001 /* config/Debug.xcconfig */;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 14;
-				DEVELOPMENT_TEAM = SHVN6YQNQF;
+				CURRENT_PROJECT_VERSION = 17;
+				DEVELOPMENT_TEAM = "$(LOCAL_DEVELOPMENT_TEAM)";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AgentLiveActivityWidget/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -778,8 +791,8 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.6.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.clark.dshmobile.AgentLiveActivityWidget;
+				MARKETING_VERSION = 1.7.1;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(LOCAL_BUNDLE_IDENTIFIER).AgentLiveActivityWidget";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -795,8 +808,8 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 14;
-				DEVELOPMENT_TEAM = SHVN6YQNQF;
+				CURRENT_PROJECT_VERSION = 17;
+				DEVELOPMENT_TEAM = T58RY5HUA7;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AgentLiveActivityWidget/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -805,8 +818,8 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.6.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.clark.dshmobile.AgentLiveActivityWidget;
+				MARKETING_VERSION = 1.7.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lichaofan.dshmobile.AgentLiveActivityWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -825,7 +838,7 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = SHVN6YQNQF;
+				DEVELOPMENT_TEAM = T58RY5HUA7;
 				"FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]" = "$(SRCROOT)/shared/build/bin/iosArm64/releaseFramework";
 				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*][arch=arm64]" = "$(SRCROOT)/shared/build/bin/iosSimulatorArm64/releaseFramework";
 				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*][arch=x86_64]" = "$(SRCROOT)/shared/build/bin/iosX64/releaseFramework";
@@ -837,7 +850,7 @@
 					"@executable_path/Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = com.clark.dshmobile;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lichaofan.dshmobile;
 				PRODUCT_MODULE_NAME = DeepSeekHarnessMobile;
 				PRODUCT_NAME = DshMobile;
 				PROVISIONING_PROFILE_SPECIFIER = "";

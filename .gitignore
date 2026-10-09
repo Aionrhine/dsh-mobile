@@ -34,3 +34,6 @@ captures/
 .env
 .env.*
 !.env.example
+
+# iOS 本地真机签名配置
+/config/Local.xcconfig

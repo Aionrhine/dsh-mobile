@@ -1,4 +1,5 @@
 import UIKit
+import OSLog
 
 @MainActor
 protocol BackgroundTaskApplication: AnyObject {
@@ -13,6 +14,12 @@ extension UIApplication: BackgroundTaskApplication {}
 
 @MainActor
 final class AgentBackgroundExecutionController {
+    private static let logger = Logger(subsystem: "ai.dsh.mobile.ios", category: "agent-background")
+
+    private func traceBackground(_ event: String) {
+        Self.logger.notice("[AgentBackground] event=\(event, privacy: .public) background=\(self.applicationIsInBackground) turns=\(self.outstandingTurns) questions=\(self.questionAllowanceSessionIDs.count) queued=\(self.queuedSessionIDs.count) hasTask=\(self.taskIdentifier != .invalid) longKeepAlive=\(self.longRunningKeepAlive?.isKeepingAlive == true)")
+    }
+
     private let application: BackgroundTaskApplication
     private let longRunningKeepAlive: AgentLongRunningKeepAlive?
     private var taskIdentifier: UIBackgroundTaskIdentifier = .invalid
@@ -71,6 +78,7 @@ final class AgentBackgroundExecutionController {
     }
 
     func applicationDidBecomeActive() {
+        traceBackground("become-active")
         applicationIsInBackground = false
         longRunningKeepAlive?.applicationDidBecomeActive()
         // 前台运行不需要 UIApplication 后台额度。业务 turn 计数继续保留，
@@ -82,6 +90,7 @@ final class AgentBackgroundExecutionController {
         applicationIsInBackground = true
         longRunningKeepAlive?.applicationDidEnterBackground()
         if isAgentWorkActive { beginTaskIfNeeded() }
+        traceBackground("enter-background")
     }
 
     func begin(sessionID: String?, startsNewTurn: Bool) {
@@ -148,6 +157,7 @@ final class AgentBackgroundExecutionController {
         ) { [weak self] in
             Task { @MainActor [weak self] in self?.expire() }
         }
+        traceBackground("background-task-requested")
     }
 
     func associateSessionIfNeeded(_ sessionID: String) {
@@ -221,6 +231,7 @@ final class AgentBackgroundExecutionController {
     }
 
     private func expire() {
+        traceBackground("background-task-expired")
         let didEndTask = endTask()
         guard longRunningKeepAlive?.isKeepingAlive != true else { return }
         queuedSessionIDs.removeAll()
@@ -246,6 +257,7 @@ final class AgentBackgroundExecutionController {
         let identifier = taskIdentifier
         guard identifier != .invalid else { return false }
         taskIdentifier = .invalid
+        traceBackground("end-background-task")
         application.endBackgroundTask(identifier)
         return true
     }

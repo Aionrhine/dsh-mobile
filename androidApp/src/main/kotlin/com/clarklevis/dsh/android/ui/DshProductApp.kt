@@ -15,6 +15,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -26,6 +27,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
@@ -331,7 +333,7 @@ private fun WorkspaceScreen(
             ) {
                 item {
                     Column(
-                        Modifier.fillMaxWidth().widthIn(max = 680.dp).padding(horizontal = 22.dp, vertical = 18.dp),
+                        Modifier.widthIn(max = 680.dp).fillMaxWidth().padding(horizontal = 22.dp, vertical = 18.dp),
                         verticalArrangement = Arrangement.spacedBy(18.dp)
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -436,8 +438,9 @@ private fun WorkspaceHeader(
     onOpenDrawer: () -> Unit
 ) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        HarnessMark(onOpenDrawer)
-        Spacer(Modifier.weight(1f))
+        // Row 先测量无权重的操作按钮，品牌只使用剩余宽度，避免窄屏压缩按钮。
+        HarnessMark(onClick = onOpenDrawer, modifier = Modifier.weight(1f))
+        Spacer(Modifier.width(8.dp))
         GatewayAuthenticationMenu(
             state = state,
             onScan = onScan,
@@ -449,21 +452,33 @@ private fun WorkspaceHeader(
 }
 
 @Composable
-private fun HarnessMark(onClick: () -> Unit) {
-    Row(
-        modifier = Modifier.clip(RoundedCornerShape(12.dp))
+private fun HarnessMark(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    BoxWithConstraints(
+        modifier = modifier.heightIn(min = 52.dp)
+            .clip(RoundedCornerShape(12.dp))
             .clickable(role = Role.Button, onClick = onClick)
-            .semantics { contentDescription = "打开侧边栏" }
-            .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(7.dp)
+            .semantics { contentDescription = "打开侧边栏" },
+        contentAlignment = Alignment.CenterStart
     ) {
-        WhalenessOrcaIcon(Modifier.size(29.dp), Color.White)
-        Image(
-            painter = painterResource(R.drawable.dsh_whaleness_wordmark_dark),
-            contentDescription = null,
-            modifier = Modifier.size(width = 183.dp, height = 29.dp)
-        )
+        // 不按机型或屏幕像素缩放整页：仅品牌图片根据其实际可用宽度等比例收缩。
+        val showWordmark = maxWidth >= 128.dp
+        val scale = (maxWidth / 219.dp).coerceIn(0f, 1f)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(7.dp * scale)
+        ) {
+            WhalenessOrcaIcon(
+                modifier = Modifier.size(if (showWordmark) 29.dp * scale else 29.dp),
+                tint = Color.White
+            )
+            if (showWordmark) {
+                Image(
+                    painter = painterResource(R.drawable.dsh_whaleness_wordmark_dark),
+                    contentDescription = null,
+                    modifier = Modifier.size(width = 183.dp * scale, height = 29.dp * scale)
+                )
+            }
+        }
     }
 }
 
@@ -473,7 +488,7 @@ internal fun WhalenessOrcaIcon(
     tint: Color = MaterialTheme.colorScheme.onSurface
 ) {
     Image(
-        painter = painterResource(R.drawable.dsh_orca_mark_mask),
+        painter = painterResource(R.drawable.dsh_orca_mark),
         contentDescription = "Whaleness",
         modifier = modifier,
         colorFilter = ColorFilter.tint(tint)
@@ -483,7 +498,7 @@ internal fun WhalenessOrcaIcon(
 @Composable
 internal fun GlassCircleButton(iconRes: Int, description: String, onClick: () -> Unit) {
     Box(
-        Modifier.size(52.dp)
+        Modifier.requiredSize(52.dp)
             .dshLiquidGlass(CircleShape, DshGlassStyle.CONTROL)
             .clickable(role = Role.Button, onClick = onClick)
             .semantics { contentDescription = description },

@@ -5,6 +5,15 @@ import OSLog
 @MainActor
 final class GatewayClient: ObservableObject {
     private static let presetLogger = Logger(subsystem: "ai.dsh.mobile.ios", category: "agent-presets")
+    private static let lifecycleLogger = Logger(subsystem: "ai.dsh.mobile.ios", category: "gateway-lifecycle")
+    private var backgroundEnteredAt: Date?
+
+    // 仅记录传输元数据，禁止写入地址、凭据、消息正文和服务端原始关闭原因。
+    private func traceLifecycle(_ event: String) {
+        let elapsed = backgroundEnteredAt.map { Date().timeIntervalSince($0) } ?? -1
+        Self.lifecycleLogger.notice("[GatewayLifecycle] channel=\(self.channel, privacy: .public) event=\(event, privacy: .public) background=\(self.isApplicationInBackground) backgroundSeconds=\(elapsed) connected=\(self.state.isConnected) wantsConnection=\(self.wantsConnection) taskId=\(self.socket?.taskIdentifier ?? -1)")
+    }
+
     private let channel: String
     var credentialID: String?
     var expectedGatewayID: String?
@@ -32,6 +41,7 @@ final class GatewayClient: ObservableObject {
     }
 
     private var conversationClient: GatewayClient?
+    private var onTransportFailure: ((String, Bool) -> Void)?
 
     init(channel: String = "control") {
         self.channel = channel
@@ -56,6 +66,8 @@ final class GatewayClient: ObservableObject {
     private var reconnectTask: Task<Void, Never>?
     private var connectionTimeoutTask: Task<Void, Never>?
     private var heartbeatTask: Task<Void, Never>?
+    private var foregroundProbeTask: Task<Void, Never>?
+    private var foregroundProbeSequence = 0
     private var sessionCreationContinuations: [String: CheckedContinuation<String, Error>] = [:]
 
     func createSession(workspaceId: String?) async throws -> String {
@@ -126,6 +138,7 @@ final class GatewayClient: ObservableObject {
         receiveTask?.cancel()
         reconnectTask?.cancel()
         connectionTimeoutTask?.cancel()
+        foregroundProbeTask?.cancel()
         heartbeatTask?.cancel()
         socket?.cancel(with: .goingAway, reason: nil)
         transportSession.invalidateAndCancel()
@@ -157,15 +170,29 @@ final class GatewayClient: ObservableObject {
     /// 只记录场景状态。连接的生命周期由用户的连接意图与真实传输故障决定；
     /// 进入后台本身不再主动关闭 WebSocket。
     func applicationDidEnterBackground() {
+        foregroundProbeTask?.cancel()
+        foregroundProbeTask = nil
+        foregroundProbeSequence += 1
+        backgroundEnteredAt = Date()
         isApplicationInBackground = true
+        traceLifecycle("enter-background")
         isRecoveringFromBackground = true
+        conversationClient?.applicationDidEnterBackground()
     }
 
     /// Restores the transport immediately instead of waiting for the delayed
     /// reconnect loop. A successful `hello` clears recovery mode.
     func applicationDidBecomeActive() {
+        traceLifecycle("become-active")
+        backgroundEnteredAt = nil
         isApplicationInBackground = false
-        guard wantsConnection, !state.isConnected, let endpoint else { return }
+        conversationClient?.applicationDidBecomeActive()
+        guard wantsConnection else { return }
+        if state.isConnected {
+            probeForegroundConnection()
+            return
+        }
+        guard let endpoint else { return }
         reconnectTask?.cancel()
         reconnectTask = nil
         beginConnection(
@@ -176,6 +203,7 @@ final class GatewayClient: ObservableObject {
     }
 
     private func beginConnection(to rawEndpoint: String, pairingCode: String?, resetReportedFailure: Bool) {
+        traceLifecycle("begin-connection")
         disconnect(reconnect: false)
         guard let url = URL(string: rawEndpoint), ["ws", "wss"].contains(url.scheme?.lowercased() ?? "") else {
             fail(String(localized: "二维码中的 publicUrl 不是有效的 ws:// 或 wss:// 地址"), shouldReconnect: false)
@@ -219,6 +247,7 @@ final class GatewayClient: ObservableObject {
     }
 
     func disconnect(reconnect: Bool = false) {
+        traceLifecycle("explicit-disconnect reconnect=\(reconnect)")
         outboundTask?.cancel()
         outboundTask = nil
         pendingConversationPayloads.removeAll()
@@ -233,6 +262,9 @@ final class GatewayClient: ObservableObject {
         connectionTimeoutTask = nil
         heartbeatTask?.cancel()
         heartbeatTask = nil
+        foregroundProbeTask?.cancel()
+        foregroundProbeTask = nil
+        foregroundProbeSequence += 1
         receiveTask?.cancel()
         receiveTask = nil
         socket?.cancel(with: .normalClosure, reason: nil)
@@ -667,6 +699,7 @@ final class GatewayClient: ObservableObject {
                         isManualPairingAttempt = false
                         reconnectAttempt = 0
                         state = .connected
+                        traceLifecycle("hello-connected")
                         startHeartbeat(for: socket)
                         lastReportedFailure = nil
                         isRecoveringFromBackground = false
@@ -702,17 +735,18 @@ final class GatewayClient: ObservableObject {
                   frame.kind != "hello", frame.kind != "paired" else { return }
             self.onFrame?(frame)
         }
-        client.onConnectionFailure = { [weak self, weak client] detail in
+        client.onTransportFailure = { [weak self, weak client] detail, shouldReconnect in
             guard let self, let client, self.conversationClient === client else { return }
             // A transient failure on the split conversation socket must restore
             // both channels. Keep non-recoverable authentication failures terminal.
             self.fail(
                 detail,
-                shouldReconnect: client.wantsConnection,
+                shouldReconnect: shouldReconnect,
                 reportFailure: !(self.isApplicationInBackground || self.isRecoveringFromBackground)
             )
         }
         // 长期凭据已在控制连接 paired 帧中保存，绝不重复使用一次性配对码。
+        if isApplicationInBackground { client.applicationDidEnterBackground() }
         client.connect(to: endpoint.absoluteString)
     }
 
@@ -734,13 +768,15 @@ final class GatewayClient: ObservableObject {
     private func handleFailure(_ error: Error, socket: URLSessionWebSocketTask? = nil) {
         guard wantsConnection else { return }
         let nsError = error as NSError
+        let isCurrentSocket = socket == nil || socket === self.socket
+        traceLifecycle("transport-failure domain=\(nsError.domain) code=\(nsError.code) closeCode=\(socket?.closeCode.rawValue ?? -1) httpStatus=\(Self.httpResponse(from: socket, error: nsError)?.statusCode ?? -1) currentSocket=\(isCurrentSocket) hasCloseReason=\(socket?.closeReason != nil)")
         // `beginConnection` deliberately cancels the previous task before it
         // installs the replacement. Its receive loop can finish one actor turn
         // later, after `wantsConnection` has become true again. Never let that
         // stale cancellation overwrite the new connection or surface as a
         // user-facing "连接失败" alert.
         if let socket, socket !== self.socket { return }
-        if nsError.domain == NSURLErrorDomain, nsError.code == NSURLErrorCancelled { return }
+        // 旧 socket 已由上面的身份检查排除；当前 socket 的系统取消也属于真实断线。
         let statusCode = Self.httpResponse(from: socket, error: nsError)?.statusCode
         let closeCode = socket?.closeCode.rawValue
         let closeReason = socket?.closeReason.flatMap { String(data: $0, encoding: .utf8) }
@@ -779,10 +815,14 @@ final class GatewayClient: ObservableObject {
     }
 
     private func fail(_ detail: String, shouldReconnect: Bool, reportFailure: Bool = true) {
+        traceLifecycle("failure-cleanup reconnect=\(shouldReconnect) report=\(reportFailure)")
         outboundTask?.cancel()
         outboundTask = nil
         heartbeatTask?.cancel()
         heartbeatTask = nil
+        foregroundProbeTask?.cancel()
+        foregroundProbeTask = nil
+        foregroundProbeSequence += 1
         pendingConversationPayloads.removeAll()
         pendingConversationBytes = 0
         conversationClient?.disconnect()
@@ -796,6 +836,7 @@ final class GatewayClient: ObservableObject {
         receiveTask?.cancel()
         receiveTask = nil
         if !shouldReconnect { wantsConnection = false }
+        onTransportFailure?(detail, shouldReconnect)
         if reportFailure, lastReportedFailure != detail {
             lastReportedFailure = detail
             onConnectionFailure?(detail)
@@ -805,6 +846,7 @@ final class GatewayClient: ObservableObject {
         guard !probeOnly else { wantsConnection = false; return }
         reconnectAttempt += 1
         let delay = min(30, 2 * (1 << min(reconnectAttempt - 1, 4)))
+        traceLifecycle("schedule-reconnect attempt=\(reconnectAttempt) delaySeconds=\(delay)")
         reconnectTask = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(delay)) } catch { return }
             guard let self, !Task.isCancelled, self.wantsConnection, var endpoint = self.endpoint else { return }
@@ -821,6 +863,35 @@ final class GatewayClient: ObservableObject {
         }
     }
 
+    /// URLSession 可能尚未报告后台断线；前台以 ping 验证连接，超时则自动恢复。
+    private func probeForegroundConnection() {
+        guard let socket, state.isConnected else { return }
+        foregroundProbeTask?.cancel()
+        foregroundProbeSequence += 1
+        let sequence = foregroundProbeSequence
+        traceLifecycle("foreground-probe-ping")
+        foregroundProbeTask = Task { [weak self, weak socket] in
+            do { try await Task.sleep(for: .seconds(5)) } catch { return }
+            guard let self, let socket, self.socket === socket,
+                  !self.isApplicationInBackground, self.foregroundProbeSequence == sequence else { return }
+            self.traceLifecycle("foreground-probe-timeout")
+            self.handleFailure(URLError(.timedOut), socket: socket)
+        }
+        socket.sendPing { [weak self, weak socket] error in
+            Task { @MainActor [weak self, weak socket] in
+                guard let self, let socket, self.socket === socket,
+                      self.foregroundProbeSequence == sequence else { return }
+                self.foregroundProbeTask?.cancel()
+                self.foregroundProbeTask = nil
+                if let error {
+                    self.handleFailure(error, socket: socket)
+                } else {
+                    self.traceLifecycle("foreground-probe-pong")
+                }
+            }
+        }
+    }
+
     /// Keep both control and conversation sockets active through idle tunnels.
     /// WebSocket ping frames do not add application-level requests or responses.
     private func startHeartbeat(for socket: URLSessionWebSocketTask) {
@@ -829,6 +900,7 @@ final class GatewayClient: ObservableObject {
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .seconds(30)) } catch { return }
                 guard let self, let socket, self.socket === socket, self.state.isConnected else { return }
+                self.traceLifecycle("heartbeat-ping")
                 socket.sendPing { [weak self, weak socket] error in
                     guard let error else { return }
                     Task { @MainActor [weak self, weak socket] in

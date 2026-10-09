@@ -11,6 +11,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeRight
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -27,6 +28,29 @@ class AndroidUiParityDeviceTest {
             WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST
 
         assertEquals(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE, adjustMode)
+    }
+
+    @Test
+    fun workspaceHeaderKeepsActionsSquareAndSeparateFromBrand() {
+        val brand = compose.onNode(hasContentDescription("打开侧边栏")).assertIsDisplayed()
+            .fetchSemanticsNode().boundsInRoot
+        val authentication = compose.onNode(hasContentDescription("设备认证", substring = true))
+            .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val settings = compose.onNode(hasContentDescription("设置")).assertIsDisplayed()
+            .fetchSemanticsNode().boundsInRoot
+        val screen = compose.onNode(hasTestTag("workspace-screen"))
+            .fetchSemanticsNode().boundsInRoot
+        val minimumTouchSize = 48f * compose.activity.resources.displayMetrics.density
+        for (bounds in listOf(authentication, settings)) {
+            assertTrue("操作按钮必须保持至少 48dp 的点击宽度", bounds.width >= minimumTouchSize)
+            assertTrue("操作按钮必须保持至少 48dp 的点击高度", bounds.height >= minimumTouchSize)
+            assertEquals("圆形按钮不能被压成椭圆", bounds.width, bounds.height, 1f)
+        }
+        assertTrue("品牌和认证按钮不得重叠", brand.right <= authentication.left)
+        assertTrue("两个操作按钮不得重叠", authentication.right <= settings.left)
+        assertTrue("设置按钮不得超出屏幕", settings.right <= screen.right)
+        compose.onNode(hasContentDescription("设备认证", substring = true)).performClick()
+        compose.onNode(hasTestTag("gateway-auth-menu")).assertIsDisplayed()
     }
 
     @Test

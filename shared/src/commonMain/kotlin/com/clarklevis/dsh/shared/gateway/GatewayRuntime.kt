@@ -242,21 +242,19 @@ class GatewayRuntime(
     }
 
     suspend fun applicationDidEnterBackground() = serialized {
+        // 切后台不代表用户取消连接；空闲时不启动前台服务，也不主动关闭健康 socket。
         isInBackground = true
-        if (!mutableState.value.shouldKeepAliveInBackground) {
-            connectionAttemptTimeoutJob?.cancel()
-            connectionAttemptTimeoutJob = null
-            connectionGeneration += 1
-            cancelPendingLocked(ERROR_BACKGROUND_SUSPENDED)
-            runCatching { transport.close() }
-            mutableState.value = mutableState.value.copy(connection = GatewayConnectionState.SUSPENDED)
-        }
     }
 
     fun applicationDidBecomeActive() {
         scope.launch {
             serialized {
                 isInBackground = false
+                // 活动回合的恢复窗口耗尽只结束后台恢复；回到前台允许重新连接。
+                // 鉴权、身份校验和一次性配对失败仍保留各自的阻断条件。
+                if (desiredConnection && mutableState.value.lastError == ERROR_RECOVERY_TIMEOUT) {
+                    reconnectBlocked = false
+                }
                 if (canReconnectLocked() && mutableState.value.connection != GatewayConnectionState.CONNECTED) {
                     scheduleReconnectLocked(immediate = true)
                 }
@@ -622,7 +620,6 @@ class GatewayRuntime(
                 correlation.sessionId,
                 responseCorrelation(frame)
             )
-            suspendBackgroundConnectionIfIdleLocked()
             return null
         }
         if (frame.kind == "sent" && unassociatedTurnCount > 0 && !frame.sessionId.isNullOrBlank()) {
@@ -664,7 +661,6 @@ class GatewayRuntime(
         } else {
             transportFrame.byteCount.toLong() * FRAME_RETENTION_MULTIPLIER + FRAME_OBJECT_OVERHEAD_BYTES
         }
-        if (endedLastBackgroundTurn || frame.kind == "session-queue" || frame.kind == "session-queues") suspendBackgroundConnectionIfIdleLocked()
         return FrameDelivery(GatewayRuntimeEvent.Frame(safeRaw, safeFrame, correlation.sessionId), estimatedBytes)
     }
 
@@ -926,7 +922,6 @@ class GatewayRuntime(
                 lane.active.request.correlationId
             )
         )
-        suspendBackgroundConnectionIfIdleLocked()
         if (mutableState.value.connection != GatewayConnectionState.SUSPENDED) {
             recycleConnectionForDeferredLocked()
         }
@@ -939,6 +934,12 @@ class GatewayRuntime(
         if (canReconnectLocked()) {
             mutableState.value = mutableState.value.copy(connection = GatewayConnectionState.CONNECTING)
             openTransportLocked(preserveTurns = true)
+        } else {
+            // socket 已因请求超时关闭，不能继续暴露 CONNECTED；前台恢复依赖真实状态。
+            mutableState.value = mutableState.value.copy(
+                connection = GatewayConnectionState.FAILED,
+                lastError = ERROR_CONNECTION_RECYCLED
+            )
         }
     }
 
@@ -1102,21 +1103,6 @@ class GatewayRuntime(
         replay.forEach { sendRequestLocked(it) }
     }
 
-    private suspend fun suspendBackgroundConnectionIfIdleLocked() {
-        if (!isInBackground || mutableState.value.shouldKeepAliveInBackground) return
-        connectionGeneration += 1
-        reconnectJob?.cancel()
-        reconnectJob = null
-        recoveryDeadlineJob?.cancel()
-        recoveryDeadlineJob = null
-        cancelPendingLocked(ERROR_BACKGROUND_SUSPENDED)
-        while (deferredRequests.isNotEmpty()) {
-            emitCancelledLocked(deferredRequests.removeFirst(), ERROR_BACKGROUND_SUSPENDED)
-        }
-        runCatching { transport.close() }
-        mutableState.value = mutableState.value.copy(connection = GatewayConnectionState.SUSPENDED)
-    }
-
     private suspend fun emitEventLocked(event: GatewayRuntimeEvent, estimatedBytes: Long = 256L) {
         eventQueue.emit(event, estimatedBytes)
     }
@@ -1205,7 +1191,6 @@ class GatewayRuntime(
         private const val ERROR_CONNECTION_REPLACED = "connection-replaced"
         private const val ERROR_CONNECTION_CLOSED = "connection-closed"
         private const val ERROR_CONNECTION_RECYCLED = "connection-recycled"
-        private const val ERROR_BACKGROUND_SUSPENDED = "background-suspended"
         private const val ERROR_NETWORK_LOST = "network-lost"
         private const val ERROR_RECOVERY_TIMEOUT = "recovery-timeout"
         private const val ERROR_CONNECTION_TIMEOUT = "connection-timeout"

@@ -1,7 +1,12 @@
-require 'xcodeproj'
-
 root = File.expand_path('..', __dir__)
 path = File.join(root, 'DeepSeekHarnessMobile.xcodeproj')
+project_file = File.join(path, 'project.pbxproj')
+if File.file?(project_file) && File.read(project_file).include?('/* AgentLiveActivityWidget */')
+  abort '当前工程包含 Live Activity Widget；此旧版生成脚本不支持该 target，已停止以避免覆盖现有工程。'
+end
+
+require 'xcodeproj'
+
 project = Xcodeproj::Project.new(path)
 project.root_object.attributes['LastSwiftUpdateCheck'] = '2660'
 project.root_object.attributes['LastUpgradeCheck'] = '2660'
@@ -54,7 +59,7 @@ end
 app.build_configurations.each do |config|
   config.build_settings['PRODUCT_NAME'] = 'DshMobile'
   config.build_settings['PRODUCT_MODULE_NAME'] = 'DeepSeekHarnessMobile'
-  config.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = 'com.clarklevis.dshmobile'
+  config.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = 'com.lichaofan.dshmobile'
   config.build_settings['INFOPLIST_FILE'] = 'DeepSeekHarnessMobile/Resources/Info.plist'
   config.build_settings['ASSETCATALOG_COMPILER_APPICON_NAME'] = 'AppIcon'
   config.build_settings['ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME'] = 'AccentColor'
@@ -65,11 +70,27 @@ app.build_configurations.each do |config|
   config.build_settings['GENERATE_INFOPLIST_FILE'] = 'NO'
 end
 tests.build_configurations.each do |config|
-  config.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = 'com.clarklevis.dshmobile.tests'
+  config.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = 'com.lichaofan.dshmobile.tests'
   config.build_settings['SWIFT_VERSION'] = '5.10'
   config.build_settings['GENERATE_INFOPLIST_FILE'] = 'YES'
   config.build_settings['TEST_HOST'] = '$(BUILT_PRODUCTS_DIR)/DshMobile.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/DshMobile'
   config.build_settings['BUNDLE_LOADER'] = '$(TEST_HOST)'
+end
+
+# Debug 签名从本地配置读取，避免重新生成工程后丢失。
+debug_config = project.main_group.new_file('config/Debug.xcconfig')
+[app, tests].each do |target|
+  config = target.build_configurations.find { |item| item.name == 'Debug' }
+  config.base_configuration_reference = debug_config
+  suffix = target == tests ? '.tests' : ''
+  config.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = "$(LOCAL_BUNDLE_IDENTIFIER)#{suffix}"
+  config.build_settings['DEVELOPMENT_TEAM'] = '$(LOCAL_DEVELOPMENT_TEAM)'
+end
+
+# Release 固定使用 TestFlight 所属的开发团队，Debug 仍由本地配置决定。
+[app, tests].each do |target|
+  config = target.build_configurations.find { |item| item.name == 'Release' }
+  config.build_settings['DEVELOPMENT_TEAM'] = 'T58RY5HUA7'
 end
 
 project.save

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 单色虎鲸也保留相近比例的边缘留白，缩放随启动器图层边界变化。 -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/dsh_orca_mark"
+    android:insetLeft="26%"
+    android:insetTop="26%"
+    android:insetRight="26%"
+    android:insetBottom="26%" />

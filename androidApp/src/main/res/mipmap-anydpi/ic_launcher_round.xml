@@ -2,12 +2,13 @@
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <shape android:shape="oval">
+            <size android:width="48dp" android:height="48dp" />
             <solid android:color="@color/launcher_icon_background" />
         </shape>
     </item>
     <item
-        android:width="30dp"
-        android:height="22.5dp"
-        android:drawable="@drawable/deepseek_whale"
+        android:width="29dp"
+        android:height="29dp"
+        android:drawable="@drawable/launcher_icon_artwork"
         android:gravity="center" />
 </layer-list>

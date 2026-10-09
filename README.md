@@ -47,7 +47,7 @@ DeepSeek Harness Mobile（DshMobile）是面向 DeepSeek Harness 的社区原生
 - **交互式 Agent 流程**：支持 Human Question 与工具审批请求，可提交、取消、拒绝或单次允许。
 - **会话和默认配置**：管理 Agent 预设、Provider/模型、思考等级与 `read-only`、`workspace-write`、`danger-full-access` Harness Agent 权限；这些不是手机本地文件系统权限。
 - **安全设备配对**：扫描 WebUI 二维码或手动输入配对信息；长期凭据保存到平台安全存储。
-- **移动端生命周期**：Android 在 Agent 回合执行期间通过前台服务维持连接；iOS 使用系统授予的有限后台执行时间管理活动任务，不保证无限期维持 WebSocket。
+- **移动端生命周期**：两端进入后台均不主动关闭健康连接，断线后回到前台自动恢复；手动断开不自动重连。Android 仅在 Agent 回合执行期间使用前台服务，空闲连接不启动前台服务；iOS 使用系统授予的有限后台执行时间管理活动任务，不保证无限期维持 WebSocket。
 - **浅色与深色主题**：两端均提供原生主题适配，并保留 Harness 的深海、网格与鲸鱼视觉语言。
 
 ## 界面预览
