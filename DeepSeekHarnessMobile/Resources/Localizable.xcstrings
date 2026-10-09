@@ -31,6 +31,9 @@
     "#%@" : {
 
     },
+    "%@" : {
+
+    },
     "%@ / %@" : {
       "localizations" : {
         "zh-Hans" : {
@@ -52,6 +55,27 @@
     },
     "%@ 行 · UTF-8" : {
 
+    },
+    "%@ 请求执行需要审批的操作" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ requests approval to run this action"
+          }
+        }
+      }
+    },
+    "%@，用时 %@ 秒…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@，用时 %2$@ 秒…"
+          }
+        }
+      }
     },
     "%@%%" : {
 
@@ -261,12 +285,100 @@
         }
       }
     },
+    "Agent 正在等待审批" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The agent is awaiting approval"
+          }
+        }
+      }
+    },
     "Agent 预设" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Agent presets"
+          }
+        }
+      }
+    },
+    "agent.notification.approval.body" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@: %@"
+          }
+        }
+      }
+    },
+    "agent.notification.approval.body.generic" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@: The agent is requesting approval for this action"
+          }
+        }
+      }
+    },
+    "agent.notification.approval.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Approval required"
+          }
+        }
+      }
+    },
+    "agent.notification.execution.completed.body" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@: The agent finished this task"
+          }
+        }
+      }
+    },
+    "agent.notification.execution.completed.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Run completed"
+          }
+        }
+      }
+    },
+    "agent.notification.execution.failed.body" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@: Open the app to review the result"
+          }
+        }
+      }
+    },
+    "agent.notification.execution.failed.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Run failed"
           }
         }
       }
@@ -594,9 +706,6 @@
         }
       }
     },
-    "deepseek" : {
-
-    },
     "DeepSeek · 正在生成" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -609,6 +718,7 @@
       }
     },
     "DeepSeek Harness 预览版" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -838,9 +948,6 @@
           }
         }
       }
-    },
-    "HARNESS" : {
-
     },
     "history.autoloading.loaded" : {
       "extractionState" : "manual",
@@ -2279,6 +2386,9 @@
         }
       }
     },
+    "v%@" : {
+
+    },
     "value.percent" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2320,6 +2430,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "WebSocket isn’t connected; can’t load history"
+          }
+        }
+      }
+    },
+    "WebSocket 已断开，重连后再处理审批。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The WebSocket is disconnected. Reconnect before handling approvals."
           }
         }
       }
@@ -2582,6 +2703,31 @@
         }
       }
     },
+    "停用后手机会断开连接。只能从 DSH Web 或 CLI 重新开启此插件。" : {
+
+    },
+    "允许 Agent 执行当前待审批操作。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allow the agent to run the action awaiting approval."
+          }
+        }
+      }
+    },
+    "允许一次" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allow once"
+          }
+        }
+      }
+    },
     "允许不受沙箱限制地访问宿主环境" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2604,6 +2750,17 @@
         }
       }
     },
+    "允许本次操作" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allow this action"
+          }
+        }
+      }
+    },
     "允许读取工作区，不允许修改文件" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2611,6 +2768,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Can read the workspace but not modify files"
+          }
+        }
+      }
+    },
+    "共 %@ 个 · %@ 运行中" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "共 %1$@ 个 · %2$@ 运行中"
           }
         }
       }
@@ -2661,6 +2828,9 @@
           }
         }
       }
+    },
+    "包含的组件" : {
+
     },
     "单选题只能选择一个选项，且不能同时填写自定义答案。" : {
       "extractionState" : "stale",
@@ -2871,6 +3041,9 @@
         }
       }
     },
+    "安装、启用和配置插件" : {
+
+    },
     "完全访问" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2893,11 +3066,66 @@
         }
       }
     },
-    "定时任务" : {
-
-    },
     "定时任务操作失败" : {
 
+    },
+    "实验性" : {
+
+    },
+    "审批响应发送失败，请重试。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Failed to send the approval response. Please try again."
+          }
+        }
+      }
+    },
+    "审批已在其他端处理" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Approval already handled on another device"
+          }
+        }
+      }
+    },
+    "审批已处理" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Approval handled"
+          }
+        }
+      }
+    },
+    "审批详情" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Approval details"
+          }
+        }
+      }
+    },
+    "审批请求无效" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Invalid approval request"
+          }
+        }
+      }
     },
     "宿主信息" : {
       "extractionState" : "stale",
@@ -2951,6 +3179,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Not connected to DeepSeek Harness. Tap the 🔑 button at the top-right of Home to scan the pairing QR code or enter a token manually."
+          }
+        }
+      }
+    },
+    "展开审批卡片" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expand approval card"
           }
         }
       }
@@ -3043,6 +3282,17 @@
         }
       }
     },
+    "已允许本次操作。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This action was allowed."
+          }
+        }
+      }
+    },
     "已复制" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3050,6 +3300,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Copied"
+          }
+        }
+      }
+    },
+    "已恢复" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restored"
           }
         }
       }
@@ -3087,6 +3348,9 @@
         }
       }
     },
+    "已连接Deepseek Harness预览版" : {
+
+    },
     "已连接会话" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3115,6 +3379,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Currently using"
+          }
+        }
+      }
+    },
+    "当前决定未生效。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The decision did not take effect."
           }
         }
       }
@@ -3183,6 +3458,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Pending questions restored"
+          }
+        }
+      }
+    },
+    "待审批操作已恢复" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pending approval restored"
           }
         }
       }
@@ -3310,6 +3596,28 @@
         }
       }
     },
+    "拒绝 Agent 执行当前待审批操作。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reject the agent's pending action."
+          }
+        }
+      }
+    },
+    "拒绝操作" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reject action"
+          }
+        }
+      }
+    },
     "按当前设备时区 %@ 选择，保存后按该时间执行一次。" : {
 
     },
@@ -3413,12 +3721,34 @@
         }
       }
     },
+    "操作未获允许。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The action was not allowed."
+          }
+        }
+      }
+    },
     "操作远端 DSH Agent" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Control a remote DSH agent"
+          }
+        }
+      }
+    },
+    "收起审批卡片" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Collapse approval card"
           }
         }
       }
@@ -3598,6 +3928,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The server supports authoring custom presets and provides preset configuration docs."
+          }
+        }
+      }
+    },
+    "服务端未接受审批决定（%@），请重试。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The server did not accept the approval decision (%@). Please try again."
           }
         }
       }
@@ -4154,6 +4495,17 @@
         }
       }
     },
+    "等待审批" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Awaiting approval"
+          }
+        }
+      }
+    },
     "等待工具返回…" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4278,6 +4630,20 @@
           }
         }
       }
+    },
+    "缺少 rpcId、sessionId、approvalId 或 toolName。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Missing rpcId, sessionId, approvalId, or toolName."
+          }
+        }
+      }
+    },
+    "网关已断开，插件状态待重新连接确认" : {
+
     },
     "网关已连接" : {
       "extractionState" : "stale",
@@ -4475,6 +4841,9 @@
           }
         }
       }
+    },
+    "请检查网关连接后重试" : {
+
     },
     "请检查配对信息后重新连接。" : {
       "extractionState" : "stale",
@@ -4772,6 +5141,9 @@
         }
       }
     },
+    "配置项" : {
+
+    },
     "重新加载历史" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4963,336 +5335,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Default model updated"
-          }
-        }
-      }
-    },
-    "Agent 正在等待审批" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The agent is awaiting approval"
-          }
-        }
-      }
-    },
-    "展开审批卡片" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Expand approval card"
-          }
-        }
-      }
-    },
-    "等待审批" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Awaiting approval"
-          }
-        }
-      }
-    },
-    "已恢复" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Restored"
-          }
-        }
-      }
-    },
-    "收起审批卡片" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Collapse approval card"
-          }
-        }
-      }
-    },
-    "允许一次" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Allow once"
-          }
-        }
-      }
-    },
-    "审批详情" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Approval details"
-          }
-        }
-      }
-    },
-    "%@ 请求执行需要审批的操作" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ requests approval to run this action"
-          }
-        }
-      }
-    },
-    "待审批操作已恢复" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pending approval restored"
-          }
-        }
-      }
-    },
-    "审批请求无效" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Invalid approval request"
-          }
-        }
-      }
-    },
-    "缺少 rpcId、sessionId、approvalId 或 toolName。" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Missing rpcId, sessionId, approvalId, or toolName."
-          }
-        }
-      }
-    },
-    "审批已在其他端处理" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Approval already handled on another device"
-          }
-        }
-      }
-    },
-    "当前决定未生效。" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The decision did not take effect."
-          }
-        }
-      }
-    },
-    "已允许本次操作。" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "This action was allowed."
-          }
-        }
-      }
-    },
-    "操作未获允许。" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The action was not allowed."
-          }
-        }
-      }
-    },
-    "审批已处理" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Approval handled"
-          }
-        }
-      }
-    },
-    "WebSocket 已断开，重连后再处理审批。" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The WebSocket is disconnected. Reconnect before handling approvals."
-          }
-        }
-      }
-    },
-    "服务端未接受审批决定（%@），请重试。" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The server did not accept the approval decision (%@). Please try again."
-          }
-        }
-      }
-    },
-    "审批响应发送失败，请重试。" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Failed to send the approval response. Please try again."
-          }
-        }
-      }
-    },
-    "允许本次操作" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Allow this action"
-          }
-        }
-      }
-    },
-    "拒绝操作" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reject action"
-          }
-        }
-      }
-    },
-    "允许 Agent 执行当前待审批操作。" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Allow the agent to run the action awaiting approval."
-          }
-        }
-      }
-    },
-    "拒绝 Agent 执行当前待审批操作。" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reject the agent's pending action."
-          }
-        }
-      }
-    },
-    "agent.notification.approval.title" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Approval required"
-          }
-        }
-      }
-    },
-    "agent.notification.approval.body" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@: %@"
-          }
-        }
-      }
-    },
-    "agent.notification.approval.body.generic" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@: The agent is requesting approval for this action"
-          }
-        }
-      }
-    },
-    "agent.notification.execution.completed.title" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Run completed"
-          }
-        }
-      }
-    },
-    "agent.notification.execution.failed.title" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Run failed"
-          }
-        }
-      }
-    },
-    "agent.notification.execution.completed.body" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@: The agent finished this task"
-          }
-        }
-      }
-    },
-    "agent.notification.execution.failed.body" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@: Open the app to review the result"
           }
         }
       }

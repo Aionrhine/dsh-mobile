@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Whaleness iOS 与 Android 应用隐私政策：了解配对、会话、权限及数据处理方式。">
+  <title>隐私政策 · Whaleness</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.75;
+      background: #f7f9fc;
+      color: #172236;
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    a { color: #145ca8; text-underline-offset: 0.2em; }
+    a:hover { text-decoration-thickness: 2px; }
+    header {
+      color: #fff;
+      background: linear-gradient(135deg, #07182f, #174d82);
+      padding: 3.5rem max(1.5rem, calc((100vw - 780px) / 2));
+    }
+    header .brand { font-size: 0.9rem; font-weight: 700; letter-spacing: 0.08em; opacity: 0.85; }
+    h1 { font-size: clamp(2rem, 5vw, 3rem); line-height: 1.2; margin: 0.7rem 0 0.5rem; }
+    header p { margin: 0; opacity: 0.86; }
+    main { max-width: 828px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+    .intro {
+      background: #eaf2fb;
+      border-left: 4px solid #2a72b8;
+      border-radius: 0 12px 12px 0;
+      padding: 1rem 1.2rem;
+      margin-bottom: 2rem;
+    }
+    h2 { font-size: 1.3rem; line-height: 1.4; margin: 2.4rem 0 0.7rem; }
+    h3 { font-size: 1.02rem; margin: 1.5rem 0 0.3rem; }
+    p, li { max-width: 72ch; }
+    ul { padding-left: 1.4rem; }
+    li + li { margin-top: 0.45rem; }
+    .meta { font-size: 0.9rem; opacity: 0.78; }
+    footer { border-top: 1px solid #d9e2ec; padding-top: 1.2rem; margin-top: 3rem; font-size: 0.9rem; }
+
+    @media (prefers-color-scheme: dark) {
+      :root { background: #0c1420; color: #e9eef6; }
+      a { color: #8fc7ff; }
+      .intro { background: #152a42; border-left-color: #69adf0; }
+      footer { border-top-color: #344357; }
+    }
+
+    @media print {
+      :root { background: #fff; color: #000; }
+      header { background: none; color: #000; padding: 0; }
+      main { padding: 0; }
+      .intro { background: none; border-color: #000; }
+      a { color: #000; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">WHALENESS</div>
+    <h1>隐私政策</h1>
+    <p>了解 Whaleness 如何使用设备权限、保存本地数据以及连接您自己的网关。</p>
+  </header>
+
+  <main>
+    <p class="meta">生效日期：2026 年 10 月 9 日 · 适用于 Whaleness iOS（含 TestFlight 测试版）与 Android 应用</p>
+
+    <div class="intro">
+      <strong>先说清楚数据流向：</strong>Whaleness 是连接 DeepSeek Harness Mobile Gateway 的移动客户端。
+      网关运行在您自己管理的电脑或服务器上。您在应用中发送的会话内容先到达您配对的网关，
+      再由该网关依据您的配置，通过 API 传递给相应的大模型服务提供商。
+      Whaleness 开发者不提供统一的聊天中转服务器。
+    </div>
+
+    <section aria-labelledby="scope">
+      <h2 id="scope">1. 适用范围与责任边界</h2>
+      <p>本政策说明 Whaleness iOS 与 Android 客户端自身如何处理数据。您自行运行的网关，以及您选择的大模型服务提供商，
+        可能有各自的数据保存、使用和删除规则；请同时查看它们的说明与隐私政策。
+        Whaleness 与 DeepSeek Harness 的连接并不意味着 Whaleness 代表相关服务提供商。</p>
+    </section>
+
+    <section aria-labelledby="data">
+      <h2 id="data">2. 我们处理哪些数据，以及为什么处理</h2>
+
+      <h3>配对和连接信息</h3>
+      <p>您扫描二维码或手动输入配对信息时，应用会读取网关地址、配对码等信息，用于与您选择的网关建立连接。
+        应用还会生成设备标识，并向网关发送必要的鉴权信息。iOS 将长期配对令牌和设备标识保存在 Keychain；
+        Android 使用 Android Keystore 密钥加密这些信息，再将密文保存在设备上的不备份目录。
+        网关地址、名称及连接偏好保存在各自设备的本地设置中。</p>
+
+      <h3>会话、工作区和附件</h3>
+      <p>您发送的消息、主动选择的图片，以及在应用内发起的工作区文件、会话和任务操作，
+        会通过网络传送到您配对的网关，以完成您要求的功能。网关可能按您的模型配置，
+        将消息、必要上下文和相关附件通过 API 传递给大模型服务提供商。
+        应用也会接收并显示网关返回的会话内容、任务状态及文件。</p>
+      <p>应用会在设备本地保存部分连接设置、会话摘要，并为图片附件和文件预览创建缓存或临时文件。
+        这些数据用于恢复界面和改善使用体验，不用于广告定向。</p>
+
+      <h3>相机、照片及文件选择</h3>
+      <p>相机只在您选择扫描配对二维码时使用；扫码画面在设备上识别，应用不保存或上传相机画面。
+        您通过系统照片或文件选择器选中的内容，只在您执行相应的发送、预览或文件操作时用于该操作。
+        二维码中的配对信息会用于连接所选网关。</p>
+      <p>Android 版使用 Google ML Kit 识别二维码。图像和识别结果在设备上处理，不会由 ML Kit 发送给 Google；
+        但 ML Kit 会向 Google 发送设备与应用信息、安装标识、性能和使用指标，用于诊断与改进。
+        详情可查看 <a href="https://developers.google.com/ml-kit/terms">Google ML Kit 的隐私说明</a>。</p>
+      <p>Android 版还允许您主动打开从自己工作区下载的 APK 文件。只有您选择安装此类文件时，
+        应用才会引导您前往系统设置，决定是否允许从本应用安装软件包。</p>
+
+      <h3>定位、后台运行与通知</h3>
+      <p>当 Agent 任务正在运行时，iOS 版本可能申请低精度定位权限并在后台接收定位回调，
+        用于维持任务连接的后台执行机会；应用不保存定位坐标，也不把定位坐标发送给网关或大模型提供商。
+        在部分情况下，应用还可能使用静音音频播放维持后台任务；这不涉及麦克风录音。
+        若您关闭相关权限，iOS 后台任务的持续运行可能受到系统限制。</p>
+      <p>Android 版本不请求定位或麦克风权限。仅在用户发起的 Agent 任务执行期间，
+        它可能启动前台连接服务并显示常驻通知；任务结束后会停止该服务。
+        Android 也可能请求通知权限，用于提示审批请求和任务结果。</p>
+      <p>如果您允许通知，任务状态或会话标题可能显示在设备通知和锁定屏幕上；
+        iOS 实时活动还可能显示在灵动岛上。
+        请留意旁人可能看到这些设备界面上的信息。</p>
+    </section>
+
+    <section aria-labelledby="sharing">
+      <h2 id="sharing">3. 数据会到达谁</h2>
+      <ul>
+        <li><strong>您配对的网关：</strong>接收连接信息、会话请求及您主动发送的内容。网关由您自行运行和管理。</li>
+        <li><strong>您配置的大模型服务提供商：</strong>网关可能通过 API 向其发送完成模型请求所需的内容；具体服务商由您的网关配置决定。</li>
+        <li><strong>Google ML Kit（仅 Android）：</strong>二维码识别在设备上进行；Google 会接收该 SDK 的设备、应用、安装标识和性能使用指标，用于诊断与改进，不接收扫码图像或识别结果。详见 <a href="https://developers.google.com/ml-kit/android-data-disclosure">ML Kit 数据披露说明</a>。</li>
+        <li><strong>Apple（仅 iOS TestFlight）：</strong>当您通过 TestFlight 安装和反馈时，Apple 可能按其服务规则处理测试反馈与诊断信息。</li>
+      </ul>
+      <p>当前 iOS 与 Android 客户端均没有集成广告 SDK，也不因广告目的出售您的会话内容。</p>
+    </section>
+
+    <section aria-labelledby="retention">
+      <h2 id="retention">4. 保存期限与删除</h2>
+      <p>iOS 的配对令牌保存在 Keychain；Android 的配对令牌经 Android Keystore 密钥加密后存入不备份的本地文件。
+        您移除对应网关资料时，应用会删除该网关的本地令牌；在某些鉴权失败的情况下也会删除令牌并要求重新配对。
+        连接设置和会话摘要保存在设备本地，普通设置可能受操作系统的备份机制影响。
+        两个平台的图片附件缓存均使用可清理的缓存目录，当前版本采用 7 天过期策略；
+        文件预览和下载可能产生临时文件，缓存也可能由操作系统提前清理。</p>
+      <p>您可以在应用中移除网关资料，以删除对应的本地配对令牌；也可以在系统设置中撤销相机、通知及 iOS 定位权限。
+        如需删除网关上的会话或工作区数据，请在您自行管理的网关或主机上操作。
+        大模型服务提供商对 API 请求的留存和删除，依其各自的规则处理；请联系相应提供商了解详情。
+        如需进一步了解本客户端的本地数据处理或请求协助，请通过下方邮箱联系我们。</p>
+    </section>
+
+    <section aria-labelledby="security">
+      <h2 id="security">5. 传输与安全</h2>
+      <p>应用支持连接您配置的 <code>ws://</code> 或 <code>wss://</code> 网关地址。
+        <code>wss://</code> 提供传输加密，而 <code>ws://</code> 不提供同等级别的加密保护。
+        如果网关可通过公网访问，请优先使用可信的加密连接，并妥善保护网关和模型 API 凭据。
+        应用把长期配对令牌保存在 iOS Keychain，或使用 Android Keystore 加密后存入本地文件，而不是以明文放在普通设置项中。</p>
+    </section>
+
+    <section aria-labelledby="changes">
+      <h2 id="changes">6. 政策更新</h2>
+      <p>如果应用功能、数据处理方式或所连接的服务发生变化，我们会更新本页面，并在页首标明新的生效日期。
+        重大变化会在适当情况下通过应用或发布说明告知您。</p>
+    </section>
+
+    <section aria-labelledby="contact">
+      <h2 id="contact">7. 联系我们</h2>
+      <p>对本政策、应用的数据处理或本地数据删除有疑问，请发送邮件至
+        <a href="mailto:clarklevis1995@gmail.com">clarklevis1995@gmail.com</a>。</p>
+    </section>
+
+    <footer>
+      <p>Whaleness 隐私政策 · 本页面为公开网页，无需登录即可阅读。</p>
+    </footer>
+  </main>
+</body>
+</html>
