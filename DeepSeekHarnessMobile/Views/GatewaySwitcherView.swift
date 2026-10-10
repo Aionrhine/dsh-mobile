@@ -8,7 +8,7 @@ struct GatewaySwitcherBar: View {
         Button { showsHosts = true } label: {
             HStack(spacing: 8) {
                 Image(systemName: hosts.activeProfile?.deviceKind ?? "desktopcomputer")
-                Text(hosts.activeProfile?.displayName ?? "选择主机")
+                Text(hosts.activeProfile?.displayName ?? String(localized: "选择主机"))
                     .lineLimit(1)
                 Circle()
                     .fill(hosts.activeID.map { hosts.onlineIDs.contains($0) } == true ? Color.green : Color.gray)
@@ -21,7 +21,7 @@ struct GatewaySwitcherBar: View {
             .overlay(Capsule().stroke(.white.opacity(0.14), lineWidth: 0.5))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("当前主机：\(hosts.activeProfile?.displayName ?? "未选择")，切换主机")
+        .accessibilityLabel("当前主机：\(hosts.activeProfile?.displayName ?? String(localized: "未选择"))，切换主机")
         .sheet(isPresented: $showsHosts) { GatewaySwitcherSheet() }
     }
 }
@@ -58,7 +58,9 @@ private struct GatewaySwitcherSheet: View {
                                         .frame(width: 28, height: 44)
                                 }
                                 .buttonStyle(.borderless)
-                                .accessibilityLabel(selectedIDs.contains(profile.id) ? "取消选择 \(profile.displayName)" : "选择 \(profile.displayName)")
+                                .accessibilityLabel(selectedIDs.contains(profile.id)
+                                    ? String(localized: "host.deselect", defaultValue: "取消选择 \(profile.displayName)")
+                                    : String(localized: "host.select", defaultValue: "选择 \(profile.displayName)"))
                                 .transition(.move(edge: .leading).combined(with: .opacity))
                             }
                             Image(systemName: profile.deviceKind)
@@ -73,7 +75,7 @@ private struct GatewaySwitcherSheet: View {
                             } label: {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(profile.displayName).foregroundStyle(Color(uiColor: .label)).lineLimit(1)
-                                    Text(hosts.activeID == profile.id ? "当前主机" : "点击连接")
+                                    Text(hosts.activeID == profile.id ? String(localized: "当前主机") : String(localized: "点击连接"))
                                         .font(.caption)
                                         .foregroundStyle(
                                             hosts.activeID == profile.id
@@ -86,7 +88,8 @@ private struct GatewaySwitcherSheet: View {
                             .buttonStyle(.plain)
                             Circle().fill(hosts.onlineIDs.contains(profile.id) ? Color.green : Color.gray.opacity(0.45))
                                 .frame(width: 8, height: 8)
-                                .accessibilityLabel(hosts.onlineIDs.contains(profile.id) ? "在线" : "未连接或不可用")
+                                .accessibilityLabel(hosts.onlineIDs.contains(profile.id)
+                                    ? String(localized: "在线") : String(localized: "未连接或不可用"))
                             if editMode.isEditing {
                                 Button {
                                     alias = profile.alias ?? ""
@@ -113,7 +116,7 @@ private struct GatewaySwitcherSheet: View {
                 }
             }
             .environment(\.editMode, $editMode)
-            .alert(selectedIDs.count == 1 ? "删除主机？" : "批量删除主机？", isPresented: $confirmingDelete) {
+            .alert(selectedIDs.count == 1 ? String(localized: "删除主机？") : String(localized: "批量删除主机？"), isPresented: $confirmingDelete) {
                 Button("取消", role: .cancel) {}
                 Button("删除", role: .destructive) {
                     hosts.remove(ids: selectedIDs)
@@ -126,7 +129,7 @@ private struct GatewaySwitcherSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button(editMode.isEditing ? "完成编辑" : "编辑") {
+                    Button(editMode.isEditing ? String(localized: "完成编辑") : String(localized: "编辑")) {
                         withAnimation {
                             if editMode.isEditing { selectedIDs.removeAll() }
                             editMode = editMode.isEditing ? .inactive : .active
@@ -135,7 +138,7 @@ private struct GatewaySwitcherSheet: View {
                 }
                 if editMode.isEditing, !selectedIDs.isEmpty {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button(selectedIDs.count == 1 ? "删除" : "批量删除", role: .destructive) {
+                        Button(selectedIDs.count == 1 ? String(localized: "删除") : String(localized: "批量删除"), role: .destructive) {
                             confirmingDelete = true
                         }
                         .foregroundStyle(.red)
@@ -169,14 +172,14 @@ private struct GatewaySwitcherSheet: View {
                                         Image(systemName: kind)
                                             .font(.system(size: 15))
                                             .frame(width: 20, height: 20)
-                                        Text(kind == "server.rack" ? "服务器" : "电脑")
+                                        Text(kind == "server.rack" ? String(localized: "服务器") : String(localized: "电脑"))
                                             .font(.body)
                                         Image(systemName: "chevron.up.chevron.down")
                                             .font(.system(size: 11, weight: .medium))
                                     }
                                 }
                                 .accessibilityLabel("主机类型")
-                                .accessibilityValue(kind == "server.rack" ? "服务器" : "电脑")
+                                .accessibilityValue(kind == "server.rack" ? String(localized: "服务器") : String(localized: "电脑"))
                             }
                         } header: {
                             Text("留空使用网关提供的名称：\(profile.gatewayName)")

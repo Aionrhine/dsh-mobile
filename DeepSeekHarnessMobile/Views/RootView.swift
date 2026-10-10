@@ -237,9 +237,9 @@ enum ScheduledTaskStatusFilter: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .all: "全部"
-        case .active: "已开启"
-        case .ended: "已结束"
+        case .all: String(localized: "全部")
+        case .active: String(localized: "已开启")
+        case .ended: String(localized: "已结束")
         }
     }
 }
@@ -276,7 +276,6 @@ private struct ScheduledTasksView: View {
     @ObservedObject var store: AppStore
     let onOpenSession: (String) -> Void
     @State private var expandedTaskIDs: Set<String> = []
-    @State private var revealedTaskID: String?
     @State private var editingTask: ScheduledTask?
     @State private var activeAlert: ActiveAlert?
     @State private var statusFilter: ScheduledTaskStatusFilter = .all
@@ -288,83 +287,78 @@ private struct ScheduledTasksView: View {
     }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 16) {
-                if store.scheduledTasksLoading && store.scheduledTasks.isEmpty {
-                    ProgressView("正在加载定时任务…")
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 72)
-                } else if let error = store.scheduledTasksError, store.scheduledTasks.isEmpty {
-                    ContentUnavailableView {
-                        Label("无法显示定时任务", systemImage: "wifi.exclamationmark")
-                    } description: {
-                        Text(error)
-                    } actions: {
-                        Button("重试") { store.refreshScheduledTasks() }
-                    }
+        List {
+            if store.scheduledTasksLoading && store.scheduledTasks.isEmpty {
+                ProgressView("正在加载定时任务…")
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 72)
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+            } else if let error = store.scheduledTasksError, store.scheduledTasks.isEmpty {
+                ContentUnavailableView {
+                    Label("无法显示定时任务", systemImage: "wifi.exclamationmark")
+                } description: {
+                    Text(error)
+                } actions: {
+                    Button("重试") { store.refreshScheduledTasks() }
+                }
+                .padding(.top, 40)
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+            } else if store.scheduledTasks.isEmpty {
+                ContentUnavailableView("暂无定时任务", systemImage: "clock", description: Text("在会话中创建的定时任务会显示在这里"))
                     .padding(.top, 40)
-                } else if store.scheduledTasks.isEmpty {
-                    ContentUnavailableView("暂无定时任务", systemImage: "clock", description: Text("在会话中创建的定时任务会显示在这里"))
-                        .padding(.top, 40)
-                } else if visibleTasks.isEmpty {
-                    ContentUnavailableView(
-                        "没有符合条件的定时任务",
-                        systemImage: "line.3.horizontal.decrease.circle",
-                        description: Text(searchQuery.isEmpty ? "试试其他任务状态" : "试试其他关键词或任务状态")
-                    )
-                        .padding(.top, 40)
-                } else {
-                    ForEach(visibleTasks) { task in
-                        ScheduledTaskCard(
-                            task: task,
-                            sessionTitle: store.sessions.first(where: { $0.id == task.sessionID })?.title ?? task.sessionID,
-                            expanded: expandedTaskIDs.contains(task.id),
-                            revealedTaskID: $revealedTaskID,
-                            onOpen: {
-                                if revealedTaskID == task.id {
-                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
-                                        revealedTaskID = nil
-                                    }
-                                } else {
-                                    revealedTaskID = nil
-                                    onOpenSession(task.sessionID)
-                                }
-                            },
-                            onEdit: {
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
-                                    revealedTaskID = nil
-                                }
-                                editingTask = task
-                            },
-                            onDelete: {
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
-                                    revealedTaskID = nil
-                                }
-                                activeAlert = .delete(task)
-                            },
-                            busy: store.scheduledTaskPendingID == task.id,
-                            onExpand: {
-                                if revealedTaskID == task.id {
-                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
-                                        revealedTaskID = nil
-                                    }
-                                    return
-                                }
-                                withAnimation(.easeInOut(duration: 0.22)) {
-                                    if !expandedTaskIDs.insert(task.id).inserted { expandedTaskIDs.remove(task.id) }
-                                }
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+            } else if visibleTasks.isEmpty {
+                ContentUnavailableView(
+                    "没有符合条件的定时任务",
+                    systemImage: "line.3.horizontal.decrease.circle",
+                    description: Text(searchQuery.isEmpty
+                        ? String(localized: "试试其他任务状态")
+                        : String(localized: "试试其他关键词或任务状态"))
+                )
+                    .padding(.top, 40)
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+            } else {
+                ForEach(visibleTasks) { task in
+                    ScheduledTaskCard(
+                        task: task,
+                        sessionTitle: store.sessions.first(where: { $0.id == task.sessionID })?.title ?? task.sessionID,
+                        expanded: expandedTaskIDs.contains(task.id),
+                        onOpen: { onOpenSession(task.sessionID) },
+                        onExpand: {
+                            withAnimation(.easeInOut(duration: 0.22)) {
+                                if !expandedTaskIDs.insert(task.id).inserted { expandedTaskIDs.remove(task.id) }
                             }
-                        )
+                        }
+                    )
+                    .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(role: .destructive) { activeAlert = .delete(task) } label: {
+                            Label("删除", systemImage: "trash")
+                        }
+                        .disabled(store.scheduledTaskPendingID == task.id)
+                        if task.status == "active" {
+                            Button { editingTask = task } label: {
+                                Label("编辑", systemImage: "pencil")
+                            }
+                            .tint(.blue)
+                            .disabled(store.scheduledTaskPendingID == task.id)
+                        }
                     }
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 18)
-            .padding(.bottom, 28)
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .scrollBounceBehavior(.always)
         .refreshable { store.refreshScheduledTasks() }
         .background(Color(uiColor: .systemBackground))
-        .navigationTitle(isSearching ? "" : "定时任务")
+        .navigationTitle(isSearching ? "" : String(localized: "定时任务"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -475,69 +469,17 @@ private struct ScheduledTaskCard: View {
     let task: ScheduledTask
     let sessionTitle: String
     let expanded: Bool
-    @Binding var revealedTaskID: String?
     let onOpen: () -> Void
-    let onEdit: () -> Void
-    let onDelete: () -> Void
-    let busy: Bool
     let onExpand: () -> Void
-    @State private var dragOrigin: CGFloat?
-    @State private var dragOffset: CGFloat?
-    @State private var settledOpen = false
-    @State private var suppressCardTapUntil = Date.distantPast
     @State private var detailsHeight: CGFloat = 0
 
-    private let revealWidth: CGFloat = 128
-    private var isRevealed: Bool { revealedTaskID == task.id }
-    private var currentOffset: CGFloat { dragOffset ?? (settledOpen ? -revealWidth : 0) }
-    private var revealProgress: CGFloat { -currentOffset / revealWidth }
     var body: some View {
-        ZStack(alignment: .trailing) {
-            HStack(spacing: 10) {
-                Button(action: onEdit) {
-                    Image(systemName: "pencil")
-                        .font(.system(size: 19, weight: .medium))
-                        .foregroundStyle(.primary)
-                        .frame(width: 50, height: 50)
-                        .background(Color(uiColor: .tertiarySystemBackground), in: Circle())
-                }
-                .disabled(task.status != "active" || busy || revealProgress < 0.95)
-                .accessibilityLabel("编辑\(task.title)")
-                Button(action: onDelete) {
-                    Image(systemName: "trash")
-                        .font(.system(size: 19, weight: .medium))
-                        .foregroundStyle(.white)
-                        .frame(width: 50, height: 50)
-                        .background(Color(red: 0.84, green: 0.31, blue: 0.32), in: Circle())
-                }
-                .disabled(busy || revealProgress < 0.95)
-                .accessibilityLabel("删除\(task.title)")
-            }
-            .buttonStyle(.plain)
-            .padding(.trailing, 9)
-            .opacity(revealProgress)
-            .scaleEffect(0.72 + 0.28 * revealProgress, anchor: .trailing)
-            .offset(x: 18 * (1 - revealProgress))
-            .accessibilityHidden(revealProgress < 0.95)
-
-            cardContent.offset(x: currentOffset)
-        }
-        .frame(maxWidth: .infinity)
-        .simultaneousGesture(swipeGesture)
-        .onAppear { settledOpen = isRevealed }
-        .onChange(of: revealedTaskID) { _, revealedID in
-            if revealedID != task.id && settledOpen {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
-                    settledOpen = false
-                }
-            }
-        }
+        cardContent
     }
 
     private var cardContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
-                guard Date.now >= suppressCardTapUntil else { return }
                 onOpen()
             } label: {
                 VStack(alignment: .leading, spacing: 8) {
@@ -566,11 +508,10 @@ private struct ScheduledTaskCard: View {
             Divider()
                 .padding(.horizontal, 20)
             Button {
-                guard Date.now >= suppressCardTapUntil else { return }
                 onExpand()
             } label: {
                 HStack {
-                    Text(task.status == "active" ? ScheduledTaskFormat.date(task.scheduledAt) : "已结束")
+                    Text(task.status == "active" ? ScheduledTaskFormat.date(task.scheduledAt) : String(localized: "已结束"))
                         .font(.system(size: 15))
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -586,7 +527,7 @@ private struct ScheduledTaskCard: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(expanded ? "收起任务详情" : "展开任务详情")
+            .accessibilityLabel(expanded ? String(localized: "收起任务详情") : String(localized: "展开任务详情"))
 
             detailsContent
                 .fixedSize(horizontal: false, vertical: true)
@@ -613,56 +554,18 @@ private struct ScheduledTaskCard: View {
 
     private var detailsContent: some View {
         VStack(alignment: .leading, spacing: 13) {
-            detail("执行规则", ScheduledTaskFormat.fullRule(task))
-            detail("下次计划时间", task.status == "active" ? ScheduledTaskFormat.date(task.scheduledAt) : "无")
-            detail("所属会话", sessionTitle)
-            detail("状态", task.status == "active" ? "运行中" : "已结束")
-            detail("最近投递", task.lastDelivery?["deliveredAt"]?.stringValue.map { "已投递 · \(ScheduledTaskFormat.date($0))" } ?? "暂无投递记录")
+            detail(String(localized: "执行规则"), ScheduledTaskFormat.fullRule(task))
+            detail(String(localized: "下次计划时间"), task.status == "active" ? ScheduledTaskFormat.date(task.scheduledAt) : String(localized: "无"))
+            detail(String(localized: "所属会话"), sessionTitle)
+            detail(String(localized: "状态"), task.status == "active" ? String(localized: "运行中") : String(localized: "已结束"))
+            detail(String(localized: "最近投递"), task.lastDelivery?["deliveredAt"]?.stringValue.map {
+                String(localized: "schedule.last-delivery", defaultValue: "已投递 · \(ScheduledTaskFormat.date($0))")
+            } ?? String(localized: "暂无投递记录"))
         }
         .padding(.horizontal, 20)
         .padding(.top, 18)
         .padding(.bottom, 22)
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var swipeGesture: some Gesture {
-        DragGesture(minimumDistance: 10)
-            .onChanged { value in
-                if dragOrigin == nil {
-                    guard abs(value.translation.width) > abs(value.translation.height) * 1.15 else { return }
-                    dragOrigin = settledOpen ? -revealWidth : 0
-                    suppressCardTapUntil = .now.addingTimeInterval(0.35)
-                    if revealedTaskID != nil && !isRevealed {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
-                            revealedTaskID = nil
-                        }
-                    }
-                }
-                guard let dragOrigin else { return }
-                dragOffset = min(0, max(-revealWidth, dragOrigin + value.translation.width))
-            }
-            .onEnded { value in
-                guard let dragOrigin else { return }
-                let settledOffset = dragOffset ?? min(0, max(-revealWidth,
-                    dragOrigin + value.translation.width))
-                let shouldReveal: Bool
-                if value.velocity.width < -280 {
-                    shouldReveal = true
-                } else if value.velocity.width > 280 {
-                    shouldReveal = false
-                } else {
-                    let threshold = dragOrigin == 0 ? 0.25 : 0.75
-                    shouldReveal = settledOffset <= -revealWidth * threshold
-                }
-                let response = max(0.18, 0.34 - abs(value.velocity.width) / 6_000)
-                suppressCardTapUntil = .now.addingTimeInterval(0.35)
-                withAnimation(.spring(response: response, dampingFraction: 0.84)) {
-                    settledOpen = shouldReveal
-                    revealedTaskID = shouldReveal ? task.id : nil
-                    dragOffset = nil
-                }
-                self.dragOrigin = nil
-            }
     }
 
     private func detail(_ label: String, _ value: String) -> some View {
@@ -836,7 +739,7 @@ private struct ScheduledTaskEditSheet: View {
         guard canSave else { return }
         let requestID = store.updateScheduledTask(task, title: title, prompt: prompt, change: timingChange)
         if let requestID { pendingRequestID = requestID }
-        else { localError = store.scheduledTaskMutationError ?? "操作正在进行，请稍后重试" }
+        else { localError = store.scheduledTaskMutationError ?? String(localized: "操作正在进行，请稍后重试") }
     }
 
     private static func parseDate(_ value: String) -> Date? {
@@ -859,33 +762,53 @@ private struct ScheduledTaskEditSheet: View {
 private enum ScheduledTaskFormat {
     static func shortRule(_ task: ScheduledTask) -> String {
         switch task.kind {
-        case "daily": "每天"
-        case "weekly": "每周"
-        case "every": "每 \(duration(Int(task.raw["everySeconds"]?.doubleValue ?? 0)))"
+        case "daily": String(localized: "每天")
+        case "weekly": String(localized: "每周")
+        case "every": String(
+            localized: "schedule.every.short",
+            defaultValue: "每 \(duration(Int(task.raw["everySeconds"]?.doubleValue ?? 0)))"
+        )
         case "cron": "Cron"
-        default: "一次"
+        default: String(localized: "一次")
         }
     }
 
     static func fullRule(_ task: ScheduledTask) -> String {
+        let time = task.raw["time"]?.stringValue ?? ""
+        let zone = task.raw["timeZone"]?.stringValue ?? ""
         switch task.kind {
-        case "daily": return "每天 \(task.raw["time"]?.stringValue ?? "") · \(task.raw["timeZone"]?.stringValue ?? "")"
+        case "daily":
+            return String(localized: "schedule.daily.detail", defaultValue: "每天 \(time) · \(zone)")
         case "weekly":
             let days = (task.raw["weekdays"]?.arrayValue ?? []).compactMap { $0.doubleValue.map(Int.init) }
-            let names = ["一", "二", "三", "四", "五", "六", "日"]
-            return "每周\(days.compactMap { (1...7).contains($0) ? names[$0 - 1] : nil }.joined(separator: "、周")) · \(task.raw["time"]?.stringValue ?? "") · \(task.raw["timeZone"]?.stringValue ?? "")"
-        case "every": return "每 \(duration(Int(task.raw["everySeconds"]?.doubleValue ?? 0)))执行一次"
-        case "cron": return "\(task.raw["expression"]?.stringValue ?? "") · \(task.raw["timeZone"]?.stringValue ?? "")"
-        case "after": return "\(Int(task.raw["afterSeconds"]?.doubleValue ?? 0)) 秒后执行一次"
-        default: return "指定时间执行一次"
+            let names = [
+                String(localized: "周一"), String(localized: "周二"), String(localized: "周三"),
+                String(localized: "周四"), String(localized: "周五"), String(localized: "周六"),
+                String(localized: "周日")
+            ]
+            let separator = String(localized: "schedule.weekday.separator", defaultValue: "、")
+            let weekdays = days.compactMap { (1...7).contains($0) ? names[$0 - 1] : nil }.joined(separator: separator)
+            return String(localized: "schedule.weekly.detail", defaultValue: "每周 \(weekdays) · \(time) · \(zone)")
+        case "every":
+            return String(localized: "schedule.every.detail", defaultValue: "每 \(duration(Int(task.raw["everySeconds"]?.doubleValue ?? 0)))执行一次")
+        case "cron":
+            return "\(task.raw["expression"]?.stringValue ?? "") · \(zone)"
+        case "after":
+            let seconds = Int(task.raw["afterSeconds"]?.doubleValue ?? 0)
+            return String(localized: "schedule.after.detail", defaultValue: "\(seconds) 秒后执行一次")
+        default:
+            return String(localized: "指定时间执行一次")
         }
     }
 
     private static func duration(_ seconds: Int) -> String {
-        if seconds > 0 && seconds % 86_400 == 0 { return "\(seconds / 86_400) 天" }
-        if seconds > 0 && seconds % 3_600 == 0 { return "\(seconds / 3_600) 小时" }
-        if seconds > 0 && seconds % 60 == 0 { return "\(seconds / 60) 分钟" }
-        return "\(seconds) 秒"
+        let formatter = DateComponentsFormatter()
+        formatter.unitsStyle = .full
+        formatter.maximumUnitCount = 1
+        formatter.allowedUnits = seconds > 0 && seconds % 86_400 == 0 ? .day
+            : seconds > 0 && seconds % 3_600 == 0 ? .hour
+            : seconds > 0 && seconds % 60 == 0 ? .minute : .second
+        return formatter.string(from: TimeInterval(seconds)) ?? String(localized: "schedule.duration.seconds", defaultValue: "\(seconds) 秒")
     }
 
     static func date(_ value: String) -> String {

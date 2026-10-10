@@ -28,7 +28,7 @@ struct PluginsView: View {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 80)
                 }
                 if let catalog = store.pluginCatalog, catalog.managementAvailable {
-                    pluginSection("官方", count: catalog.officialBundles.count + catalog.officialItems.count) {
+                    pluginSection(String(localized: "官方"), count: catalog.officialBundles.count + catalog.officialItems.count) {
                         ForEach(catalog.officialBundles) { bundle in bundleRow(bundle) }
                         ForEach(catalog.officialItems) { item in
                             NavigationLink { OfficialPluginDetailView(item: item) } label: {
@@ -37,7 +37,7 @@ struct PluginsView: View {
                             }.buttonStyle(.plain).frame(minHeight: 68)
                         }
                     }
-                    pluginSection("已安装", count: catalog.installedBundles.count) {
+                    pluginSection(String(localized: "已安装"), count: catalog.installedBundles.count) {
                         ForEach(catalog.installedBundles) { bundle in bundleRow(bundle) }
                     }
                 }

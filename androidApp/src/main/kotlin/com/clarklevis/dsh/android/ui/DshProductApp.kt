@@ -70,6 +70,7 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
@@ -355,7 +356,7 @@ private fun WorkspaceScreen(
                         Spacer(Modifier.height(44.dp))
                         Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
                             Text(
-                                "探索未至之境",
+                                stringResource(R.string.workspace_hero_title),
                                 color = Color.White,
                                 fontSize = 32.sp,
                                 fontWeight = FontWeight.Bold,

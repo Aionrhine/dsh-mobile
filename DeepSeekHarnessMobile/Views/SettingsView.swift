@@ -1,9 +1,11 @@
 import SwiftUI
+import WebKit
 
 struct SettingsView: View {
     @EnvironmentObject private var store: AppStore
     @State private var pendingPermission: DefaultPermissionChoice?
     @State private var observedGatewayState: ConnectionState?
+    @State private var showsPrivacyPolicy = false
 
     private var gatewayState: ConnectionState {
         observedGatewayState ?? store.gateway.state
@@ -171,6 +173,10 @@ struct SettingsView: View {
             } footer: {
                 Text("语言设置将在重新启动应用后生效。")
             }
+
+            Section("关于") {
+                Button("隐私政策") { showsPrivacyPolicy = true }
+            }
         }
         .navigationTitle("设置")
         .task {
@@ -192,6 +198,136 @@ struct SettingsView: View {
                     store.setDefaultPermission(option.id)
                 }
             )
+        }
+        .sheet(isPresented: $showsPrivacyPolicy) {
+            PrivacyPolicySheet()
+        }
+    }
+}
+
+private struct PrivacyPolicySheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var isLoading = true
+    @State private var loadFailed = false
+    @State private var reloadID = UUID()
+
+    private let url = URL(string: "https://clarklevis1995.github.io/dsh-mobile/privacy/")!
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                PrivacyPolicyWebView(url: url, isLoading: $isLoading, loadFailed: $loadFailed)
+                    .id(reloadID)
+                    .opacity(loadFailed ? 0 : 1)
+                    .allowsHitTesting(!loadFailed)
+
+                if isLoading {
+                    ProgressView()
+                }
+
+                if loadFailed {
+                    VStack(spacing: 12) {
+                        Text("无法打开隐私政策")
+                        Button("重试") {
+                            loadFailed = false
+                            isLoading = true
+                            reloadID = UUID()
+                        }
+                    }
+                }
+            }
+            .navigationTitle("隐私政策")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完成") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+    }
+}
+
+private struct PrivacyPolicyWebView: UIViewRepresentable {
+    let url: URL
+    @Binding var isLoading: Bool
+    @Binding var loadFailed: Bool
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(isLoading: $isLoading, loadFailed: $loadFailed)
+    }
+
+    func makeUIView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        configuration.defaultWebpagePreferences.allowsContentJavaScript = false
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.navigationDelegate = context.coordinator
+        webView.load(URLRequest(url: url))
+        return webView
+    }
+
+    func updateUIView(_ webView: WKWebView, context: Context) {}
+
+    final class Coordinator: NSObject, WKNavigationDelegate {
+        @Binding var isLoading: Bool
+        @Binding var loadFailed: Bool
+
+        init(isLoading: Binding<Bool>, loadFailed: Binding<Bool>) {
+            _isLoading = isLoading
+            _loadFailed = loadFailed
+        }
+
+        func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+            isLoading = true
+            loadFailed = false
+        }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            isLoading = false
+        }
+
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            handleLoadError(error)
+        }
+
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            handleLoadError(error)
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            decidePolicyFor navigationAction: WKNavigationAction,
+            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+        ) {
+            if let url = navigationAction.request.url, url.scheme == "mailto" {
+                UIApplication.shared.open(url)
+                decisionHandler(.cancel)
+            } else {
+                decisionHandler(.allow)
+            }
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            decidePolicyFor navigationResponse: WKNavigationResponse,
+            decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void
+        ) {
+            if navigationResponse.isForMainFrame,
+               let response = navigationResponse.response as? HTTPURLResponse,
+               response.statusCode >= 400 {
+                isLoading = false
+                loadFailed = true
+                decisionHandler(.cancel)
+            } else {
+                decisionHandler(.allow)
+            }
+        }
+
+        private func handleLoadError(_ error: Error) {
+            guard (error as NSError).code != NSURLErrorCancelled else { return }
+            isLoading = false
+            loadFailed = true
         }
     }
 }
