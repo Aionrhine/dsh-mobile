@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="Design/whale-girl-ios-app-promo-16x9-v3.png" alt="DeepSeek Harness Mobile iOS 应用展示" width="100%">
+<img src="Design/whale-girl-ios-app-promo-16x9-v3.png" alt="Whaleness iOS 应用展示" width="100%">
 
-# DeepSeek Harness Mobile
+# Whaleness（DeepSeek Harness 的第三方移动端应用）
 
 **使用 Kotlin Multiplatform 共享核心逻辑，为 Android 与 iOS 提供原生移动端体验。**
 
@@ -19,7 +19,7 @@
 
 ## 项目简介
 
-DeepSeek Harness Mobile（DshMobile）是面向 DeepSeek Harness 的社区原生移动客户端。项目已完成 Kotlin Multiplatform（KMP）架构改造，并同时提供可运行的 Android 与 iOS 应用：
+Whaleness 是独立开发的 DeepSeek Harness 第三方原生移动客户端。项目已完成 Kotlin Multiplatform（KMP）架构改造，并同时提供可运行的 Android 与 iOS 应用：
 
 - `shared` 负责跨端协议、状态机、Reducer、投影和同步逻辑，是共享业务状态的唯一来源。
 - `androidApp` 使用 Kotlin、Jetpack Compose 和 OkHttp 实现 Android 产品能力。
