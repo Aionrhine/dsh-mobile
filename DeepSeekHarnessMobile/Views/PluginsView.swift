@@ -106,8 +106,9 @@ struct PluginsView: View {
             ))
             .labelsHidden()
             .tint(pluginSwitchTint(for: colorScheme))
-            .disabled(!store.gateway.state.isConnected || bundle.readOnlyReason != nil || store.pluginPendingName != nil ||
+            .disabled(!store.gateway.state.isConnected || bundle.readOnlyReason != nil ||
                 store.pluginCatalog?.managementAvailable != true)
+            .allowsHitTesting(store.pluginPendingName == nil)
             .accessibilityLabel("\(bundle.title)开关")
         }
         .frame(minHeight: 68)
@@ -140,7 +141,8 @@ private struct PluginDetailView: View {
                         ))
                         .labelsHidden()
                         .tint(pluginSwitchTint(for: colorScheme))
-                        .disabled(!store.gateway.state.isConnected || bundle.readOnlyReason != nil || store.pluginPendingName != nil)
+                        .disabled(!store.gateway.state.isConnected || bundle.readOnlyReason != nil)
+                        .allowsHitTesting(store.pluginPendingName == nil)
                     }
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                         Text(bundle.title).font(.title2.bold())
@@ -198,7 +200,8 @@ private struct PluginDetailView: View {
                                     set: { store.setPluginEnabled(name: bundle.name, enabled: $0, entryID: entryID) }
                                 )).labelsHidden()
                                     .tint(pluginSwitchTint(for: colorScheme))
-                                    .disabled(!store.gateway.state.isConnected || entry.readOnlyReason != nil || store.pluginPendingName != nil)
+                                    .disabled(!store.gateway.state.isConnected || entry.readOnlyReason != nil)
+                                    .allowsHitTesting(store.pluginPendingName == nil)
                             }
                             Button { selectedEntry = entry } label: {
                                 Image(systemName: "chevron.right")

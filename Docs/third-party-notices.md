@@ -60,3 +60,13 @@ SOFTWARE.
 - 许可证原文：https://www.apache.org/licenses/LICENSE-2.0
 
 本项目通过 Maven 依赖链接 Markwon Core、GFM Tables、Strikethrough、Task List 和 HTML 扩展，用于 Android 会话正文的 Markdown 渲染。未启用远程图片加载扩展，图片仍只通过应用既有的 Gateway 附件校验与缓存链路进入界面。
+
+## 宣传页 iPhone 渲染素材
+
+- 模型：Apple iPhone 15 Pro Max Black
+- 作者：[polyman](https://sketchfab.com/Polyman_3D)
+- 来源：[Sketchfab 原始模型](https://sketchfab.com/3d-models/apple-iphone-15-pro-max-black-df17520841214c1792fb8a44c6783ee7)
+- 许可：[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
+- 随附记录：[ATTRIBUTION.txt](../website/assets/mockups/ATTRIBUTION.txt)
+
+模型用于宣传页六张 iPhone 渲染图。制作时调整机身材质、颜色、灯光和视角，替换 Whaleness 屏幕截图，并裁去透明留白、转换为 WebP。模型非 Apple 官方素材。

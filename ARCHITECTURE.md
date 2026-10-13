@@ -119,3 +119,17 @@ Question request 进入 `SharedQuestionStore`，UI answer/cancel 作为 Intent �
 - iOS WebSocket 仍在 Swift；这是有意保留的平台 transport，不是 Swift 业务逻辑回退。
 - Swift UI 镜像为了 SwiftUI/UIKit 观察必须存在，但只能由 KMP Event 发布路径写入。
 - Android 真实 transport、安全持久化和完整产品 UI 尚未完成，分别属于阶段 12 和 13。
+
+## 10. 按住说话与 ASR
+
+`SharedVoiceInputStore` 是 iOS 和 Android 的唯一语音业务状态源。键盘提示、录音阶段、上滑取消、时长/数据上限、音量归一化与平滑、官方插件能力和模型准备、请求 ID、超时、跨会话隔离及草稿冲突策略均在 `shared/commonMain`。`VoiceInputProtocol` 负责官方语音目录解码和 PCM16 WAV 封装。
+
+两端 UI 只判断原生手势、读取 snapshot、绘制由真实音量驱动的底部粒子遮罩并发送 Intent。平台 Adapter 只执行 Store 返回的 effect：系统权限、单声道 16 kHz PCM16 采集、时钟和网络发送。Android 使用 AudioRecord，iOS 使用 AVAudioEngine/AVAudioConverter；取消、退到后台、离开对话或失去连接会停止录音，过期的录音回调不得再次启动 ASR。
+
+松手后通过网关的 `speech-input-v1` 调用 DSH 官方 `speech` Remote API。客户端不内置语音识别模型，模型位于运行官方插件的主机。识别成功只回填草稿，不发送 Agent 消息；识别期间用户修改过草稿时，先显示识别文字，由用户确认插入。官方插件未启用、模型未准备好或网关能力缺失时显示可恢复提示，禁止静默录音。
+
+语音原始帧直接交给公共 Store，避免语音 `selection` 与聊天模型 `selection` 混用；Android Runtime 精确关联 requestId，整段转写使用独立的 185 秒请求上限（共享状态机 180 秒超时并取消）。订阅流继续由 Store 校验 ID，拒绝已退出会话、断线或取消后的迟到结果。
+
+语音遮罩覆盖整个底部输入区域，包括统计条和工具栏。共享 snapshot 保留固定长度的真实音量历史与粒子收束强度；两端只负责蓝色/浅红色渐变、静音漂移和向柱状波形聚拢的图形插值。转写成功或确认插入后，共享 Store 返回 `focusEditor` effect，由平台使原文本控件取得焦点。文本控件在录音和转写期间保持挂载，短按与中文输入法均保留原生编辑流程。
+
+缺少网关能力、官方语音插件或模型初始化时，共享层只生成 `alertMessage`，不会改变草稿或进入录音阶段。iOS 复用原生 Alert，Android 复用 `DshAlertDialog`；提示用户在桌面端升级网关、启用官方语音插件并完成初始化。输入区不再插入升级提示或准备按钮。

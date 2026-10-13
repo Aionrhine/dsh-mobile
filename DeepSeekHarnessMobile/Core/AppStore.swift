@@ -405,6 +405,7 @@ final class AppStore: ObservableObject {
     @Published var completedWorkspaceFile: WorkspaceLocalFile?
 
     let gateway = GatewayClient()
+    let voiceInput: VoiceInputAdapter
     let gatewayLocalID: String
     var pairingHandler: ((String) throws -> Void)?
     var gatewayDisplayName = ""
@@ -560,8 +561,10 @@ final class AppStore: ObservableObject {
         approvalEffectExecutor: (any GatewayApprovalEffectExecuting)? = nil,
         sessionControlEffectExecutor: (any GatewaySessionControlEffectExecuting)? = nil,
         backgroundExecutionController: AgentBackgroundExecutionController? = nil,
-        historyRequestTimeout: Duration = .seconds(20)
+        historyRequestTimeout: Duration = .seconds(20),
+        voiceInput: VoiceInputAdapter? = nil
     ) {
+        self.voiceInput = voiceInput ?? VoiceInputAdapter()
         self.historyRequestTimeout = historyRequestTimeout
         self.gatewayLocalID = gatewayLocalID
         imageAttachmentCache = ImageAttachmentCache(directoryURL: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?.appendingPathComponent("GatewayAttachments/\(gatewayLocalID)", isDirectory: true))
@@ -659,6 +662,7 @@ final class AppStore: ObservableObject {
                 self?.lastError = error.localizedDescription
             }
         }
+        self.voiceInput.bind(gateway)
         gateway.onFrame = { [weak self] frame in self?.handle(frame) }
         gateway.onCommandFrame = { [weak self] json in
             guard let self else { return }
@@ -1102,7 +1106,9 @@ final class AppStore: ObservableObject {
             pluginsLoading = false
             pluginsError = frame.managementAvailable == true ? nil : "当前 Host 不支持插件管理"
         case "plugins-changed":
-            if pluginPageVisited { refreshPlugins() }
+            // The mutation response refreshes the catalog. Avoid a second fetch
+            // for the same Host change while that response is still pending.
+            if pluginPageVisited && pluginToggleRequestID == nil { refreshPlugins() }
         case "plugin-bundle-set-enabled", "plugin-entry-set-enabled":
             guard frame.requestId == pluginToggleRequestID else { return }
             let application = frame.result?["application"]?.stringValue
@@ -1768,6 +1774,7 @@ final class AppStore: ObservableObject {
     }
 
     private func handle(_ frame: GatewayFrame) {
+        if frame.kind == "hello" { voiceInput.hello(frame.capabilities ?? []) }
         if frame.kind == "plugin-catalog" || frame.kind == "plugins-changed" ||
             frame.kind == "plugin-bundle-set-enabled" || frame.kind == "plugin-entry-set-enabled" ||
             (frame.kind == "error" && frame.requestType?.hasPrefix("plugin-") == true) {

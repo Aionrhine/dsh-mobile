@@ -12,6 +12,31 @@ import org.junit.Test
 
 class AndroidGatewayDiagnosticsTest {
     @Test
+    fun failureDetailsDistinguishPingTimeoutAndKeepSensitiveExceptionMessagesOut() {
+        val lines = mutableListOf<String>()
+        var now = 1_000L
+        val diagnostics = AndroidGatewayDiagnostics.forTest(monotonicMillis = { now }) { _, _, message ->
+            lines += message
+        }
+        diagnostics.lifecycle(GatewayLifecycleEvent.BACKGROUND)
+        now += 30_000
+        val secret = "secret-token-endpoint"
+        diagnostics.transportFailure(7, "control", GatewayTransportFailureCause.from(
+            java.net.SocketTimeoutException("sent ping but didn't receive pong within 30000ms $secret")
+        ))
+        diagnostics.transportFailure(7, secret, GatewayTransportFailureCause.from(java.io.IOException(secret)))
+        diagnostics.lifecycle(GatewayLifecycleEvent.FOREGROUND)
+        diagnostics.transportFailure(7, "conversation", GatewayTransportFailureCause.PEER_CLOSED)
+        val output = lines.joinToString("\n")
+        assertTrue(output.contains("cause=ping-timeout background=true backgroundMillis=30000"))
+        assertTrue(output.contains("channel=unknown cause=io-error"))
+        assertTrue(output.contains("cause=peer-closed background=false backgroundMillis=-1"))
+        assertFalse(output.contains(secret))
+        assertEquals(GatewayTransportFailureCause.SOCKET_TIMEOUT,
+            GatewayTransportFailureCause.from(java.net.SocketTimeoutException("read timed out")))
+    }
+
+    @Test
     fun highFrequencyChunksAreSampledInsteadOfLoggedPerToken() {
         val lines = mutableListOf<String>()
         val diagnostics = AndroidGatewayDiagnostics.forTest { _, _, message -> lines += message }

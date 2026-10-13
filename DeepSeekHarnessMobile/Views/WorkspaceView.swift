@@ -38,7 +38,7 @@ struct WorkspaceView: View {
                 drawerContent(progress: progress, topInset: topInset, width: drawerWidth)
                     .frame(width: drawerWidth, height: fullHeight, alignment: .topLeading)
 
-                workspaceContent(openDrawer: { openDrawer(width: drawerWidth) }, topInset: topInset)
+                workspaceContent(openDrawer: { openDrawer(width: drawerWidth) }, topInset: topInset, drawerWidth: drawerWidth)
                     .frame(width: geometry.size.width, height: fullHeight)
                     .background(DSHColor.navy)
                     .overlay {
@@ -64,6 +64,11 @@ struct WorkspaceView: View {
                             Color.clear
                                 .contentShape(Rectangle())
                                 .onTapGesture { closeDrawer() }
+                                .gesture(
+                                    DragGesture(minimumDistance: 6).onEnded { value in
+                                        if value.translation.width < -35 { closeDrawer() }
+                                    }
+                                )
                                 .accessibilityLabel("关闭侧边栏")
                                 .accessibilityAddTraits(.isButton)
                         }
@@ -72,7 +77,6 @@ struct WorkspaceView: View {
             }
             .frame(width: geometry.size.width, height: fullHeight)
             .offset(y: -topInset)
-            .simultaneousGesture(drawerDrag(width: drawerWidth))
         }
         .background(DSHColor.navy.ignoresSafeArea())
         .onChange(of: drawerOffset) { _, value in
@@ -128,7 +132,7 @@ struct WorkspaceView: View {
         }
     }
 
-    private func workspaceContent(openDrawer: @escaping () -> Void, topInset: CGFloat) -> some View {
+    private func workspaceContent(openDrawer: @escaping () -> Void, topInset: CGFloat, drawerWidth: CGFloat) -> some View {
         ZStack {
             DeepOceanBackground()
                 .contentShape(Rectangle())
@@ -161,10 +165,37 @@ struct WorkspaceView: View {
                     Spacer(minLength: 24)
                 }
                 .padding(.horizontal, 22).padding(.top, topInset + 18)
+                .background {
+                    DrawerPanGestureAttachment(
+                        shouldBegin: { translation in
+                            guard abs(translation.x) > abs(translation.y) * 1.2 else { return false }
+                            return drawerOffset > 0 ? translation.x < 0 : translation.x > 0
+                        },
+                        onChanged: { translation in
+                            if drawerDragStart == nil { drawerDragStart = drawerOffset }
+                            drawerOffset = min(max((drawerDragStart ?? 0) + translation, 0), drawerWidth)
+                        },
+                        onEnded: { translation, velocity, cancelled in
+                            guard let start = drawerDragStart else { return }
+                            drawerDragStart = nil
+                            let open: Bool
+                            if cancelled {
+                                open = start > drawerWidth * 0.5
+                            } else if start == 0 {
+                                open = translation > 24 || velocity > 250
+                            } else {
+                                open = translation >= -24 && velocity >= -250
+                            }
+                            withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+                                drawerOffset = open ? drawerWidth : 0
+                            }
+                        }
+                    )
+                }
             }
             .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.interactively)
-            .scrollDisabled(drawerDragStart != nil || drawerOffset > 0)
+            .scrollDisabled(drawerDragStart == nil && drawerOffset > 0)
         }
         // A tap handled by empty layout content does not reach the background
         // layer. Keep a container-level fallback; controls retain their own
@@ -231,25 +262,6 @@ struct WorkspaceView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-
-    private func drawerDrag(width: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 6)
-            .onChanged { value in
-                if drawerDragStart == nil {
-                    guard abs(value.translation.width) > abs(value.translation.height) * 1.2 else { return }
-                    drawerDragStart = drawerOffset
-                }
-                drawerOffset = min(max((drawerDragStart ?? 0) + value.translation.width, 0), width)
-            }
-            .onEnded { value in
-                guard let start = drawerDragStart else { return }
-                drawerDragStart = nil
-                let open = start + value.predictedEndTranslation.width > width * 0.5
-                withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-                    drawerOffset = open ? width : 0
-                }
-            }
     }
 
     private func openDrawer(width: CGFloat) {
@@ -527,6 +539,106 @@ struct WorkspaceView: View {
         }
         .frame(maxWidth: .infinity).frame(height: 38)
         .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+}
+
+/// Installs a directional pan on the workspace scroll view. A rightward pan
+/// wins over controls and scrolling; a vertical pan fails here and stays with
+/// the scroll view's native recognizer.
+private struct DrawerPanGestureAttachment: UIViewRepresentable {
+    let shouldBegin: (CGPoint) -> Bool
+    let onChanged: (CGFloat) -> Void
+    let onEnded: (_ translation: CGFloat, _ velocity: CGFloat, _ cancelled: Bool) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeUIView(context: Context) -> AttachmentView {
+        let view = AttachmentView()
+        view.isUserInteractionEnabled = false
+        let coordinator = context.coordinator
+        view.onHierarchyChange = { [weak view, weak coordinator] in
+            DispatchQueue.main.async { [weak view, weak coordinator] in
+                guard let view else { return }
+                coordinator?.attach(from: view)
+            }
+        }
+        return view
+    }
+
+    func updateUIView(_ uiView: AttachmentView, context: Context) {
+        context.coordinator.shouldBegin = shouldBegin
+        context.coordinator.onChanged = onChanged
+        context.coordinator.onEnded = onEnded
+        context.coordinator.attach(from: uiView)
+    }
+
+    static func dismantleUIView(_ uiView: AttachmentView, coordinator: Coordinator) {
+        uiView.onHierarchyChange = nil
+        coordinator.detach()
+    }
+
+    final class AttachmentView: UIView {
+        var onHierarchyChange: (() -> Void)?
+
+        override func didMoveToSuperview() {
+            super.didMoveToSuperview()
+            onHierarchyChange?()
+        }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            onHierarchyChange?()
+        }
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var shouldBegin: ((CGPoint) -> Bool)?
+        var onChanged: ((CGFloat) -> Void)?
+        var onEnded: ((CGFloat, CGFloat, Bool) -> Void)?
+        private weak var scrollView: UIScrollView?
+        private var pan: UIPanGestureRecognizer?
+
+        func attach(from view: UIView) {
+            var ancestor = view.superview
+            while let current = ancestor, !(current is UIScrollView) {
+                ancestor = current.superview
+            }
+            guard let scrollView = ancestor as? UIScrollView, self.scrollView !== scrollView else { return }
+            detach()
+            let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+            pan.delegate = self
+            pan.cancelsTouchesInView = true
+            scrollView.addGestureRecognizer(pan)
+            scrollView.panGestureRecognizer.require(toFail: pan)
+            self.scrollView = scrollView
+            self.pan = pan
+        }
+
+        func detach() {
+            pan?.isEnabled = false
+            if let pan { scrollView?.removeGestureRecognizer(pan) }
+            pan = nil
+            scrollView = nil
+        }
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return false }
+            return shouldBegin?(pan.translation(in: pan.view)) ?? false
+        }
+
+        @objc private func handlePan(_ pan: UIPanGestureRecognizer) {
+            let translation = pan.translation(in: pan.view).x
+            switch pan.state {
+            case .began, .changed:
+                onChanged?(translation)
+            case .ended:
+                onEnded?(translation, pan.velocity(in: pan.view).x, false)
+            case .cancelled, .failed:
+                onEnded?(translation, 0, true)
+            default:
+                break
+            }
+        }
     }
 }
 

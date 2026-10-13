@@ -254,7 +254,9 @@ private fun PluginBundleRow(
         Switch(bundle.enabled, onCheckedChange = { enabled ->
             if (bundle.name == "dsh-plugin-mobile-gateway" && !enabled) onGatewayDisable()
             else stateHolder.setPluginEnabled(bundle.name, enabled)
-        }, colors = pluginSwitchColors(), enabled = stateHolder.gatewayState.connection == GatewayConnectionState.CONNECTED &&
+        }, colors = pluginSwitchColors(stateHolder.pluginPendingName != null &&
+            stateHolder.gatewayState.connection == GatewayConnectionState.CONNECTED && bundle.readOnlyReason == null),
+            enabled = stateHolder.gatewayState.connection == GatewayConnectionState.CONNECTED &&
             bundle.readOnlyReason == null && stateHolder.pluginPendingName == null)
     }
 }
@@ -279,7 +281,9 @@ private fun PluginBundleDetail(
                 Switch(bundle.enabled, onCheckedChange = { enabled ->
                     if (bundle.name == "dsh-plugin-mobile-gateway" && !enabled) onGatewayDisable()
                     else stateHolder.setPluginEnabled(bundle.name, enabled)
-                }, colors = pluginSwitchColors(), enabled = stateHolder.gatewayState.connection == GatewayConnectionState.CONNECTED &&
+                }, colors = pluginSwitchColors(stateHolder.pluginPendingName != null &&
+                    stateHolder.gatewayState.connection == GatewayConnectionState.CONNECTED && bundle.readOnlyReason == null),
+                    enabled = stateHolder.gatewayState.connection == GatewayConnectionState.CONNECTED &&
                     bundle.readOnlyReason == null && stateHolder.pluginPendingName == null)
             }
         }
@@ -317,7 +321,9 @@ private fun PluginBundleDetail(
                 entry.entryId?.let { entryId ->
                     Switch(entry.enabled, onCheckedChange = {
                         stateHolder.setPluginEnabled(bundle.name, it, entryId)
-                    }, colors = pluginSwitchColors(), enabled = stateHolder.gatewayState.connection == GatewayConnectionState.CONNECTED &&
+                    }, colors = pluginSwitchColors(stateHolder.pluginPendingName != null &&
+                        stateHolder.gatewayState.connection == GatewayConnectionState.CONNECTED && entry.readOnlyReason == null),
+                        enabled = stateHolder.gatewayState.connection == GatewayConnectionState.CONNECTED &&
                         entry.readOnlyReason == null && stateHolder.pluginPendingName == null)
                 }
                 IconButton(onClick = { selectedEntry = entry }, modifier = Modifier.size(40.dp)) {
@@ -417,12 +423,29 @@ private fun ExperimentalPluginBadge() {
 }
 
 @Composable
-private fun pluginSwitchColors(): SwitchColors {
+private fun pluginSwitchColors(preserveDisabledColors: Boolean): SwitchColors {
     val blue = if (isSystemInDarkTheme()) Color(0xFF1D447F) else Color(0xFF245AC4)
-    return SwitchDefaults.colors(
+    if (!preserveDisabledColors) return SwitchDefaults.colors(
         checkedTrackColor = blue,
         checkedBorderColor = blue,
         checkedThumbColor = Color.White
+    )
+    val uncheckedTrack = MaterialTheme.colorScheme.surfaceContainerHighest
+    val uncheckedBorder = MaterialTheme.colorScheme.outline
+    val uncheckedThumb = MaterialTheme.colorScheme.outline
+    return SwitchDefaults.colors(
+        checkedTrackColor = blue,
+        checkedBorderColor = blue,
+        checkedThumbColor = Color.White,
+        uncheckedTrackColor = uncheckedTrack,
+        uncheckedBorderColor = uncheckedBorder,
+        uncheckedThumbColor = uncheckedThumb,
+        disabledCheckedTrackColor = blue,
+        disabledCheckedBorderColor = blue,
+        disabledCheckedThumbColor = Color.White,
+        disabledUncheckedTrackColor = uncheckedTrack,
+        disabledUncheckedBorderColor = uncheckedBorder,
+        disabledUncheckedThumbColor = uncheckedThumb
     )
 }
 

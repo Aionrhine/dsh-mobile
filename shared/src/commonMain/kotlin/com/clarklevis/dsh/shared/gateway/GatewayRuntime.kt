@@ -105,7 +105,8 @@ class GatewayRuntime(
     private val frameDecodingDispatcher: CoroutineDispatcher? = null,
     private var expectedGatewayId: String? = null,
     private val trustedEndpoints: List<String> = emptyList(),
-    private val onIdentity: suspend (GatewayFrame, String) -> Unit = { _, _ -> }
+    private val onIdentity: suspend (GatewayFrame, String) -> Unit = { _, _ -> },
+    private val foregroundProbeTimeoutMilliseconds: Long = DEFAULT_FOREGROUND_PROBE_TIMEOUT_MILLISECONDS
 ) {
     private val serialization = Mutex()
     private val mutableState = MutableStateFlow(
@@ -139,6 +140,9 @@ class GatewayRuntime(
     private var reconnectJob: Job? = null
     private var recoveryDeadlineJob: Job? = null
     private var connectionAttemptTimeoutJob: Job? = null
+    private var foregroundProbeJob: Job? = null
+    private var foregroundRetryWindowJob: Job? = null
+    private var foregroundFastRetryAvailable = false
 
     val state: StateFlow<GatewayRuntimeState> = mutableState.asStateFlow()
     /**
@@ -244,19 +248,29 @@ class GatewayRuntime(
     suspend fun applicationDidEnterBackground() = serialized {
         // 切后台不代表用户取消连接；空闲时不启动前台服务，也不主动关闭健康 socket。
         isInBackground = true
+        cancelForegroundProbeLocked()
+        updateRequestTimeoutsLocked()
     }
 
     fun applicationDidBecomeActive() {
         scope.launch {
             serialized {
+                val wasInBackground = isInBackground
                 isInBackground = false
-                // 活动回合的恢复窗口耗尽只结束后台恢复；回到前台允许重新连接。
+                updateRequestTimeoutsLocked()
+                // 恢复窗口或普通连接握手超时只结束本次尝试；回到前台允许重新连接。
                 // 鉴权、身份校验和一次性配对失败仍保留各自的阻断条件。
-                if (desiredConnection && mutableState.value.lastError == ERROR_RECOVERY_TIMEOUT) {
+                if (desiredConnection && !isManualPairingAttempt &&
+                    mutableState.value.lastError in setOf(ERROR_RECOVERY_TIMEOUT, ERROR_CONNECTION_TIMEOUT)) {
                     reconnectBlocked = false
                 }
-                if (canReconnectLocked() && mutableState.value.connection != GatewayConnectionState.CONNECTED) {
-                    scheduleReconnectLocked(immediate = true)
+                if (canReconnectLocked()) {
+                    if (mutableState.value.connection == GatewayConnectionState.CONNECTED) {
+                        if (wasInBackground) probeForegroundConnectionLocked()
+                    } else if (connectionAttemptTimeoutJob?.isActive != true) {
+                        // 回前台直接尝试上一次可用地址，并取消后台退避等待。
+                        scheduleReconnectLocked(immediate = true)
+                    }
                 }
             }
         }
@@ -376,14 +390,12 @@ class GatewayRuntime(
     private suspend fun sendAsActiveLocked(request: GatewayRequest): Boolean {
         val pendingId = ++requestGeneration
         val transportGeneration = connectionGeneration
-        val timeoutJob = scope.launch {
-            delay(requestTimeoutMilliseconds)
-            serialized { handleRequestTimeoutLocked(request.responseKind, pendingId, transportGeneration) }
-        }
+        val pending = PendingRequest(request, transportGeneration, pendingId)
         pendingLanes[request.responseKind] = PendingLane(
-            active = PendingRequest(request, transportGeneration, pendingId, timeoutJob),
+            active = pending,
             queued = ArrayDeque()
         )
+        updateRequestTimeoutsLocked()
         return runCatching { transport.send(request.payload) }.fold(
             onSuccess = { true },
             onFailure = {
@@ -401,7 +413,13 @@ class GatewayRuntime(
 
     private suspend fun completeLaneLocked(responseKind: String) {
         val lane = pendingLanes.remove(responseKind) ?: return
-        lane.active.timeoutJob.cancel()
+        if (responseKind == "pong") {
+            foregroundProbeJob?.cancel()
+            foregroundProbeJob = null
+            // 控制通道 Pong 可能先于后台积压的对话通道 failure 到达。
+            // 前台恢复窗口内仍保留一次立即恢复机会，避免重新进入退避。
+        }
+        lane.active.timeoutJob?.cancel()
         val queued = lane.queued.removeFirstOrNull() ?: return
         // 正常响应已经确定 active 请求结束；下一请求必须沿用当前 socket 串行发送。
         // generation 回收只留给 timeout/transport failure，否则 hello 后的重复快照会形成重连闭环。
@@ -422,6 +440,7 @@ class GatewayRuntime(
     }
 
     private suspend fun openTransportLocked(preserveTurns: Boolean) {
+        cancelForegroundProbeLocked()
         connectionAttemptTimeoutJob?.cancel()
         connectionAttemptTimeoutJob = null
         if (!networkAvailableLocked()) {
@@ -495,6 +514,8 @@ class GatewayRuntime(
     }
 
     private suspend fun handleTransportFailureLocked(failure: GatewayTransportState.Failed) {
+        val immediateForegroundRetry = foregroundFastRetryAvailable && !isInBackground
+        cancelForegroundProbeLocked()
         // failure 与 frame 共用有序通道；处理 failure 时立即作废代次，随后到达的旧帧只能被拒绝。
         connectionAttemptTimeoutJob?.cancel()
         connectionAttemptTimeoutJob = null
@@ -511,7 +532,7 @@ class GatewayRuntime(
             connection = if (shouldReconnect) GatewayConnectionState.CONNECTING else GatewayConnectionState.FAILED,
             lastError = failure.stableErrorCode()
         )
-        if (shouldReconnect) scheduleReconnectLocked(immediate = false)
+        if (shouldReconnect) scheduleReconnectLocked(immediate = immediateForegroundRetry)
     }
 
     private data class FrameDelivery(val event: GatewayRuntimeEvent.Frame, val bytes: Long)
@@ -610,7 +631,8 @@ class GatewayRuntime(
         val correlation = correlateLocked(frame)
         if (!correlation.accepted) return null
         if (frame.kind == "error") {
-            if (frame.resetRequired == true || frame.requestType in setOf("session-agent-preset", "select-agent-preset")) {
+            if (frame.resetRequired == true || frame.requestType?.startsWith("speech-") == true ||
+                frame.requestType in setOf("session-agent-preset", "select-agent-preset")) {
                 return FrameDelivery(GatewayRuntimeEvent.Frame(transportFrame.text, frame, correlation.sessionId),
                     transportFrame.byteCount.toLong())
             }
@@ -674,6 +696,8 @@ class GatewayRuntime(
             }
             val entry = pendingLanes.entries.firstOrNull { it.value.active.request.requestType == requestType }
             if (entry == null) {
+                // 订阅回执已完成，后续服务撤销仍交由语音 Store 校验订阅 ID。
+                if (requestType == "speech-subscribe" && frame.requestId != null) return Correlation(true, null)
                 rejectLocked("gateway", ERROR_NO_ACTIVE_REQUEST, frame.sessionId)
                 return Correlation(false, frame.sessionId)
             }
@@ -746,6 +770,8 @@ class GatewayRuntime(
             "queue-item-updated" -> request.correlationId == frame.itemId
             "attachment" -> request.correlationId == frame.attachment?.attachmentId
             "question-response", "approval-response" -> request.correlationId == frame.rpcId
+            "speech-catalog", "speech-subscribed", "speech-unsubscribed", "speech-preparing",
+            "speech-preparation-cancelled", "speech-transcript", "speech-cancelled",
             "session-created", "session-agent-preset", "select-agent-preset", "file-list", "file-download-opened" -> request.correlationId == frame.requestId
             "file-download-chunk", "file-download-cancelled" -> request.correlationId == frame.transferId
             "command-options", "command-selected" -> request.correlationId == frame.command?.stringValue
@@ -761,6 +787,8 @@ class GatewayRuntime(
             "queue-item-updated" -> frame.itemId
             "attachment" -> frame.attachment?.attachmentId
             "question-response", "approval-response" -> frame.rpcId
+            "speech-catalog", "speech-subscribed", "speech-unsubscribed", "speech-preparing",
+            "speech-preparation-cancelled", "speech-transcript", "speech-cancelled",
             "session-created", "session-agent-preset", "select-agent-preset", "file-list", "file-download-opened" -> frame.requestId
             "file-download-chunk", "file-download-cancelled" -> frame.transferId
             "command-options", "command-selected" -> frame.command?.stringValue
@@ -874,8 +902,9 @@ class GatewayRuntime(
     }
 
     private suspend fun cancelPendingLocked(reason: String, releaseMessageTurns: Boolean = false) {
+        cancelForegroundProbeLocked()
         pendingLanes.values.forEach { lane ->
-            lane.active.timeoutJob.cancel()
+            lane.active.timeoutJob?.cancel()
             if (releaseMessageTurns && lane.active.request.requestType == "message") {
                 releaseTurnLocked(lane.active.request.targetSessionId)
             }
@@ -886,8 +915,9 @@ class GatewayRuntime(
     }
 
     private suspend fun cancelLaneLocked(responseKind: String, reason: String) {
+        if (responseKind == "pong") cancelForegroundProbeLocked()
         val lane = pendingLanes.remove(responseKind) ?: return
-        lane.active.timeoutJob.cancel()
+        lane.active.timeoutJob?.cancel()
         if (lane.active.request.requestType == "message") {
             releaseTurnLocked(lane.active.request.targetSessionId)
         }
@@ -909,6 +939,10 @@ class GatewayRuntime(
     ) {
         val lane = pendingLanes[responseKind] ?: return
         if (lane.active.id != pendingId || lane.active.generation != transportGeneration) return
+        if (isInBackground && !mutableState.value.shouldKeepAliveInBackground) {
+            lane.active.timeoutJob = null
+            return
+        }
         pendingLanes.remove(responseKind)
         // 当前正在执行的 timeout job 不得取消自身，否则下一处挂起点会中止终态发布。
         if (lane.active.request.requestType == "message") {
@@ -1004,6 +1038,25 @@ class GatewayRuntime(
             activeTurnSessionIds = activeTurnCountsBySession.keys.toSet() + queuedSessionIds,
             hasUnassociatedTurn = unassociatedTurnCount > 0
         )
+        updateRequestTimeoutsLocked()
+    }
+
+    private fun updateRequestTimeoutsLocked() {
+        val shouldRun = !isInBackground || mutableState.value.shouldKeepAliveInBackground
+        pendingLanes.forEach { (responseKind, lane) ->
+            val pending = lane.active
+            if (!shouldRun) {
+                pending.timeoutJob?.cancel()
+                pending.timeoutJob = null
+            } else if (pending.timeoutJob == null) {
+                // 空闲后台不把延迟或进程暂停当成网络故障；回前台后重新给出完整响应窗口。
+                // 保留原 lane 与 generation，迟到响应仍对应原请求，不会串到下一请求。
+                pending.timeoutJob = scope.launch {
+                    delay(pending.request.timeoutMilliseconds ?: requestTimeoutMilliseconds)
+                    serialized { handleRequestTimeoutLocked(responseKind, pending.id, pending.generation) }
+                }
+            }
+        }
     }
 
     private fun networkAvailableLocked(): Boolean =
@@ -1065,13 +1118,55 @@ class GatewayRuntime(
             }
             serialized {
                 if (canReconnectLocked()) {
-                    if (trustedEndpoints.size > 1) {
+                    if (!immediate && trustedEndpoints.size > 1) {
                         endpoint = trustedEndpoints[(trustedEndpoints.indexOf(endpoint) + 1) % trustedEndpoints.size]
                     }
                     openTransportLocked(preserveTurns = true)
                 }
             }
         }
+    }
+
+    private suspend fun probeForegroundConnectionLocked() {
+        cancelForegroundProbeLocked()
+        foregroundFastRetryAvailable = true
+        foregroundRetryWindowJob = scope.launch {
+            delay(foregroundProbeTimeoutMilliseconds)
+            serialized {
+                foregroundRetryWindowJob = null
+                foregroundFastRetryAvailable = false
+            }
+        }
+        val generation = connectionGeneration
+        // 若已有手动 Ping 在等待，沿用同一 lane，防止无关联 ID 的 Pong 串到新请求。
+        if (pendingLanes["pong"] == null && !sendRequestLocked(GatewayRequests.ping())) {
+            cancelForegroundProbeLocked()
+            recycleConnectionForDeferredLocked()
+            return
+        }
+        val pendingId = pendingLanes["pong"]?.active?.id ?: return
+        foregroundProbeJob = scope.launch {
+            delay(foregroundProbeTimeoutMilliseconds)
+            serialized {
+                if (isInBackground || connectionGeneration != generation ||
+                    mutableState.value.connection != GatewayConnectionState.CONNECTED ||
+                    pendingLanes["pong"]?.active?.id != pendingId) {
+                    return@serialized
+                }
+                // 不等待 30 秒周期心跳或普通请求超时；当前 job 不取消自身。
+                foregroundProbeJob = null
+                foregroundFastRetryAvailable = false
+                recycleConnectionForDeferredLocked()
+            }
+        }
+    }
+
+    private fun cancelForegroundProbeLocked() {
+        foregroundProbeJob?.cancel()
+        foregroundProbeJob = null
+        foregroundRetryWindowJob?.cancel()
+        foregroundRetryWindowJob = null
+        foregroundFastRetryAvailable = false
     }
 
     private suspend fun rejectLocked(
@@ -1140,7 +1235,7 @@ class GatewayRuntime(
         val request: GatewayRequest,
         val generation: Long,
         val id: Long,
-        val timeoutJob: Job
+        var timeoutJob: Job? = null
     )
     private data class PendingLane(
         val active: PendingRequest,
@@ -1160,6 +1255,7 @@ class GatewayRuntime(
         private const val DEFAULT_REQUEST_TIMEOUT_MILLISECONDS = 30_000L
         private const val DEFAULT_RECOVERY_WINDOW_MILLISECONDS = 60_000L
         private const val DEFAULT_CONNECTION_ATTEMPT_TIMEOUT_MILLISECONDS = 15_000L
+        private const val DEFAULT_FOREGROUND_PROBE_TIMEOUT_MILLISECONDS = 2_000L
         private const val MAXIMUM_ATTACHMENT_BYTES = 8 * 1_024 * 1_024
         private const val MAXIMUM_OUTGOING_IMAGE_COUNT = 4
         private const val MAXIMUM_OUTGOING_IMAGE_CHARACTERS = 4_893_356
@@ -1200,7 +1296,7 @@ class GatewayRuntime(
             "websocket-failure"
         )
         private val UNCORRELATED_KINDS = setOf(
-            "event", "hello", "paired", "pong", "question-requested", "question-resolved",
+            "event", "hello", "paired", "question-requested", "question-resolved",
             "approval-requested", "approval-resolved", "tasks-updated", "goal-updated",
             "session-snapshot", "assistant-stream", "session-stream-reset", "projection-baseline",
             "session-agent-preset-updated"
@@ -1209,7 +1305,9 @@ class GatewayRuntime(
             "history", "attachment", "sent", "question-response", "approval-response",
             "file-list", "file-download-opened", "file-download-chunk", "file-download-cancelled",
             "session-cancelled", "session-created", "queue-item-updated",
-            "session-agent-preset", "select-agent-preset"
+            "session-agent-preset", "select-agent-preset",
+            "speech-catalog", "speech-subscribed", "speech-unsubscribed", "speech-preparing",
+            "speech-preparation-cancelled", "speech-transcript", "speech-cancelled"
         )
         private val IDEMPOTENT_CONNECTION_STATES = setOf(
             GatewayConnectionState.CONNECTING,

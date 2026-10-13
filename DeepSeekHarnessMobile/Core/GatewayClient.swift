@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import Security
 import OSLog
 
@@ -60,6 +61,7 @@ final class GatewayClient: ObservableObject {
     var onFrame: ((GatewayFrame) -> Void)?
     /// 仅命令菜单需要原始 JSON；对话流不能触发它的解析和 UI 发布。
     var onCommandFrame: ((String) -> Void)?
+    var onSpeechFrame: ((String) -> Void)?
     var onConnectionFailure: ((String) -> Void)?
     private var socket: URLSessionWebSocketTask?
     private var receiveTask: Task<Void, Never>?
@@ -221,6 +223,7 @@ final class GatewayClient: ObservableObject {
         state = .connecting
         var request = URLRequest(url: url)
         request.setValue(channel, forHTTPHeaderField: "X-DSH-Channel")
+        request.setValue(Data(UIDevice.current.name.utf8).base64EncodedString(), forHTTPHeaderField: "X-DSH-Device-Name")
         do {
             request.setValue(try GatewayDeviceIdentityStore.loadOrCreate(), forHTTPHeaderField: "X-DSH-Device-ID")
         } catch {
@@ -634,6 +637,17 @@ final class GatewayClient: ObservableObject {
         let type: String
     }
 
+    // 解复用只负责传输格式；ASR 协议字段与状态由公共层处理。
+    nonisolated static func decodeIncomingFrame(_ data: Data) throws -> (GatewayFrame?, String?) {
+        struct SpeechEnvelope: Decodable { let kind: String?; let requestType: String? }
+        let header = try? JSONDecoder().decode(SpeechEnvelope.self, from: data)
+        if header?.kind?.hasPrefix("speech-") == true ||
+            (header?.kind == "error" && header?.requestType?.hasPrefix("speech-") == true) {
+            return (nil, String(decoding: data, as: UTF8.self))
+        }
+        return (try GatewayWireDecoder.decode(data), nil)
+    }
+
     private func receiveLoop(_ socket: URLSessionWebSocketTask) async {
         do {
             while !Task.isCancelled {
@@ -645,12 +659,16 @@ final class GatewayClient: ObservableObject {
                 @unknown default: continue
                 }
                 do {
-                    // A history page can contain thousands of raw events. JSON
-                    // decoding must not occupy the main actor that drives SwiftUI.
-                    let frame = try await Task.detached(priority: .userInitiated) {
-                        try GatewayWireDecoder.decode(data)
+                    // 语音帧使用独立公共解码器，所有 JSON 扫描仍在后台完成。
+                    let decoded = try await Task.detached(priority: .userInitiated) {
+                        try Self.decodeIncomingFrame(data)
                     }.value
                     guard !Task.isCancelled, self.socket === socket else { return }
+                    if let speech = decoded.1 {
+                        if state.isConnected { onSpeechFrame?(speech) }
+                        continue
+                    }
+                    guard let frame = decoded.0 else { continue }
                     if frame.kind.hasPrefix("approval") {
                         gatewayApprovalTrace(
                             "transport received kind=\(frame.kind) hasRpc=\(frame.rpcId?.isEmpty == false) " +
@@ -803,7 +821,11 @@ final class GatewayClient: ObservableObject {
             shouldReportFailure = !(isApplicationInBackground || isRecoveringFromBackground)
         default:
             let reasonSuffix = closeReason.flatMap { $0.isEmpty ? nil : String(localized: "close.server-reason.suffix", defaultValue: "；服务端原因：\($0)") } ?? ""
-            detail = String(localized: "websocket.connect-failed.detail", defaultValue: "WebSocket 连接失败：\(nsError.localizedDescription)（\(nsError.domain) \(nsError.code)）\(reasonSuffix)")
+            let connectionFailure = String(
+                localized: "websocket.connect-failed.detail",
+                defaultValue: "WebSocket 连接失败：\(nsError.localizedDescription)（\(nsError.domain) \(nsError.code)）\(reasonSuffix)"
+            )
+            detail = connectionFailure + (Self.certificateTrustAdvice(for: nsError).map { "\n\n\($0)" } ?? "")
             shouldReconnect = true
             shouldReportFailure = !(isApplicationInBackground || isRecoveringFromBackground)
         }
@@ -812,6 +834,22 @@ final class GatewayClient: ObservableObject {
             shouldReconnect: shouldReconnect && !isManualPairingAttempt,
             reportFailure: shouldReportFailure
         )
+    }
+
+    static func certificateTrustAdvice(for error: NSError) -> String? {
+        guard error.domain == NSURLErrorDomain else { return nil }
+        switch error.code {
+        case NSURLErrorServerCertificateHasBadDate,
+             NSURLErrorServerCertificateUntrusted,
+             NSURLErrorServerCertificateHasUnknownRoot,
+             NSURLErrorServerCertificateNotYetValid:
+            return String(
+                localized: "gateway.certificate-trust.advice",
+                defaultValue: "如果确认这是安全的个人服务器，请在网关中更新公网配置，并确保其公网证书有效后重试。"
+            )
+        default:
+            return nil
+        }
     }
 
     private func fail(_ detail: String, shouldReconnect: Bool, reportFailure: Bool = true) {

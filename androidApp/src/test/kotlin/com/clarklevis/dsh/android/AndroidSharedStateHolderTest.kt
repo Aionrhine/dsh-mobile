@@ -5,13 +5,28 @@ import com.clarklevis.dsh.shared.gateway.GatewayOutgoingImage
 import com.clarklevis.dsh.shared.gateway.GatewayRuntimeEvent
 import com.clarklevis.dsh.shared.protocol.GatewayFrame
 import com.clarklevis.dsh.shared.protocol.GatewayWorkspace
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
+import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class AndroidSharedStateHolderTest {
+    // StateHolder 的平台适配器依赖 Main dispatcher；JVM 测试不使用 Android Looper。
+    @Before
+    fun setUpMainDispatcher() = Dispatchers.setMain(UnconfinedTestDispatcher())
+
+    @After
+    fun resetMainDispatcher() = Dispatchers.resetMain()
+
     @Test
     fun sessionCreationResponseFromMainRuntimeConsumerCompletesPendingRequest() = runTest {
         val pending = AndroidPendingSessionCreation()

@@ -51,6 +51,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -119,6 +120,10 @@ internal fun DshProductApp(
     notificationRoute: AndroidNotificationSessionRoute?,
     onNotificationRouteOpened: (AndroidNotificationSessionRoute) -> Unit
 ) {
+    val updateModel: com.clarklevis.dsh.android.update.AppUpdateViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val updateState by updateModel.state.collectAsStateWithLifecycle()
+    AppUpdateDialogs(updateModel, updateState)
+    LaunchedEffect(updateModel) { updateModel.checkOnStartup() }
     val navController = rememberNavController()
     LaunchedEffect(notificationRoute, stateHolder.snapshot.sessions) {
         val route = notificationRoute ?: return@LaunchedEffect
@@ -183,6 +188,7 @@ internal fun DshProductApp(
         }
         composable(ROUTE_SETTINGS) {
             SettingsScreen(
+                updateModel = updateModel,
                 stateHolder = stateHolder,
                 onBack = navController::popBackStack,
                 onOpenAgentPresets = { navController.navigate(ROUTE_SETTINGS_AGENT_PRESETS) },

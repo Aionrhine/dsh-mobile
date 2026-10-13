@@ -38,10 +38,19 @@ struct SlashCommandTextView: UIViewRepresentable {
     let presentation: SlashCommandComposerPresentation?
     let placeholder: String
     @Binding var isFocused: Bool
+    var onVoicePress: (() -> Void)? = nil
+    var onVoiceMove: ((CGFloat) -> Void)? = nil
+    var onVoiceRelease: (() -> Void)? = nil
+    var onVoiceCancel: (() -> Void)? = nil
 
     func makeUIView(context: Context) -> CommandTextView {
         let textView = CommandTextView()
         textView.delegate = context.coordinator
+        let voiceGesture = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.voiceGestureChanged(_:)))
+        voiceGesture.minimumPressDuration = Double(VoiceInputInteraction.shared.LONG_PRESS_MILLISECONDS) / 1000
+        voiceGesture.cancelsTouchesInView = true
+        voiceGesture.delegate = context.coordinator
+        textView.addGestureRecognizer(voiceGesture)
         textView.backgroundColor = .clear
         textView.isScrollEnabled = false
         textView.textContainerInset = .zero
@@ -57,11 +66,7 @@ struct SlashCommandTextView: UIViewRepresentable {
     func updateUIView(_ textView: CommandTextView, context: Context) {
         context.coordinator.update(parent: self)
         textView.apply(text: text, presentation: presentation, placeholder: placeholder)
-        if isFocused && !textView.isFirstResponder {
-            textView.becomeFirstResponder()
-        } else if !isFocused && textView.isFirstResponder {
-            textView.resignFirstResponder()
-        }
+        context.coordinator.synchronizeFocus(textView)
     }
 
     func sizeThatFits(
@@ -83,7 +88,11 @@ struct SlashCommandTextView: UIViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
-    final class Coordinator: NSObject, UITextViewDelegate {
+    final class Coordinator: NSObject, UITextViewDelegate, UIGestureRecognizerDelegate {
+        private var voiceOrigin = CGPoint.zero
+        private var voiceTouchTimestamp: TimeInterval = 0
+        private var focusRevision = 0
+        private var lastRenderedFocus: Bool?
         private var parent: SlashCommandTextView
 
         init(_ parent: SlashCommandTextView) { self.parent = parent }
@@ -92,18 +101,86 @@ struct SlashCommandTextView: UIViewRepresentable {
             self.parent = parent
         }
 
+        func synchronizeFocus(_ textView: UITextView) {
+            let requestedFocus = parent.isFocused
+            // 只执行发生变化的显式请求；普通刷新可能仍携带原生编辑前的旧 Binding 值。
+            guard lastRenderedFocus != requestedFocus else { return }
+            lastRenderedFocus = requestedFocus
+            focusRevision += 1
+            let revision = focusRevision
+            guard requestedFocus != textView.isFirstResponder else { return }
+            DispatchQueue.main.async { [weak self, weak textView] in
+                guard let self, let textView, self.focusRevision == revision,
+                      self.parent.isFocused == requestedFocus, textView.window != nil else { return }
+                if requestedFocus && !textView.isFirstResponder { textView.becomeFirstResponder() }
+                else if !requestedFocus && textView.isFirstResponder { textView.resignFirstResponder() }
+            }
+        }
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            parent.onVoicePress != nil && !parent.isFocused && gestureRecognizer.view?.isFirstResponder != true
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            voiceOrigin = touch.location(in: nil)
+            let acceptsVoice = parent.onVoicePress != nil && !parent.isFocused
+            if acceptsVoice {
+                voiceTouchTimestamp = touch.timestamp
+                traceVoiceInputLatency("touch-down", since: touch.timestamp)
+            }
+            return acceptsVoice
+        }
+
+        @objc func voiceGestureChanged(_ gesture: UILongPressGestureRecognizer) {
+            switch gesture.state {
+            case .began:
+                traceVoiceInputLatency("gesture-recognized", since: voiceTouchTimestamp)
+                parent.onVoicePress?()
+            case .changed: parent.onVoiceMove?(gesture.location(in: nil).y - voiceOrigin.y)
+            case .ended: parent.onVoiceRelease?()
+            case .cancelled, .failed: parent.onVoiceCancel?()
+            default: break
+            }
+        }
+
         func textViewDidChange(_ textView: UITextView) {
             guard parent.text != textView.text else { return }
             parent.text = textView.text
         }
 
         func textViewDidBeginEditing(_ textView: UITextView) {
-            parent.isFocused = true
+            focusRevision += 1
+            if !parent.isFocused { parent.isFocused = true }
         }
 
         func textViewDidEndEditing(_ textView: UITextView) {
-            parent.isFocused = false
+            focusRevision += 1
+            if parent.isFocused { parent.isFocused = false }
         }
+    }
+}
+
+struct VoiceComposerTextInput: View {
+    @Binding var text: String
+    @Binding var isFocused: Bool
+    let presentation: SlashCommandComposerPresentation?
+    let state: SharedVoiceInputSnapshot
+    let voice: VoiceInputAdapter
+    var onHoldingChanged: (Bool) -> Void = { _ in }
+
+    var body: some View {
+        SlashCommandTextView(
+            text: $text,
+            presentation: presentation,
+            placeholder: String(localized: String.LocalizationValue(state.hint)),
+            isFocused: $isFocused,
+            onVoicePress: { onHoldingChanged(true); voice.press() },
+            onVoiceMove: { voice.move($0) },
+            onVoiceRelease: { voice.release(); onHoldingChanged(false) },
+            onVoiceCancel: { voice.cancel(); onHoldingChanged(false) }
+        )
+        .padding(.horizontal, 3)
+        .frame(minHeight: 38, alignment: .top)
     }
 }
 
@@ -212,6 +289,9 @@ struct ConversationView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var activeView = 0
     @State private var draft = ""
+    @State private var voiceSnapshot: SharedVoiceInputSnapshot?
+    @State private var voiceTouchActive = false
+    @State private var voiceToast: String?
     @State private var selectedPhotoItems: [PhotosPickerItem] = []
     @State private var pendingImages: [GatewayOutgoingImage] = []
     @State private var isImportingImages = false
@@ -236,6 +316,7 @@ struct ConversationView: View {
     @State private var viewportHasConversationContent = false
     @State private var viewportContentSessionID: String?
     @State private var bottomSafeAreaInset: CGFloat = 0
+    @State private var voiceWindowHeight: CGFloat = 0
     // 输入主体是 UIKit UITextView，不需要 SwiftUI FocusState 参与焦点仲裁。
     // 普通 State 作为单向的显式聚焦/失焦请求，UITextView 自己持有第一响应者。
     @State private var composerIsFocused = false
@@ -269,7 +350,7 @@ struct ConversationView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea(.container, edges: .bottom)
         .background {
-            WindowBottomSafeAreaReader(bottomInset: $bottomSafeAreaInset)
+            WindowBottomSafeAreaReader(bottomInset: $bottomSafeAreaInset, windowHeight: $voiceWindowHeight)
         }
         .foregroundStyle(.primary)
         .onChange(of: activeView) { _, view in
@@ -480,7 +561,33 @@ struct ConversationView: View {
                     }
                 }
             }
+            .opacity(voiceState.active ? 0 : 1)
             .zIndex(2)
+            ZStack {
+                if voiceState.active {
+                    VoiceRipplePanel(state: voiceState, stop: {
+                        if voiceState.phase == "recording" { store.voiceInput.release() } else { store.voiceInput.cancel() }
+                    })
+                    .transition(.opacity)
+                }
+            }
+            .frame(height: max(1, voiceWindowHeight * VoiceInputInteraction.shared.OVERLAY_HEIGHT_FRACTION))
+            .ignoresSafeArea(.container, edges: .bottom)
+            .allowsHitTesting(voiceState.active && !voiceTouchActive)
+            .animation(voiceOverlayAnimation(active: voiceState.active, reduceMotion: reduceMotion), value: voiceState.active)
+            .zIndex(3)
+        }
+        .overlay(alignment: .bottom) {
+            if let voiceToast {
+                Text(LocalizedStringKey(voiceToast))
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 18).padding(.vertical, 11)
+                    .background(Color.black.opacity(0.78), in: Capsule())
+                    .padding(.bottom, composerHeight + 16)
+                    .allowsHitTesting(false)
+                    .accessibilityIdentifier("voice-input-toast")
+            }
         }
         .animation(.easeOut(duration: 0.16), value: shouldShowScrollToBottom)
         .onPreferenceChange(ComposerHeightPreferenceKey.self) { height in
@@ -488,6 +595,7 @@ struct ConversationView: View {
             composerHeight = height
         }
         .onChange(of: composerIsFocused) { _, isFocused in
+            store.voiceInput.keyboardChanged(isFocused)
             guard isFocused else { return }
             viewportScrollToBottomToken &+= 1
         }
@@ -527,8 +635,38 @@ struct ConversationView: View {
             // `onBottomAlignmentCompleted` above.
             viewportScrollToBottomToken &+= 1
         }
-        .onDisappear { store.leaveSessionAgentPreset() }
+        .alert("语音输入暂不可用", isPresented: Binding(
+            get: { voiceState.alertMessage != nil },
+            set: { if !$0 { store.voiceInput.dismissAlert() } }
+        )) {
+            Button("知道了", role: .cancel) { store.voiceInput.dismissAlert() }
+        } message: {
+            Text(LocalizedStringKey(voiceState.alertMessage ?? ""))
+        }
+        .onReceive(store.voiceInput.$state) { voiceSnapshot = $0 }
+        .onReceive(store.voiceInput.$toastMessage) { voiceToast = $0 }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)) { _ in
+            // 键盘隐藏可能来自上一轮动画或其他输入框，不能用它发出失焦请求。
+            // 当前编辑会话由 UITextViewDelegate 回报；只在已结束编辑时同步提示状态。
+            guard !composerIsFocused else { return }
+            store.voiceInput.keyboardChanged(false)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
+            voiceTouchActive = false
+            store.voiceInput.cancel()
+        }
+        .onAppear {
+            store.voiceInput.onDraftUpdate = { draft = $0 }
+            store.voiceInput.open(context: store.selectedSessionId ?? "new-session", draft: draft)
+            store.voiceInput.keyboardChanged(composerIsFocused)
+        }
+        .onDisappear {
+            voiceTouchActive = false
+            store.voiceInput.leave()
+            store.leaveSessionAgentPreset()
+        }
         .onChange(of: store.selectedSessionId) { previous, current in
+            store.voiceInput.open(context: current ?? "new-session", draft: draft)
             if previous != nil && current == nil { dismissConversation() }
         }
         .onChange(of: store.sessionAgentPreset.canSelect) { _, canSelect in
@@ -743,6 +881,8 @@ struct ConversationView: View {
         reduceMotion ? .easeOut(duration: 0.15) : .easeInOut(duration: 0.25)
     }
 
+    private var voiceState: SharedVoiceInputSnapshot { voiceSnapshot ?? store.voiceInput.state }
+
     private var composerCard: some View {
         let slashPresentation = slashCommandComposerPresentation(
             draft: draft,
@@ -753,14 +893,25 @@ struct ConversationView: View {
             if !pendingImages.isEmpty {
                 pendingImageStrip
             }
-            SlashCommandTextView(
+            VoiceComposerTextInput(
                 text: $draft,
+                isFocused: $composerIsFocused,
                 presentation: slashPresentation,
-                placeholder: "描述你想要构建的内容",
-                isFocused: $composerIsFocused
+                state: voiceState,
+                voice: store.voiceInput,
+                onHoldingChanged: { voiceTouchActive = $0 }
             )
-            .padding(.horizontal, 3)
-            .frame(minHeight: 38, alignment: .top)
+            if let pending = voiceState.pendingTranscript {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(pending).font(.caption).lineLimit(3)
+                    HStack {
+                        Text("草稿已更改，请确认插入识别文字").font(.caption2).foregroundStyle(.secondary)
+                        Spacer()
+                        Button("插入") { store.voiceInput.insertPending() }
+                        Button("丢弃") { store.voiceInput.dismissFeedback() }
+                    }.font(.caption)
+                }
+            }
             HStack(spacing: 7) {
                 PhotosPicker(
                     selection: $selectedPhotoItems,
@@ -898,6 +1049,7 @@ struct ConversationView: View {
             Task { await importPhotos(items) }
         }
         .onChange(of: draft) { _, value in
+            store.voiceInput.draftChanged(value)
             store.updateSlashCommandInput(value)
         }
         .onChange(of: store.commandDraftClearToken) {
@@ -2375,15 +2527,18 @@ private struct ComposerHeightPreferenceKey: PreferenceKey {
 /// Indicator on every device shape.
 private struct WindowBottomSafeAreaReader: UIViewRepresentable {
     @Binding var bottomInset: CGFloat
+    @Binding var windowHeight: CGFloat
 
     func makeUIView(context: Context) -> SafeAreaReportingView {
         let view = SafeAreaReportingView()
         view.onBottomInsetChange = publish
+        view.onWindowHeightChange = publishHeight
         return view
     }
 
     func updateUIView(_ view: SafeAreaReportingView, context: Context) {
         view.onBottomInsetChange = publish
+        view.onWindowHeightChange = publishHeight
         view.publishBottomInset()
     }
 
@@ -2394,8 +2549,19 @@ private struct WindowBottomSafeAreaReader: UIViewRepresentable {
         }
     }
 
+    private func publishHeight(_ height: CGFloat) {
+        guard height > 0, abs(windowHeight - height) > 0.5 else { return }
+        DispatchQueue.main.async { windowHeight = height }
+    }
+
     final class SafeAreaReportingView: UIView {
         var onBottomInsetChange: ((CGFloat) -> Void)?
+        var onWindowHeightChange: ((CGFloat) -> Void)?
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            publishBottomInset()
+        }
 
         override func didMoveToWindow() {
             super.didMoveToWindow()
@@ -2410,6 +2576,7 @@ private struct WindowBottomSafeAreaReader: UIViewRepresentable {
         func publishBottomInset() {
             let inset = window?.safeAreaInsets.bottom ?? safeAreaInsets.bottom
             onBottomInsetChange?(inset)
+            if let height = window?.bounds.height { onWindowHeightChange?(height) }
         }
     }
 }

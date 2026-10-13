@@ -58,10 +58,21 @@ import kotlinx.coroutines.withContext
 @Stable
 class AndroidSharedStateHolder(
     store: SharedMobileStore = SharedMobileStore(),
-    private val graph: AndroidAppGraph? = null
+    private val graph: AndroidAppGraph? = null,
+    voiceStore: com.clarklevis.dsh.shared.facade.SharedVoiceInputStore = com.clarklevis.dsh.shared.facade.SharedVoiceInputStore(),
+    voiceContext: android.content.Context? = graph?.application
 ) {
     private val workspaceFileStore = SharedWorkspaceFileStore()
     private val slashCommandStore = SharedSlashCommandStore()
+    val voiceInput = com.clarklevis.dsh.android.platform.AndroidVoiceInputAdapter(voiceContext, ::sendVoiceRequest, voiceStore)
+    private fun sendVoiceRequest(request: com.clarklevis.dsh.shared.gateway.GatewayRequest) {
+        val appGraph = graph ?: return
+        appGraph.gatewayScope.launch {
+            if (!appGraph.gatewayRuntime.sendRequest(request)) withContext(Dispatchers.Main.immediate) {
+                voiceInput.requestFailed(request.correlationId, "语音请求未发送，请检查连接")
+            }
+        }
+    }
     private val sessionAgentPresetStore = SharedSessionAgentPresetStore()
     var sessionAgentPreset by mutableStateOf(sessionAgentPresetStore.snapshot())
         private set
@@ -201,6 +212,7 @@ class AndroidSharedStateHolder(
         set(value) {
             if (messageDraftState != value) {
                 messageDraftState = value
+                voiceInput.draftChanged(value)
                 inputGeneration += 1
                 applySlashCommandTransition(
                     slashCommandStore.updateInput(
@@ -302,6 +314,8 @@ class AndroidSharedStateHolder(
                             val didReconnect = state.connection == GatewayConnectionState.CONNECTED &&
                                 lastObservedConnection != GatewayConnectionState.CONNECTED
                             gatewayState = state
+                            voiceInput.connectionChanged(state.connection == GatewayConnectionState.CONNECTED,
+                                "speech-input-v1" in state.capabilities)
                             if (didReconnect) queueState = queueStore.resetConnection()
                             if (state.connection != GatewayConnectionState.CONNECTED) {
                                 applySessionAgentPresetTransition(sessionAgentPresetStore.disconnected())
@@ -356,6 +370,7 @@ class AndroidSharedStateHolder(
                             appGraph.diagnostics.runtimeEvent(event)
                             when (event) {
                                 is GatewayRuntimeEvent.Frame -> {
+                                    withContext(Dispatchers.Main.immediate) { voiceInput.accept(event.rawJson) }
                                     withContext(Dispatchers.Main.immediate) {
                                         applySessionAgentPresetTransition(sessionAgentPresetStore.accept(
                                             if (event.frame.sessionId == null && event.correlatedSessionId != null) {
@@ -560,6 +575,9 @@ class AndroidSharedStateHolder(
                                     )
                                 }
                                 is GatewayRuntimeEvent.RequestTimedOut -> {
+                                    if (event.requestType.startsWith("speech-")) withContext(Dispatchers.Main.immediate) {
+                                        voiceInput.requestFailed(event.correlationId, "语音服务请求超时，请重试")
+                                    }
                                     if (event.requestType == scheduledTaskMutationKind &&
                                         event.correlationId == scheduledTaskMutationRequestId
                                     ) withContext(Dispatchers.Main.immediate) {
@@ -630,6 +648,9 @@ class AndroidSharedStateHolder(
                                     )
                                 }
                                 is GatewayRuntimeEvent.RequestRejected -> {
+                                    if (event.requestType.startsWith("speech-")) withContext(Dispatchers.Main.immediate) {
+                                        voiceInput.requestFailed(event.correlationId, "语音请求未完成，请重试")
+                                    }
                                     if (event.requestType == scheduledTaskMutationKind &&
                                         event.correlationId == scheduledTaskMutationRequestId
                                     ) withContext(Dispatchers.Main.immediate) {
@@ -885,7 +906,8 @@ class AndroidSharedStateHolder(
                 pluginsLoading = false
                 pluginsError = if (frame.managementAvailable == true) null else "当前 Host 不支持插件管理"
             }
-            frame.kind == "plugins-changed" && pluginPageVisited -> refreshPlugins()
+            // The matching mutation response refreshes the catalog once.
+            frame.kind == "plugins-changed" && pluginPageVisited && pluginToggleRequestId == null -> refreshPlugins()
             frame.kind in setOf("plugin-bundle-set-enabled", "plugin-entry-set-enabled") &&
                 frame.requestId == pluginToggleRequestId -> {
                 val application = frame.result?.get("application")?.stringValue

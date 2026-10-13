@@ -102,6 +102,10 @@ object GatewayWireDecoder {
         } else {
             objectValue
         }
+        // 语音 selection 是识别偏好；原 JSON 由专用公共 Store 完整解码。
+        if ((normalized["kind"] as? JsonPrimitive)?.contentOrNull in setOf("speech-catalog", "speech-state")) {
+            normalized = JsonObject(normalized - "selection")
+        }
         val presets = normalized["presets"] as? JsonArray
         if (presets != null) {
             normalized = JsonObject(normalized + ("presets" to JsonArray(presets.map { item ->

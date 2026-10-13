@@ -143,4 +143,18 @@ final class LocalizationCatalogTests: XCTestCase {
         XCTAssertNotNil(table["NSCameraUsageDescription"])
         XCTAssertNotNil(table["NSLocalNetworkUsageDescription"])
     }
+
+    @MainActor
+    func testCertificateAdviceOnlyAppearsForCertificateTrustFailures() throws {
+        let chinese = try localizedTable("Localizable", localization: "zh-Hans")
+        let english = try englishTable("Localizable")
+        XCTAssertEqual(chinese["gateway.certificate-trust.advice"],
+                       "如果确认这是安全的个人服务器，请在网关中更新公网配置，并确保其公网证书有效后重试。")
+        XCTAssertTrue(english["gateway.certificate-trust.advice"]?.contains("public access configuration") == true)
+
+        let certificateError = NSError(domain: NSURLErrorDomain, code: NSURLErrorServerCertificateUntrusted)
+        let offlineError = NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet)
+        XCTAssertNotNil(GatewayClient.certificateTrustAdvice(for: certificateError))
+        XCTAssertNil(GatewayClient.certificateTrustAdvice(for: offlineError))
+    }
 }

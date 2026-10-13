@@ -1,0 +1,116 @@
+{
+  "trajectory": {
+    "width": 875,
+    "height": 1784,
+    "sourceCanvas": [
+      2000,
+      3200
+    ],
+    "crop": [
+      562,
+      708,
+      875,
+      1784
+    ],
+    "bytes": 71090,
+    "alphaExtrema": [
+      0,
+      255
+    ]
+  },
+  "tasks": {
+    "width": 875,
+    "height": 1784,
+    "sourceCanvas": [
+      2000,
+      3200
+    ],
+    "crop": [
+      562,
+      708,
+      875,
+      1784
+    ],
+    "bytes": 44778,
+    "alphaExtrema": [
+      0,
+      255
+    ]
+  },
+  "home": {
+    "width": 1114,
+    "height": 1838,
+    "sourceCanvas": [
+      2000,
+      3200
+    ],
+    "crop": [
+      440,
+      660,
+      1114,
+      1838
+    ],
+    "bytes": 134316,
+    "alphaExtrema": [
+      0,
+      255
+    ]
+  },
+  "plugins": {
+    "width": 875,
+    "height": 1784,
+    "sourceCanvas": [
+      2000,
+      3200
+    ],
+    "crop": [
+      562,
+      708,
+      875,
+      1784
+    ],
+    "bytes": 80234,
+    "alphaExtrema": [
+      0,
+      255
+    ]
+  },
+  "presets": {
+    "width": 875,
+    "height": 1784,
+    "sourceCanvas": [
+      2000,
+      3200
+    ],
+    "crop": [
+      562,
+      708,
+      875,
+      1784
+    ],
+    "bytes": 54694,
+    "alphaExtrema": [
+      0,
+      255
+    ]
+  },
+  "conversation": {
+    "width": 875,
+    "height": 1784,
+    "sourceCanvas": [
+      2000,
+      3200
+    ],
+    "crop": [
+      562,
+      708,
+      875,
+      1784
+    ],
+    "bytes": 68374,
+    "alphaExtrema": [
+      0,
+      255
+    ]
+  }
+}

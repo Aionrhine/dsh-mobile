@@ -2,6 +2,7 @@ package com.clarklevis.dsh.android.platform
 
 import android.app.Application
 import android.content.pm.ApplicationInfo
+import android.os.SystemClock
 import android.util.Log
 import com.clarklevis.dsh.shared.gateway.GatewayRuntimeEvent
 import com.clarklevis.dsh.shared.gateway.GatewayRuntimeState
@@ -15,10 +16,30 @@ import java.util.concurrent.atomic.AtomicLong
  */
 internal class AndroidGatewayDiagnostics private constructor(
     private val enabled: Boolean,
-    private val writer: (priority: Int, tag: String, message: String) -> Unit
+    private val writer: (priority: Int, tag: String, message: String) -> Unit,
+    private val monotonicMillis: () -> Long = { System.nanoTime() / 1_000_000 }
 ) {
     private val transportFrameCount = AtomicLong()
     private val runtimeChunkCount = AtomicLong()
+    private val backgroundSince = AtomicLong(-1)
+
+    fun transportFailure(
+        generation: Long,
+        channel: String?,
+        cause: GatewayTransportFailureCause,
+        closeCode: Int? = null
+    ) {
+        val since = backgroundSince.get()
+        val backgroundMillis = if (since >= 0) (monotonicMillis() - since).coerceAtLeast(0) else -1
+        val safeChannel = when (channel) {
+            "control", "conversation" -> channel
+            null -> "none"
+            else -> "unknown"
+        }
+        emit(Log.WARN, "transport failure-detail generation=$generation channel=$safeChannel " +
+            "cause=${cause.wireName} background=${since >= 0} backgroundMillis=$backgroundMillis " +
+            "closeCode=${closeCode ?: "none"}")
+    }
 
     fun intent(action: GatewayDiagnosticAction, hasSession: Boolean = false, imageCount: Int = 0) {
         emit(Log.INFO, "intent action=${action.wireName} hasSession=$hasSession imageCount=$imageCount")
@@ -147,6 +168,11 @@ internal class AndroidGatewayDiagnostics private constructor(
     }
 
     fun lifecycle(event: GatewayLifecycleEvent, keepAlive: Boolean? = null) {
+        when (event) {
+            GatewayLifecycleEvent.BACKGROUND -> backgroundSince.set(monotonicMillis())
+            GatewayLifecycleEvent.FOREGROUND -> backgroundSince.set(-1)
+            else -> Unit
+        }
         emit(
             Log.INFO,
             "lifecycle event=${event.wireName}" + (keepAlive?.let { " keepAlive=$it" } ?: "")
@@ -163,14 +189,16 @@ internal class AndroidGatewayDiagnostics private constructor(
 
         fun forApplication(application: Application): AndroidGatewayDiagnostics = AndroidGatewayDiagnostics(
             enabled = application.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0,
-            writer = Log::println
+            writer = Log::println,
+            monotonicMillis = SystemClock::elapsedRealtime
         )
 
-        fun disabled(): AndroidGatewayDiagnostics = AndroidGatewayDiagnostics(false) { _, _, _ -> }
+        fun disabled(): AndroidGatewayDiagnostics = AndroidGatewayDiagnostics(false, writer = { _, _, _ -> })
 
         internal fun forTest(
+            monotonicMillis: () -> Long = { System.nanoTime() / 1_000_000 },
             writer: (priority: Int, tag: String, message: String) -> Unit
-        ): AndroidGatewayDiagnostics = AndroidGatewayDiagnostics(true, writer)
+        ): AndroidGatewayDiagnostics = AndroidGatewayDiagnostics(true, writer, monotonicMillis)
     }
 }
 

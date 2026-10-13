@@ -1,5 +1,12 @@
 package com.clarklevis.dsh.android.ui
 
+import android.Manifest
+import android.view.HapticFeedbackConstants
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.key
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -11,6 +18,7 @@ import android.provider.Settings
 import android.util.Base64
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -62,6 +70,9 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -124,9 +135,11 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.testTag
@@ -165,6 +178,7 @@ import com.clarklevis.dsh.android.AttachmentLoadState
 import com.clarklevis.dsh.android.R
 import com.clarklevis.dsh.android.platform.AndroidAttachmentThumbnailer
 import com.clarklevis.dsh.android.platform.AndroidPreparedImage
+import com.clarklevis.dsh.shared.facade.VoiceInputInteraction
 import com.clarklevis.dsh.shared.gateway.GatewayConnectionState
 import com.clarklevis.dsh.shared.protocol.GatewayModelItem
 import com.clarklevis.dsh.shared.protocol.GatewayReasoningEffort
@@ -223,6 +237,8 @@ internal fun ConversationScreen(
     }
 
     Scaffold(
+        // 背景与录音蒙层延伸到导航栏下面；底部安全区由 Composer 自己处理。
+        contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
@@ -294,12 +310,23 @@ internal fun ConversationScreen(
                         onDismissInput = dismissInput
                     )
                 }
-                else TrajectoryPage(
-                    nodes = stateHolder.trajectoryNodes,
-                    isActive = pagerState.currentPage == 1
-                )
+                else Box(Modifier.fillMaxSize().navigationBarsPadding()) {
+                    TrajectoryPage(
+                        nodes = stateHolder.trajectoryNodes,
+                        isActive = pagerState.currentPage == 1
+                    )
+                }
             }
         }
+    }
+    stateHolder.voiceInput.state.alertMessage?.let { message ->
+        DshAlertDialog(
+            title = "语音输入暂不可用",
+            message = message,
+            confirmLabel = "知道了",
+            onConfirm = stateHolder.voiceInput::dismissAlert,
+            onDismissRequest = stateHolder.voiceInput::dismissAlert
+        )
     }
     if (showStats) {
         SessionStatsSheet(stateHolder.snapshot.statsSnapshot) { showStats = false }
@@ -521,6 +548,7 @@ private fun ConversationPage(
         Column(
             Modifier
                 .align(Alignment.BottomCenter)
+                .graphicsLayer { alpha = if (stateHolder.voiceInput.state.active) 0f else 1f }
                 .imePadding()
                 .onSizeChanged { size ->
                     bottomContentHeight = with(density) { size.height.toDp() }
@@ -598,6 +626,18 @@ private fun ConversationPage(
                     }
                 }
             }
+        }
+        AnimatedVisibility(
+            visible = stateHolder.voiceInput.state.active,
+            modifier = Modifier.align(Alignment.BottomCenter)
+                .fillMaxWidth().height(LocalConfiguration.current.screenHeightDp.dp * VoiceInputInteraction.OVERLAY_HEIGHT_FRACTION.toFloat()).zIndex(3f),
+            enter = fadeIn(tween(VoiceInputInteraction.OVERLAY_FADE_IN_MILLISECONDS, easing = LinearOutSlowInEasing)),
+            exit = fadeOut(tween(VoiceInputInteraction.OVERLAY_FADE_OUT_MILLISECONDS))
+        ) {
+            VoiceInputPanel(
+                voice = stateHolder.voiceInput,
+                modifier = Modifier.fillMaxSize()
+            )
         }
     }
     imagePreview?.let { request ->
@@ -1249,20 +1289,61 @@ private fun EmptyConversation(modifier: Modifier = Modifier) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun Composer(
     stateHolder: AndroidSharedStateHolder,
     onPickImage: () -> Unit,
     onDismissInput: () -> Unit
 ) {
+    val voice = stateHolder.voiceInput
+    val hapticView = LocalView.current
+    val density = LocalDensity.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val queueEditFocusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val microphonePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { voice.permissionResult(it) }
+    DisposableEffect(voice, lifecycleOwner, hapticView) {
+        voice.onPermissionNeeded = { microphonePermission.launch(Manifest.permission.RECORD_AUDIO) }
+        voice.onHapticFeedback = { cue ->
+            val feedbackType = when (cue) {
+                "hapticStart" -> HapticFeedbackConstants.LONG_PRESS
+                "hapticCancel" -> HapticFeedbackConstants.CLOCK_TICK
+                "hapticRelease" -> HapticFeedbackConstants.KEYBOARD_TAP
+                else -> null
+            }
+            feedbackType?.let { hapticView.performHapticFeedback(it) }
+        }
+        voice.onDraftUpdate = { stateHolder.messageDraft = it }
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE) voice.cancel()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            voice.leave()
+            voice.onPermissionNeeded = null
+            voice.onDraftUpdate = null
+            voice.onHapticFeedback = null
+        }
+    }
+    LaunchedEffect(voice.state.active) {
+        if (voice.state.active) {
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+        }
+    }
+    val imeVisible = WindowInsets.isImeVisible
+    LaunchedEffect(imeVisible) { voice.keyboardChanged(imeVisible) }
+    LaunchedEffect(stateHolder.snapshot.selectedSessionId) {
+        voice.open(stateHolder.snapshot.selectedSessionId ?: "new-session", stateHolder.messageDraft)
+    }
     val shape = RoundedCornerShape(24.dp)
     val isDark = isSystemInDarkTheme()
     val shadowColor = dshFloatingSurfaceShadow(isDark)
     val glassEdge = dshGlassEdge(isDark)
     val composerHasContent = stateHolder.messageDraft.trim().isNotEmpty() || stateHolder.preparedImages.isNotEmpty()
-    val keyboardController = LocalSoftwareKeyboardController.current
-    val queueEditFocusRequester = remember { FocusRequester() }
     var observedQueueEditCount by remember { mutableStateOf(stateHolder.queueDraftRestoreCount) }
     LaunchedEffect(stateHolder.queueDraftRestoreCount) {
         if (stateHolder.queueDraftRestoreCount > observedQueueEditCount) {
@@ -1274,8 +1355,8 @@ private fun Composer(
     var observedSuccessfulSendCount by remember(stateHolder) {
         mutableStateOf(stateHolder.successfulMessageSendCount)
     }
-    LaunchedEffect(inputIsFocused) {
-        if (inputIsFocused) keyboardController?.show() else keyboardController?.hide()
+    LaunchedEffect(inputIsFocused, voice.state.active) {
+        if (inputIsFocused && !voice.state.active) keyboardController?.show() else keyboardController?.hide()
     }
     LaunchedEffect(stateHolder.successfulMessageSendCount) {
         if (stateHolder.successfulMessageSendCount > observedSuccessfulSendCount) {
@@ -1342,7 +1423,11 @@ private fun Composer(
                 }
                 val commandToken = stateHolder.slashCommands.commandToken
                 val commandHint = stateHolder.slashCommands.argumentHint
+                Box(Modifier.fillMaxWidth().voiceHoldGesture(
+                    voice, voice.state.active || !voice.state.keyboardVisible, density.density,
+                )) {
                 BasicTextField(
+                    enabled = !voice.state.active,
                     value = inputValue,
                     onValueChange = {
                         inputValue = it
@@ -1362,7 +1447,7 @@ private fun Composer(
                         Box {
                             if (stateHolder.messageDraft.isEmpty()) {
                                 Text(
-                                    "描述你想要构建的内容",
+                                    voice.state.hint,
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.42f)
                                 )
                             } else if (
@@ -1391,6 +1476,17 @@ private fun Composer(
                         }
                     }
                 )
+                }
+                voice.state.pendingTranscript?.let { transcript ->
+                    Column {
+                        Text(transcript, style = MaterialTheme.typography.bodySmall, maxLines = 3)
+                        Row {
+                            Text("草稿已更改，请确认插入识别文字", style = MaterialTheme.typography.labelSmall)
+                            TextButton(onClick = voice::insertPending) { Text("插入") }
+                            TextButton(onClick = voice::dismissFeedback) { Text("丢弃") }
+                        }
+                    }
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,

@@ -49,6 +49,9 @@ internal class OkHttpGatewayTransport(
         val request = Request.Builder()
             .url(spec.endpoint)
             .header(DEVICE_ID_HEADER, spec.deviceId)
+            .header("X-DSH-Device-Name", android.util.Base64.encodeToString(
+                android.os.Build.MODEL.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP
+            ))
             .header(
                 "Sec-WebSocket-Protocol",
                 spec.pairingCode?.let { "$MOBILE_PROTOCOL, $PAIR_PROTOCOL_PREFIX$it" }
@@ -61,7 +64,7 @@ internal class OkHttpGatewayTransport(
                 }
             }
             .build()
-        val listener = Listener(spec.generation)
+        val listener = Listener(spec.generation, spec.channel)
         synchronized(lock) { socket = client.newWebSocket(request, listener) }
     }
 
@@ -84,7 +87,10 @@ internal class OkHttpGatewayTransport(
         publishState(GatewayTransportState.Closed(closedGeneration))
     }
 
-    private inner class Listener(private val listenerGeneration: Long) : WebSocketListener() {
+    private inner class Listener(
+        private val listenerGeneration: Long,
+        private val channel: String?
+    ) : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
             if (!isCurrent(listenerGeneration, webSocket)) return
             publishState(GatewayTransportState.Open(listenerGeneration))
@@ -107,6 +113,13 @@ internal class OkHttpGatewayTransport(
             acceptMessage(webSocket, bytes.utf8(), bytes.size)
         }
 
+        override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+            if (!isCurrent(listenerGeneration, webSocket)) return
+            diagnostics.transportFailure(listenerGeneration, channel, GatewayTransportFailureCause.PEER_CLOSING, code)
+            // 应答对端 Close 帧，使 onClosed 及时发布真实断线状态；不回传服务端 reason。
+            webSocket.close(if (code == NO_STATUS_CODE) NORMAL_CLOSURE else code, null)
+        }
+
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
             if (!isCurrent(listenerGeneration, webSocket)) return
             synchronized(lock) { socket = null }
@@ -124,6 +137,7 @@ internal class OkHttpGatewayTransport(
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             if (!isCurrent(listenerGeneration, webSocket)) return
+            diagnostics.transportFailure(listenerGeneration, channel, GatewayTransportFailureCause.from(t))
             synchronized(lock) { socket = null }
             publishState(GatewayTransportState.Failed(
                 generation = listenerGeneration,
@@ -181,6 +195,7 @@ internal class OkHttpGatewayTransport(
         internal const val MAXIMUM_QUEUED_BYTES = 24L * 1_024 * 1_024
         internal const val QUEUED_FRAME_OVERHEAD_BYTES = 512L
         private const val NORMAL_CLOSURE = 1000
+        private const val NO_STATUS_CODE = 1005
         private const val POLICY_VIOLATION = 1008
         private const val MESSAGE_TOO_BIG = 1009
         private const val TRY_AGAIN_LATER = 1013

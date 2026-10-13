@@ -1,11 +1,5 @@
 package com.clarklevis.dsh.android.ui
 
-import android.content.Intent
-import android.webkit.WebResourceError
-import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,7 +12,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -37,17 +30,15 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberModalBottomSheetState
 import com.clarklevis.dsh.shared.protocol.GatewayPermissionOption
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -64,7 +55,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import com.clarklevis.dsh.android.AndroidSharedStateHolder
 import com.clarklevis.dsh.android.R
 import com.clarklevis.dsh.shared.gateway.GatewayConnectionState
@@ -73,16 +63,16 @@ import com.clarklevis.dsh.shared.protocol.GatewayModelGroup
 import com.clarklevis.dsh.shared.protocol.GatewayModelItem
 import com.clarklevis.dsh.shared.protocol.GatewayReasoningEffort
 
-private const val PRIVACY_POLICY_URL = "https://clarklevis1995.github.io/dsh-mobile/privacy/"
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SettingsScreen(
     stateHolder: AndroidSharedStateHolder,
     onBack: () -> Unit,
     onOpenAgentPresets: () -> Unit,
-    onOpenDefaultModel: () -> Unit
+    onOpenDefaultModel: () -> Unit,
+    updateModel: com.clarklevis.dsh.android.update.AppUpdateViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 ) {
+    val updateState by updateModel.state.collectAsStateWithLifecycle()
     var showPermissionPicker by remember { mutableStateOf(false) }
     var pendingPermission by remember { mutableStateOf<String?>(null) }
     var showPrivacyPolicy by remember { mutableStateOf(false) }
@@ -190,7 +180,15 @@ internal fun SettingsScreen(
                         LanguageSettingsRow()
                     }
                     SettingsSection("关于") {
-                        SettingsValueRow("隐私政策", "查看") {
+                        SettingsValueRow(
+                            title = "当前版本",
+                            value = "${updateModel.currentVersion} · 检查更新",
+                            enabled = !updateState.busy,
+                            isLoading = updateState.busy,
+                            onClick = updateModel::check
+                        )
+                        SettingsDivider()
+                        SettingsActionRow("隐私政策") {
                             showPrivacyPolicy = true
                         }
                     }
@@ -216,108 +214,6 @@ internal fun SettingsScreen(
     }
     if (showPrivacyPolicy) {
         PrivacyPolicyBottomSheet { showPrivacyPolicy = false }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun PrivacyPolicyBottomSheet(onDismiss: () -> Unit) {
-    var isLoading by remember { mutableStateOf(true) }
-    var loadFailed by remember { mutableStateOf(false) }
-    var reloadKey by remember { mutableStateOf(0) }
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = MaterialTheme.colorScheme.surface
-    ) {
-        Column(Modifier.fillMaxWidth().fillMaxHeight(0.88f)) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("隐私政策", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                TextButton(onClick = onDismiss) { Text("完成") }
-            }
-
-            Box(Modifier.fillMaxSize()) {
-                key(reloadKey) {
-                    AndroidView(
-                        factory = { context ->
-                            WebView(context).apply {
-                                settings.javaScriptEnabled = false
-                                webViewClient = object : WebViewClient() {
-                                    override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
-                                        isLoading = true
-                                        loadFailed = false
-                                    }
-
-                                    override fun onPageFinished(view: WebView, url: String?) {
-                                        isLoading = false
-                                    }
-
-                                    override fun onReceivedError(
-                                        view: WebView,
-                                        request: WebResourceRequest,
-                                        error: WebResourceError
-                                    ) {
-                                        if (request.isForMainFrame) {
-                                            isLoading = false
-                                            loadFailed = true
-                                        }
-                                    }
-
-                                    override fun onReceivedHttpError(
-                                        view: WebView,
-                                        request: WebResourceRequest,
-                                        errorResponse: WebResourceResponse
-                                    ) {
-                                        if (request.isForMainFrame && errorResponse.statusCode >= 400) {
-                                            isLoading = false
-                                            loadFailed = true
-                                        }
-                                    }
-
-                                    override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                                        if (request.url.scheme != "mailto") return false
-                                        runCatching {
-                                            view.context.startActivity(Intent(Intent.ACTION_VIEW, request.url))
-                                        }
-                                        return true
-                                    }
-                                }
-                                loadUrl(PRIVACY_POLICY_URL)
-                            }
-                        },
-                        onRelease = { webView ->
-                            webView.stopLoading()
-                            webView.webViewClient = WebViewClient()
-                            webView.destroy()
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-
-                if (isLoading) {
-                    CircularProgressIndicator(Modifier.align(Alignment.Center))
-                }
-                if (loadFailed) {
-                    Column(
-                        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Text("无法打开隐私政策")
-                        TextButton(onClick = {
-                            loadFailed = false
-                            isLoading = true
-                            reloadKey++
-                        }) { Text("重试") }
-                    }
-                }
-            }
-        }
     }
 }
 

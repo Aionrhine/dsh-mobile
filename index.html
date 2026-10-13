@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f7f9fc">
+  <meta name="description" content="Whaleness 是 DeepSeek Harness 的第三方移动端应用。连接自己的电脑或服务器，在 iOS 和 Android 上继续会话、查看 Agent 轨迹、管理插件与定时任务。">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Whaleness | 把 Harness 带到手边">
+  <meta property="og:description" content="DeepSeek Harness 的第三方移动端应用。你的工作区、会话与 Agent，随身同行。">
+  <meta property="og:url" content="https://clarklevis1995.github.io/dsh-mobile/">
+  <title>Whaleness | 把 Harness 带到手边</title>
+  <link rel="icon" href="website/assets/mark-dark.svg" type="image/svg+xml" media="(prefers-color-scheme: light)">
+  <link rel="icon" href="website/assets/mark-light.svg" type="image/svg+xml" media="(prefers-color-scheme: dark)">
+  <link rel="stylesheet" href="website/styles.css">
+  <link rel="preload" href="website/assets/mockups/home.webp" as="image">
+  <script src="website/main.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">跳转到正文</a>
+  <header class="header">
+    <div class="header-inner wrap">
+      <a class="brand" href="#" aria-label="Whaleness 首页">
+        <img class="brand-mark" src="website/assets/mark-dark.svg" width="32" height="32" alt="">
+        <span>whaleness</span>
+      </a>
+      <button class="menu-toggle" type="button" aria-controls="navigation" aria-expanded="false">菜单</button>
+      <nav id="navigation" class="navigation" aria-label="主导航">
+        <a href="#experience">功能体验</a>
+        <a href="#connect">连接指南</a>
+        <a href="https://github.com/Clarklevis1995/dsh-mobile" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+        <div class="platform-actions header-platform-actions" role="group" aria-label="选择手机平台">
+          <a class="button button-small" href="https://testflight.apple.com/join/1Euwby6r" target="_blank" rel="noopener noreferrer">加入 iOS 公测 <span aria-hidden="true">↗</span></a>
+          <a class="button button-small" href="https://github.com/Clarklevis1995/dsh-mobile/releases" target="_blank" rel="noopener noreferrer">下载 Android <span aria-hidden="true">↗</span></a>
+        </div>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero wrap" aria-labelledby="hero-title">
+      <div class="hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow">DeepSeek Harness 的第三方移动端应用</p>
+          <h1 id="hero-title">把 Harness<br>带到<span class="accent">手边。</span></h1>
+          <p class="hero-description">连接自己的电脑或服务器，在手机上继续对话、查看执行过程、管理任务。</p>
+          <div class="hero-actions">
+            <div class="platform-actions" role="group" aria-label="选择手机平台">
+              <a class="button" href="https://testflight.apple.com/join/1Euwby6r" target="_blank" rel="noopener noreferrer">加入 iOS 公测 <span aria-hidden="true">↗</span></a>
+              <a class="button" href="https://github.com/Clarklevis1995/dsh-mobile/releases" target="_blank" rel="noopener noreferrer">下载 Android <span aria-hidden="true">↗</span></a>
+            </div>
+            <a class="text-link" href="#connect">了解连接方式 <span aria-hidden="true">↓</span></a>
+          </div>
+        </div>
+        <div class="hero-visual" aria-label="Whaleness iOS 工作区与会话首页">
+          <div class="hero-backdrop" aria-hidden="true"></div>
+          <div class="device-render hero-phone">
+            <img src="website/assets/mockups/home.webp" width="1114" height="1838" fetchpriority="high" alt="iPhone 3D 渲染图，屏幕展示 Whaleness 已连接的主机、工作区和最近会话">
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="intro wrap" aria-label="产品概览">
+      <p class="intro-statement">电脑负责执行。<br><span>手机随时接着聊。</span></p>
+      <div class="intro-body">
+        <p>Whaleness 将你在 DeepSeek Harness 中的工作带到手机。切换工作区、继续已有会话，或发起一个新任务，使用的是你自己的主机和模型配置。</p>
+        <div class="platform-notes"><span>iOS 原生应用</span><span>Android 原生应用</span><span>用户自建网关</span></div>
+      </div>
+    </section>
+
+    <section id="experience" class="experience wrap section" aria-labelledby="experience-title">
+      <div class="section-heading reveal">
+        <h2 id="experience-title">从一条消息，<br>到每一步执行。</h2>
+        <p>对话、轨迹和日常管理，都能在手机上查看与操作。</p>
+      </div>
+      <div class="showcase reveal">
+        <div class="showcase-tabs" role="tablist" aria-label="选择产品功能">
+          <button id="tab-conversation" type="button" role="tab" aria-selected="true" aria-controls="panel-conversation" tabindex="0" data-feature="conversation">实时对话</button>
+          <button id="tab-trajectory" type="button" role="tab" aria-selected="false" aria-controls="panel-trajectory" tabindex="-1" data-feature="trajectory">执行轨迹</button>
+          <button id="tab-plugins" type="button" role="tab" aria-selected="false" aria-controls="panel-plugins" tabindex="-1" data-feature="plugins">插件管理</button>
+          <button id="tab-tasks" type="button" role="tab" aria-selected="false" aria-controls="panel-tasks" tabindex="-1" data-feature="tasks">定时任务</button>
+        </div>
+        <div class="showcase-content">
+          <div class="showcase-visual">
+            <button class="screenshot-button device-render" type="button" aria-label="放大查看实时对话截图">
+              <img id="showcase-image" src="website/assets/mockups/conversation.webp" data-original-src="website/assets/conversation.webp" width="875" height="1784" loading="lazy" alt="Whaleness 实时对话，展示消息、工具执行结果和输入区域">
+            </button>
+            <span class="screenshot-hint">点击截图，查看完整界面</span>
+          </div>
+          <div class="showcase-panels">
+            <div id="panel-conversation" class="feature-panel" role="tabpanel" aria-labelledby="tab-conversation">
+              <p class="feature-kind">在路上，也能推进任务</p>
+              <h3>让对话继续。</h3>
+              <p>打开桌面端已有的会话，接收实时回复，也能直接在手机上发送下一条指令。</p>
+              <ul class="feature-list"><li>阅读 Markdown、代码和工具结果</li><li>发送图片附件，补充任务上下文</li><li>处理 Agent 提问与工具审批</li></ul>
+              <p class="feature-note">任务由已连接的 Harness 主机执行。</p>
+            </div>
+            <div id="panel-trajectory" class="feature-panel" role="tabpanel" aria-labelledby="tab-trajectory" hidden>
+              <p class="feature-kind">过程和结果，一起看见</p>
+              <h3>看清 Agent<br>做了什么。</h3>
+              <p>从时间概览到具体事件，查看模型回复、工具调用以及每一步的输入与结果。</p>
+              <ul class="feature-list"><li>按轮次浏览完整事件时间线</li><li>展开工具参数与执行结果</li><li>查看 Token、耗时和调用统计</li></ul>
+              <p class="feature-note">截图中的数据来自一次实际会话。</p>
+            </div>
+            <div id="panel-plugins" class="feature-panel" role="tabpanel" aria-labelledby="tab-plugins" hidden>
+              <p class="feature-kind">把主机上的能力带过来</p>
+              <h3>插件，也在手边。</h3>
+              <p>查看已连接主机上的插件与组件，按需启用、停用或调整配置。</p>
+              <ul class="feature-list"><li>浏览官方插件与已安装插件</li><li>查看插件说明和组件详情</li><li>远程管理主机上的插件状态</li></ul>
+              <p class="feature-note">可用能力取决于桌面端安装的插件。</p>
+            </div>
+            <div id="panel-tasks" class="feature-panel" role="tabpanel" aria-labelledby="tab-tasks" hidden>
+              <p class="feature-kind">把下一件事安排好</p>
+              <h3>任务到点，<br>继续执行。</h3>
+              <p>在会话中让 Agent 创建定时任务，再从手机查看执行规则、计划时间与任务状态。</p>
+              <ul class="feature-list"><li>集中浏览与搜索定时任务</li><li>查看所属会话和下一次计划时间</li><li>展开任务状态与投递信息</li></ul>
+              <p class="feature-note">需要主机启用自动化任务插件并保持运行。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="image-note">页面中的应用截图来自 iOS 版本。Android 提供原生界面，部分系统体验会有所不同。</p>
+    </section>
+
+    <section class="control wrap section" aria-labelledby="control-title">
+      <div class="control-copy reveal">
+        <h2 id="control-title">按任务，<br>选你的工作方式。</h2>
+        <p class="section-description">模型、思考等级和 Agent 预设，延续你在主机上的配置。</p>
+        <dl class="control-list">
+          <div><dt>Agent 预设</dt><dd>选择标准、极简或自定义模式，使用适合任务的工具和能力。</dd></div>
+          <div><dt>模型与思考等级</dt><dd>按需调整会话配置，也能设置新会话的默认值。</dd></div>
+          <div><dt>工作区与文件</dt><dd>切换主机上的工作区，浏览、下载和预览工作文件。</dd></div>
+        </dl>
+      </div>
+      <div class="control-visual reveal">
+        <img src="website/assets/mockups/presets.webp" width="875" height="1784" loading="lazy" alt="iPhone 3D 渲染图，屏幕展示 Whaleness 的标准、极简和自定义 Agent 模式">
+      </div>
+    </section>
+
+    <section class="ownership wrap section" aria-labelledby="ownership-title">
+      <div class="ownership-head reveal">
+        <p class="eyebrow">你的主机，你的配置</p>
+        <h2 id="ownership-title">连接自己的 Harness。</h2>
+        <p>网关运行在你管理的电脑或服务器上。会话先到达你的网关，再由 Harness 按配置调用模型服务。</p>
+      </div>
+      <div class="data-flow reveal" aria-label="数据流向：Whaleness 手机应用连接用户自建网关，网关连接用户配置的模型服务">
+        <div class="flow-node"><img class="brand-mark" src="website/assets/mark-dark.svg" width="40" height="40" alt=""><h3>你的手机</h3><p>Whaleness<br>查看会话、发送指令</p></div>
+        <span class="flow-arrow" aria-hidden="true">↔</span>
+        <div class="flow-node"><span class="flow-symbol flow-api" aria-hidden="true">HOST</span><h3>你的电脑或服务器</h3><p>DeepSeek Harness<br>运行网关、执行任务</p></div>
+        <span class="flow-arrow" aria-hidden="true">↔</span>
+        <div class="flow-node"><span class="flow-symbol flow-api" aria-hidden="true">API</span><h3>你配置的模型服务</h3><p>由主机通过 API<br>传递会话内容</p></div>
+      </div>
+      <div class="ownership-foot"><p>Whaleness 开发者不提供统一的聊天中转服务器。</p><a class="text-link" href="privacy/index.html">阅读隐私政策 <span aria-hidden="true">↗</span></a></div>
+    </section>
+
+    <section id="connect" class="connect wrap section" aria-labelledby="connect-title">
+      <div class="connect-heading reveal">
+        <h2 id="connect-title">桌面准备好，<br>扫码就能继续。</h2>
+        <p>先安装 DeepSeek Harness 桌面端并配置模型服务，再按照下面的图文安装网关插件、配对手机。</p>
+        <div class="connect-links">
+          <a class="text-link" href="https://www.deepseek.com/en/download/" target="_blank" rel="noopener noreferrer">下载官方桌面端 <span aria-hidden="true">↗</span></a>
+          <a class="text-link" href="https://github.com/Clarklevis1995/dsh-plugin-mobile-gateway" target="_blank" rel="noopener noreferrer">查看网关插件文档 <span aria-hidden="true">↗</span></a>
+        </div>
+      </div>
+      <div class="setup-guide reveal">
+        <nav class="setup-navigation" aria-label="插件安装与配对步骤">
+          <ol class="setup-steps">
+            <li><button type="button" data-setup-step="0" aria-current="step" aria-controls="setup-panel-0"><span class="setup-number" aria-hidden="true">1</span><span><strong>打开插件</strong><small>桌面端左上角</small></span></button></li>
+            <li><button type="button" data-setup-step="1" aria-controls="setup-panel-1"><span class="setup-number" aria-hidden="true">2</span><span><strong>添加插件</strong><small>输入网关插件包名</small></span></button></li>
+            <li><button type="button" data-setup-step="2" aria-controls="setup-panel-2"><span class="setup-number" aria-hidden="true">3</span><span><strong>确保插件开启</strong><small>检查组件运行状态</small></span></button></li>
+            <li><button type="button" data-setup-step="3" aria-controls="setup-panel-3"><span class="setup-number" aria-hidden="true">4</span><span><strong>打开移动设备</strong><small>开启网关与设备鉴权</small></span></button></li>
+            <li><button type="button" data-setup-step="4" aria-controls="setup-panel-4"><span class="setup-number" aria-hidden="true">5</span><span><strong>选择连接方式</strong><small>局域网或 Cloudflare 外网</small></span></button></li>
+            <li><button type="button" data-setup-step="5" aria-controls="setup-panel-5"><span class="setup-number" aria-hidden="true">6</span><span><strong>扫码完成配对</strong><small>生成二维码后扫描</small></span></button></li>
+          </ol>
+        </nav>
+        <div class="setup-stage">
+          <div class="setup-content-shell">
+            <div id="setup-content" class="setup-content">
+              <div class="setup-panels" aria-live="polite">
+                <div id="setup-panel-0" class="setup-panel"><h3>从桌面端的“插件”开始。</h3><p>安装好 DeepSeek Harness Desktop 后，点击左侧栏上方的“插件”，进入插件列表。</p></div>
+                <div id="setup-panel-1" class="setup-panel" hidden><h3>添加移动网关插件。</h3><p>在插件列表右上角点击“添加插件”，输入下面的包名，然后点击“安装”，等待安装完成。</p><code class="plugin-package">dsh-plugin-mobile-gateway</code></div>
+                <div id="setup-panel-2" class="setup-panel" hidden><h3>确认插件和组件都已开启。</h3><p>打开已安装的 <code>dsh-plugin-mobile-gateway</code>，确保插件总开关与 <code>mobile-gateway</code> 组件开关开启，并确认组件显示“运行中”。</p><p class="setup-note">安装或更新后如果连接异常，请完全退出并重启桌面端；端口仍被占用时，关闭其他 Harness 实例。</p></div>
+                <div id="setup-panel-3" class="setup-panel" hidden><h3>打开“移动设备”控制面板。</h3><p>点击桌面端左下角的“移动设备”。在“通用设置”中开启移动网关，并保持“设备鉴权”开启；可将网关运行模式设为“常驻开启”。</p></div>
+                <div id="setup-panel-4" class="setup-panel" hidden><h3>选择手机能访问的连接方式。</h3><p>进入“连接与配对”。手机和电脑在同一 Wi-Fi 下，选择“局域网直连”；需要外网连接时，先开启 Quick Tunnel 并等待连接成功，再选择“Cloudflare 外网”。</p><p class="setup-note">截图中的局域网地址属于示例电脑。实际配对时，请使用你自己的网关地址。</p></div>
+                <div id="setup-panel-5" class="setup-panel" hidden><h3>生成你自己的二维码，再扫码。</h3><p>点击“生成配对二维码”。打开手机上的 Whaleness，选择“扫描二维码”，扫描自己桌面端弹出的二维码。连接成功后，即可选择工作区、查看会话或创建新任务。</p><p class="setup-note">配对码仅可使用一次，五分钟内有效。Quick Tunnel 地址变化后，需要重新生成二维码并扫码。</p></div>
+              </div>
+              <div id="setup-views" class="setup-view-options" aria-label="本步骤的截图"></div>
+              <figure class="setup-figure">
+                <button id="setup-screenshot" class="setup-screenshot" type="button" aria-label="放大查看桌面端插件入口截图"><img id="setup-image" src="website/assets/setup/desktop.webp" width="1600" height="881" loading="lazy" alt="DeepSeek Harness 桌面端，左侧栏上方有插件入口，左下角有移动设备入口"></button>
+                <figcaption><span class="setup-captions"><span id="setup-caption">桌面端左侧栏的“插件”入口。</span></span><span>点击图片放大查看</span></figcaption>
+              </figure>
+            </div>
+          </div>
+          <div class="setup-controls"><button id="setup-previous" type="button" disabled><span aria-hidden="true">←</span> 上一步</button><button id="setup-next" type="button">下一步 <span aria-hidden="true">→</span></button></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="download" class="download wrap section" aria-labelledby="download-title">
+      <div class="section-heading reveal"><h2 id="download-title">现在，把它带在身边。</h2><p>选择你的手机平台，连接你自己的工作区。</p></div>
+      <div class="download-grid reveal">
+        <article class="download-ios"><div><p class="download-platform">iOS</p><h3>iOS 公测已开放。</h3><p>通过 TestFlight 安装 Whaleness，参与体验并反馈问题。</p></div><div class="download-action"><a class="button" href="https://testflight.apple.com/join/1Euwby6r" target="_blank" rel="noopener noreferrer">加入 iOS 公测 <span aria-hidden="true">↗</span></a><span>需要 iOS 17 或更高版本</span></div></article>
+        <article class="download-android"><div><p class="download-platform">Android</p><h3>Android 现已可下载。</h3><p>通过 GitHub Releases 下载 Whaleness，查看版本说明并反馈问题。</p></div><div class="download-action"><a class="button" href="https://github.com/Clarklevis1995/dsh-mobile/releases" target="_blank" rel="noopener noreferrer">下载 Android <span aria-hidden="true">↗</span></a><span>需要 Android 7.0 或更高版本</span></div></article>
+      </div>
+    </section>
+
+    <section class="faq wrap section" aria-labelledby="faq-title">
+      <h2 id="faq-title">开始之前，你可能想知道。</h2>
+      <div class="faq-list">
+        <details><summary>Whaleness 是 DeepSeek 官方应用吗？<span aria-hidden="true">+</span></summary><p>Whaleness 是独立开发的 DeepSeek Harness 第三方移动端应用，与 DeepSeek 官方没有隶属关系。</p></details>
+        <details><summary>手机可以单独使用吗？<span aria-hidden="true">+</span></summary><p>需要先连接运行 DeepSeek Harness 与移动网关插件的电脑或服务器。模型服务与任务执行环境在主机上配置。</p></details>
+        <details><summary>离开家里的 Wi-Fi 后，还能连接吗？<span aria-hidden="true">+</span></summary><p>可以使用网关插件支持的 Cloudflare Tunnel 等外网连接方式。使用 Quick Tunnel 时，地址可能在重启或重连后变化，需要重新生成配对二维码。</p></details>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer wrap">
+    <div><a class="brand" href="#"><img class="brand-mark" src="website/assets/mark-dark.svg" width="28" height="28" alt=""><span>whaleness</span></a><p>DeepSeek Harness 的第三方移动端应用。</p></div>
+    <div class="footer-links"><a href="privacy/index.html">隐私政策</a><a href="https://github.com/Clarklevis1995/dsh-mobile" target="_blank" rel="noopener noreferrer">源代码 ↗</a><a href="mailto:clarklevis1995@gmail.com">联系与反馈</a><button id="theme-toggle" type="button">切换外观</button></div>
+  </footer>
+
+  <dialog id="screenshot-dialog" class="screenshot-dialog" aria-label="截图大图">
+    <form method="dialog"><a id="dialog-original" href="website/assets/conversation.webp" target="_blank" rel="noopener noreferrer">打开原图 ↗</a><button class="dialog-close" aria-label="关闭截图">关闭 <span aria-hidden="true">×</span></button></form>
+    <img id="dialog-image" src="website/assets/conversation.webp" width="804" height="1748" alt="Whaleness 实时对话完整截图">
+  </dialog>
+</body>
+</html>

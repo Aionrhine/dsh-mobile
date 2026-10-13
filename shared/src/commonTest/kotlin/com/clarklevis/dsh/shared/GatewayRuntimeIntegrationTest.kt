@@ -52,6 +52,47 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class GatewayRuntimeIntegrationTest {
     @Test
+    fun speechRequestsUseExactIdsAndLongTimeoutAndKeepSubscriptionErrors() = runTest {
+        val transport = FakeTransport()
+        val runtime = newRuntime(transport)
+        val events = mutableListOf<GatewayRuntimeEvent>()
+        backgroundScope.launch { runtime.events.collect(events::add) }
+        runCurrent()
+        runtime.connect("wss://gateway.example/ws/mobile")
+        transport.opened()
+        transport.receive("""{"kind":"hello","authenticated":true,"capabilities":["speech-input-v1"]}""")
+        runCurrent()
+        transport.receive("""{"kind":"workspaces","items":[]}""")
+        transport.receive("""{"kind":"sessions","items":[]}""")
+        runCurrent()
+        fun speech(type: String, kind: String, id: String) = com.clarklevis.dsh.shared.gateway.GatewayRequest(
+            requestType = type, responseKind = kind, correlationId = id,
+            lanePolicy = com.clarklevis.dsh.shared.gateway.GatewayRequestLanePolicy.REJECT_IF_BUSY,
+            payload = """{"type":"$type","requestId":"$id"}""", timeoutMilliseconds = 185_000
+        )
+        assertTrue(runtime.sendRequest(speech("speech-transcribe", "speech-transcript", "record-1")))
+        transport.receive("""{"kind":"speech-transcript","requestId":"stale","text":"old"}""")
+        runCurrent()
+        assertTrue(events.filterIsInstance<GatewayRuntimeEvent.Frame>().none { it.frame.kind == "speech-transcript" })
+        advanceTimeBy(31_000)
+        runCurrent()
+        assertTrue(events.filterIsInstance<GatewayRuntimeEvent.RequestTimedOut>().none { it.requestType == "speech-transcribe" })
+        transport.receive("""{"kind":"speech-transcript","requestId":"record-1","text":"new"}""")
+        runCurrent()
+        assertTrue(events.filterIsInstance<GatewayRuntimeEvent.Frame>().any { it.frame.requestId == "record-1" })
+        assertTrue(runtime.sendRequest(speech("speech-transcribe", "speech-transcript", "record-2")))
+        transport.receive("""{"kind":"error","requestType":"speech-transcribe","requestId":"record-2","code":"speech/transcription-failed","message":"model unavailable"}""")
+        runCurrent()
+        assertTrue(events.filterIsInstance<GatewayRuntimeEvent.Frame>().any { it.frame.code == "speech/transcription-failed" })
+        assertTrue(runtime.sendRequest(speech("speech-subscribe", "speech-subscribed", "watch-1")))
+        transport.receive("""{"kind":"speech-subscribed","requestId":"watch-1"}""")
+        runCurrent()
+        transport.receive("""{"kind":"error","requestType":"speech-subscribe","requestId":"watch-1","code":"speech/unavailable"}""")
+        runCurrent()
+        assertTrue(events.filterIsInstance<GatewayRuntimeEvent.Frame>().any { it.frame.requestId == "watch-1" && it.frame.kind == "error" })
+    }
+
+    @Test
     fun presetRequestsCorrelateIdsAndPreserveHostErrorsAndUnsubscribedNotifications() = runTest {
         val transport = FakeTransport()
         val runtime = newRuntime(transport)
@@ -504,6 +545,10 @@ class GatewayRuntimeIntegrationTest {
         assertEquals(GatewayConnectionState.FAILED, runtime.state.value.connection)
         assertEquals("connection-timeout", runtime.state.value.lastError)
         assertEquals(2, transport.connectionSpecs.size)
+        runtime.applicationDidEnterBackground()
+        runtime.applicationDidBecomeActive()
+        runCurrent()
+        assertEquals(2, transport.connectionSpecs.size, "回前台不得自动重用一次性配对码")
     }
 
     @Test
@@ -776,6 +821,7 @@ class GatewayRuntimeIntegrationTest {
         assertEquals(GatewayConnectionState.FAILED, runtime.state.value.connection)
         network.mutableState.value = GatewayNetworkState.UNAVAILABLE
         network.mutableState.value = GatewayNetworkState.AVAILABLE
+        runtime.applicationDidEnterBackground()
         runtime.applicationDidBecomeActive()
         runCurrent()
         assertEquals(1, transport.connectionSpecs.size)
@@ -949,6 +995,100 @@ class GatewayRuntimeIntegrationTest {
     }
 
     @Test
+    fun idleBackgroundDoesNotRecycleConnectionForPendingSnapshotTimeouts() = runTest {
+        val transport = FakeTransport()
+        val runtime = newRuntime(transport)
+        val events = mutableListOf<GatewayRuntimeEvent>()
+        backgroundScope.launch { runtime.events.collect(events::add) }
+        runCurrent()
+        runtime.connect("wss://gateway.example/ws/mobile")
+        transport.opened()
+        transport.receive("""{"kind":"hello","authenticated":true}""")
+        runCurrent()
+        val closes = transport.closeCount
+        runtime.applicationDidEnterBackground()
+        advanceTimeBy(65_000)
+        runCurrent()
+        assertEquals(closes, transport.closeCount)
+        assertEquals(GatewayConnectionState.CONNECTED, runtime.state.value.connection)
+        assertFalse(events.any { it is GatewayRuntimeEvent.RequestTimedOut })
+
+        runtime.applicationDidBecomeActive()
+        runCurrent()
+        transport.receive("""{"kind":"pong"}""")
+        runCurrent()
+        advanceTimeBy(29_999)
+        runCurrent()
+        assertEquals(closes, transport.closeCount)
+        advanceTimeBy(2)
+        runCurrent()
+        assertTrue(events.any { it is GatewayRuntimeEvent.RequestTimedOut })
+        assertEquals(2, transport.connectionSpecs.size)
+    }
+
+    @Test
+    fun delayedBackgroundResponseKeepsOriginalCorrelationAndSocketForQueuedRequest() = runTest {
+        val transport = FakeTransport()
+        val runtime = newRuntime(transport, requestTimeoutMilliseconds = 1_000)
+        val events = mutableListOf<GatewayRuntimeEvent>()
+        backgroundScope.launch { runtime.events.collect(events::add) }
+        runCurrent()
+        runtime.connect("wss://gateway.example/ws/mobile")
+        transport.opened()
+        transport.receive("""{"kind":"hello","authenticated":true}""")
+        transport.receive("""{"kind":"workspaces","items":[]}""")
+        transport.receive("""{"kind":"sessions","items":[]}""")
+        runCurrent()
+        runtime.requestHistory("session-a")
+        runtime.requestHistory("session-b")
+        runtime.applicationDidEnterBackground()
+        val closes = transport.closeCount
+        advanceTimeBy(2_000)
+        transport.receive("""{"kind":"history","events":[],"hasMore":false,"bytes":0}""")
+        runCurrent()
+        assertEquals(2, transport.sentTypes.count { it == "history" })
+        assertEquals("session-a", events.filterIsInstance<GatewayRuntimeEvent.Frame>()
+            .last { it.frame.kind == "history" }.correlatedSessionId)
+        advanceTimeBy(2_000)
+        transport.receive("""{"kind":"history","events":[],"hasMore":false,"bytes":0}""")
+        runCurrent()
+        assertEquals("session-b", events.filterIsInstance<GatewayRuntimeEvent.Frame>()
+            .last { it.frame.kind == "history" }.correlatedSessionId)
+        assertEquals(closes, transport.closeCount)
+        assertEquals(1, transport.connectionSpecs.size)
+        assertFalse(events.any { it is GatewayRuntimeEvent.RequestTimedOut })
+    }
+
+    @Test
+    fun endingLastBackgroundTurnPausesOutstandingQueryTimeout() = runTest {
+        val transport = FakeTransport()
+        val runtime = newRuntime(transport, requestTimeoutMilliseconds = 1_000)
+        val events = mutableListOf<GatewayRuntimeEvent>()
+        backgroundScope.launch { runtime.events.collect(events::add) }
+        runCurrent()
+        runtime.connect("wss://gateway.example/ws/mobile")
+        transport.opened()
+        transport.receive("""{"kind":"hello","authenticated":true}""")
+        transport.receive("""{"kind":"workspaces","items":[]}""")
+        transport.receive("""{"kind":"sessions","items":[]}""")
+        runCurrent()
+        runtime.requestHistory("session-a")
+        runtime.sendMessage("work", emptyList(), "session-a", null, "UTC")
+        transport.receive("""{"kind":"sent","sessionId":"session-a"}""")
+        runCurrent()
+        runtime.applicationDidEnterBackground()
+        advanceTimeBy(400)
+        transport.receive("""{"kind":"event","sessionId":"session-a","event":{"type":"turn/end"}}""")
+        runCurrent()
+        assertFalse(runtime.state.value.shouldKeepAliveInBackground)
+        val closes = transport.closeCount
+        advanceTimeBy(2_000)
+        runCurrent()
+        assertEquals(closes, transport.closeCount)
+        assertFalse(events.any { it is GatewayRuntimeEvent.RequestTimedOut })
+    }
+
+    @Test
     fun idleBackgroundConnectionStaysOpenAndForegroundRecoversWithoutActiveTurn() = runTest {
         val transport = FakeTransport()
         val runtime = newRuntime(transport)
@@ -986,6 +1126,228 @@ class GatewayRuntimeIntegrationTest {
         runtime.applicationDidBecomeActive()
         runCurrent()
         assertEquals(specCount + 1, transport.connectionSpecs.size, "手动断开后不得自动重连")
+    }
+
+    @Test
+    fun pongCompletesManualPingLaneAndDoesNotCauseLaterConnectionRecycle() = runTest {
+        val transport = FakeTransport()
+        val runtime = newRuntime(transport, requestTimeoutMilliseconds = 1_000)
+        val events = mutableListOf<GatewayRuntimeEvent>()
+        backgroundScope.launch { runtime.events.collect(events::add) }
+        runCurrent()
+        runtime.connect("wss://gateway.example/ws/mobile")
+        transport.opened()
+        transport.receive("""{"kind":"hello","authenticated":true}""")
+        transport.receive("""{"kind":"workspaces","items":[]}""")
+        transport.receive("""{"kind":"sessions","items":[]}""")
+        runCurrent()
+        assertTrue(runtime.sendRequest(GatewayRequests.ping()))
+        transport.receive("""{"kind":"pong"}""")
+        runCurrent()
+        assertTrue(runtime.sendRequest(GatewayRequests.ping()), "Pong 必须释放 Ping lane")
+        transport.receive("""{"kind":"pong"}""")
+        runCurrent()
+        advanceTimeBy(1_001)
+        runCurrent()
+        assertEquals(1, transport.connectionSpecs.size)
+        assertFalse(events.any { it is GatewayRuntimeEvent.RequestTimedOut })
+        transport.receive("""{"kind":"pong"}""")
+        runCurrent()
+        assertEquals(3, events.filterIsInstance<GatewayRuntimeEvent.Frame>().count { it.frame.kind == "pong" })
+    }
+
+    @Test
+    fun foregroundProbesHealthySocketAndKeepsItAfterPong() = runTest {
+        val transport = FakeTransport()
+        val runtime = newRuntime(transport)
+        backgroundScope.launch { runtime.events.collect { } }
+        runCurrent()
+        runtime.connect("wss://gateway.example/ws/mobile")
+        transport.opened()
+        transport.receive("""{"kind":"hello","authenticated":true}""")
+        runCurrent()
+        runtime.applicationDidEnterBackground()
+        runtime.applicationDidBecomeActive()
+        runCurrent()
+        assertEquals(1, transport.sentTypes.count { it == "ping" })
+        transport.receive("""{"kind":"pong"}""")
+        runCurrent()
+        advanceTimeBy(2_001)
+        runCurrent()
+        assertEquals(1, transport.connectionSpecs.size)
+        assertEquals(GatewayConnectionState.CONNECTED, runtime.state.value.connection)
+    }
+
+    @Test
+    fun foregroundStaleSocketIsRebuiltAfterTwoSecondsUsingCurrentEndpoint() = runTest {
+        val transport = FakeTransport()
+        val endpoints = listOf("wss://lan.example/ws/mobile", "wss://cloud.example/ws/mobile")
+        val runtime = newRuntime(transport, trustedEndpoints = endpoints)
+        backgroundScope.launch { runtime.events.collect { } }
+        runCurrent()
+        runtime.connect(endpoints.first())
+        transport.opened()
+        transport.receive("""{"kind":"hello","authenticated":true}""")
+        runCurrent()
+        val oldGeneration = transport.connectionSpecs.last().generation
+        runtime.applicationDidEnterBackground()
+        runtime.applicationDidBecomeActive()
+        runCurrent()
+        advanceTimeBy(1_999)
+        runCurrent()
+        assertEquals(1, transport.connectionSpecs.size)
+        advanceTimeBy(2)
+        runCurrent()
+        assertEquals(2, transport.connectionSpecs.size)
+        assertEquals(endpoints.first(), transport.connectionSpecs.last().endpoint)
+        transport.receiveAt(oldGeneration, """{"kind":"pong"}""")
+        transport.opened()
+        transport.receive("""{"kind":"hello","authenticated":true}""")
+        runCurrent()
+        assertEquals(GatewayConnectionState.CONNECTED, runtime.state.value.connection)
+    }
+
+    @Test
+    fun failureArrivingJustAfterForegroundReconnectsWithoutBackoffOrEndpointRotation() = runTest {
+        val transport = FakeTransport()
+        val clock = RecordingDelayClock()
+        val endpoints = listOf("wss://lan.example/ws/mobile", "wss://cloud.example/ws/mobile")
+        val runtime = newRuntime(transport, clock = clock, trustedEndpoints = endpoints)
+        backgroundScope.launch { runtime.events.collect { } }
+        runCurrent()
+        runtime.connect(endpoints.first())
+        transport.opened()
+        transport.receive("""{"kind":"hello","authenticated":true}""")
+        runCurrent()
+        runtime.applicationDidEnterBackground()
+        runtime.applicationDidBecomeActive()
+        runCurrent()
+        transport.receive("""{"kind":"pong"}""")
+        runCurrent()
+        transport.fail(GatewayTransportState.Failed(
+            transport.connectionSpecs.last().generation, reason = "websocket-failure", recoverable = true
+        ))
+        runCurrent()
+        assertTrue(clock.delays.isEmpty())
+        assertEquals(2, transport.connectionSpecs.size)
+        assertEquals(endpoints.first(), transport.connectionSpecs.last().endpoint)
+        runtime.applicationDidBecomeActive()
+        runCurrent()
+        assertEquals(2, transport.connectionSpecs.size, "重复前台通知不得打断正在建立的连接")
+        transport.opened()
+        runCurrent()
+        runtime.applicationDidBecomeActive()
+        runCurrent()
+        assertEquals(2, transport.connectionSpecs.size, "鉴权期间也不得反复重建")
+    }
+
+    @Test
+    fun foregroundCancelsLongReconnectBackoff() = runTest {
+        val transport = FakeTransport()
+        val clock = RecordingDelayClock()
+        val runtime = newRuntime(transport, clock = clock)
+        backgroundScope.launch { runtime.events.collect { } }
+        runCurrent()
+        runtime.connect("wss://gateway.example/ws/mobile")
+        transport.opened()
+        transport.receive("""{"kind":"hello","authenticated":true}""")
+        runCurrent()
+        repeat(6) { attempt ->
+            if (attempt > 0) {
+                advanceTimeBy(clock.delays.last())
+                runCurrent()
+            }
+            transport.fail(GatewayTransportState.Failed(
+                transport.connectionSpecs.last().generation, reason = "websocket-failure", recoverable = true
+            ))
+            runCurrent()
+        }
+        assertEquals(30_000L, clock.delays.last())
+        val attempts = transport.connectionSpecs.size
+        runtime.applicationDidEnterBackground()
+        runtime.applicationDidBecomeActive()
+        runCurrent()
+        assertEquals(attempts + 1, transport.connectionSpecs.size)
+        assertEquals(6, clock.delays.size)
+    }
+
+    @Test
+    fun returningToBackgroundCancelsProbeAndReusesPendingPingOnNextForeground() = runTest {
+        val transport = FakeTransport()
+        val runtime = newRuntime(transport)
+        backgroundScope.launch { runtime.events.collect { } }
+        runCurrent()
+        runtime.connect("wss://gateway.example/ws/mobile")
+        transport.opened()
+        transport.receive("""{"kind":"hello","authenticated":true}""")
+        runCurrent()
+        runtime.applicationDidEnterBackground()
+        runtime.applicationDidBecomeActive()
+        runCurrent()
+        runtime.applicationDidEnterBackground()
+        advanceTimeBy(3_000)
+        runCurrent()
+        assertEquals(1, transport.connectionSpecs.size)
+        runtime.applicationDidBecomeActive()
+        runCurrent()
+        assertEquals(1, transport.sentTypes.count { it == "ping" })
+        transport.receive("""{"kind":"pong"}""")
+        runCurrent()
+        advanceTimeBy(3_000)
+        runCurrent()
+        assertEquals(1, transport.connectionSpecs.size)
+        runtime.applicationDidEnterBackground()
+        runtime.applicationDidBecomeActive()
+        runCurrent()
+        runtime.disconnect()
+        advanceTimeBy(3_000)
+        runCurrent()
+        assertEquals(1, transport.connectionSpecs.size, "手动断开后不得由探测触发重连")
+    }
+
+    @Test
+    fun foregroundRetriesPreviouslyConnectedHostAfterSingleEndpointHandshakeTimeout() = runTest {
+        val transport = FakeTransport()
+        val endpoint = "wss://gateway.example/ws/mobile"
+        val runtime = newRuntime(
+            transport,
+            connectionAttemptTimeoutMilliseconds = 100,
+            trustedEndpoints = listOf(endpoint)
+        )
+        backgroundScope.launch { runtime.events.collect { } }
+        runCurrent()
+        runtime.connect(endpoint)
+        transport.opened()
+        transport.receive("""{"kind":"hello","authenticated":true}""")
+        runCurrent()
+        assertEquals(GatewayConnectionState.CONNECTED, runtime.state.value.connection)
+
+        runtime.applicationDidEnterBackground()
+        transport.fail(GatewayTransportState.Failed(
+            transport.connectionSpecs.last().generation, reason = "websocket-failure", recoverable = true
+        ))
+        runCurrent()
+        runtime.applicationDidBecomeActive()
+        runCurrent()
+        assertEquals(2, transport.connectionSpecs.size)
+        transport.opened()
+        runCurrent()
+        assertEquals(GatewayConnectionState.AUTHENTICATING, runtime.state.value.connection)
+        runtime.applicationDidEnterBackground()
+        advanceTimeBy(101)
+        runCurrent()
+        assertEquals(GatewayConnectionState.FAILED, runtime.state.value.connection)
+        assertEquals("connection-timeout", runtime.state.value.lastError)
+        assertEquals(2, transport.connectionSpecs.size)
+
+        runtime.applicationDidBecomeActive()
+        runCurrent()
+        assertEquals(3, transport.connectionSpecs.size, "握手超时后回前台无需重新点击主机")
+        assertEquals(endpoint, transport.connectionSpecs.last().endpoint)
+        transport.opened()
+        transport.receive("""{"kind":"hello","authenticated":true}""")
+        runCurrent()
+        assertEquals(GatewayConnectionState.CONNECTED, runtime.state.value.connection)
     }
 
     @Test
@@ -1432,18 +1794,21 @@ class GatewayRuntimeIntegrationTest {
         credentials: FakeCredentials = FakeCredentials(),
         requestTimeoutMilliseconds: Long = 30_000,
         recoveryWindowMilliseconds: Long = 60_000,
-        connectionAttemptTimeoutMilliseconds: Long = 15_000
+        connectionAttemptTimeoutMilliseconds: Long = 15_000,
+        clock: GatewayClock = FakeClock(0),
+        trustedEndpoints: List<String> = emptyList()
     ): GatewayRuntime = GatewayRuntime(
         transport,
         FakePreferences(),
         credentials,
         cache,
         network,
-        FakeClock(0),
+        clock,
         backgroundScope,
         requestTimeoutMilliseconds,
         recoveryWindowMilliseconds,
-        connectionAttemptTimeoutMilliseconds
+        connectionAttemptTimeoutMilliseconds,
+        trustedEndpoints = trustedEndpoints
     )
 
     private class FakeTransport : GatewayTransport {
@@ -1556,6 +1921,15 @@ class GatewayRuntimeIntegrationTest {
     private class FakeClock(private val now: Long) : GatewayClock {
         override fun nowEpochMilliseconds(): Long = now
         override suspend fun delay(milliseconds: Long) = Unit
+    }
+
+    private class RecordingDelayClock : GatewayClock {
+        val delays = mutableListOf<Long>()
+        override fun nowEpochMilliseconds(): Long = 0
+        override suspend fun delay(milliseconds: Long) {
+            delays += milliseconds
+            kotlinx.coroutines.delay(milliseconds)
+        }
     }
 
     companion object {

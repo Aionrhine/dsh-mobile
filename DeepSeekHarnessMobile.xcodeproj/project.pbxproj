@@ -61,6 +61,10 @@
 		F1A000000000000000000007 /* AgentLiveActivityWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = F1A000000000000000000016 /* AgentLiveActivityWidget.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		F1A000000000000000000008 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F1A000000000000000000017 /* Assets.xcassets */; };
 		F5CD0CFD51B8D80944F87550 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BE407E6C6512836EB108990D /* Foundation.framework */; };
+		0DC425D67C678AF679BFF15A /* VoiceInputAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 873D1E0F3E1B1B2CB2366B06 /* VoiceInputAdapter.swift */; };
+		BA1261E01FBB7F30C9AAE9D1 /* VoiceRipplePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B77DEC008C0209D814CD7BE /* VoiceRipplePanel.swift */; };
+		CD86C5C4C6FF6F4BD8D715A6 /* VoiceInputTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81886703A6C3AB2164852990 /* VoiceInputTests.swift */; };
+		F2B000000000000000000001 /* WorkspaceDrawerUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2B000000000000000000002 /* WorkspaceDrawerUITests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -125,6 +129,8 @@
 		B0C0FFEE0000000000000004 /* HarnessBackground.metal */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.metal; path = HarnessBackground.metal; sourceTree = "<group>"; };
 		B10000000000000000000002 /* PluginsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PluginsView.swift; sourceTree = "<group>"; };
 		B64F29E9B8346B9A678CA487 /* DeepSeekHarnessMobileTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DeepSeekHarnessMobileTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F2B000000000000000000002 /* WorkspaceDrawerUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceDrawerUITests.swift; sourceTree = "<group>"; };
+		F2B000000000000000000003 /* DeepSeekHarnessMobileUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DeepSeekHarnessMobileUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		BE407E6C6512836EB108990D /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		CA11E0000000000000000002 /* ImageAttachmentCache.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ImageAttachmentCache.swift; sourceTree = "<group>"; };
 		CA11E0000000000000000004 /* ImagePreprocessor.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ImagePreprocessor.swift; sourceTree = "<group>"; };
@@ -149,9 +155,19 @@
 		F2A000000000000000000001 /* config/Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = config/Debug.xcconfig; sourceTree = SOURCE_ROOT; };
 		FCF581253EBCFEB43865AB51 /* Glass.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Glass.swift; sourceTree = "<group>"; };
 		FEABDA4B6DAF199B320B1BA1 /* MultiGatewayTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MultiGatewayTests.swift; sourceTree = "<group>"; };
+		873D1E0F3E1B1B2CB2366B06 /* VoiceInputAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceInputAdapter.swift; sourceTree = "<group>"; };
+		8B77DEC008C0209D814CD7BE /* VoiceRipplePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceRipplePanel.swift; sourceTree = "<group>"; };
+		81886703A6C3AB2164852990 /* VoiceInputTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceInputTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		F2B000000000000000000007 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		2730CFAAB3AB8815D8F74EB4 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -183,6 +199,7 @@
 		08B74F3553B9DFCE13B07DE9 /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				873D1E0F3E1B1B2CB2366B06 /* VoiceInputAdapter.swift */,
 				A9F100000000000000000002 /* AppPreferences.swift */,
 				A9F200000000000000000002 /* PairingPayloadParser.swift */,
 				A9F300000000000000000002 /* KMPDomainIntents.swift */,
@@ -212,10 +229,19 @@
 			isa = PBXGroup;
 			children = (
 				0B53A008218F24CA9A4DB4D1 /* GatewayProtocolTests.swift */,
+				81886703A6C3AB2164852990 /* VoiceInputTests.swift */,
 				CA11E0000000000000000011 /* LocalizationCatalogTests.swift */,
 				FEABDA4B6DAF199B320B1BA1 /* MultiGatewayTests.swift */,
 			);
 			path = DeepSeekHarnessMobileTests;
+			sourceTree = "<group>";
+		};
+		F2B000000000000000000004 /* DeepSeekHarnessMobileUITests */ = {
+			isa = PBXGroup;
+			children = (
+				F2B000000000000000000002 /* WorkspaceDrawerUITests.swift */,
+			);
+			path = DeepSeekHarnessMobileUITests;
 			sourceTree = "<group>";
 		};
 		20DF8D6DFD28A5D750C6FC28 /* Frameworks */ = {
@@ -248,6 +274,7 @@
 				3BAEAAE97D242C997E1AB80A /* DeepSeekHarnessMobile */,
 				F1A000000000000000000021 /* AgentLiveActivityWidget */,
 				0CABA197D44C2A9AA01CF6FF /* DeepSeekHarnessMobileTests */,
+				F2B000000000000000000004 /* DeepSeekHarnessMobileUITests */,
 				D141C12130786C4D0060BFC5 /* Recovered References */,
 			);
 			sourceTree = "<group>";
@@ -283,6 +310,7 @@
 		BB3B325B846637A6ED66C228 /* Components */ = {
 			isa = PBXGroup;
 			children = (
+				8B77DEC008C0209D814CD7BE /* VoiceRipplePanel.swift */,
 				FCF581253EBCFEB43865AB51 /* Glass.swift */,
 				A0C0FFEE0000000000000002 /* ConversationViewport.swift */,
 				B0C0FFEE0000000000000002 /* HarnessAnimatedBackground.swift */,
@@ -320,6 +348,7 @@
 				38457CD5C46830D1CA7E6D73 /* DshMobile.app */,
 				F1A000000000000000000016 /* AgentLiveActivityWidget.appex */,
 				B64F29E9B8346B9A678CA487 /* DeepSeekHarnessMobileTests.xctest */,
+				F2B000000000000000000003 /* DeepSeekHarnessMobileUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -397,6 +426,23 @@
 			productReference = B64F29E9B8346B9A678CA487 /* DeepSeekHarnessMobileTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		F2B000000000000000000005 /* DeepSeekHarnessMobileUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F2B000000000000000000008 /* Build configuration list for PBXNativeTarget "DeepSeekHarnessMobileUITests" */;
+			buildPhases = (
+				F2B000000000000000000006 /* Sources */,
+				F2B000000000000000000007 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				DD2CB1177812E5F54629AA43 /* PBXTargetDependency */,
+			);
+			name = DeepSeekHarnessMobileUITests;
+			productName = DeepSeekHarnessMobileUITests;
+			productReference = F2B000000000000000000003 /* DeepSeekHarnessMobileUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 		F1A000000000000000000040 /* AgentLiveActivityWidget */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = F1A000000000000000000052 /* Build configuration list for PBXNativeTarget "AgentLiveActivityWidget" */;
@@ -451,6 +497,7 @@
 				660802D096F9D6E6D171BFE5 /* DeepSeekHarnessMobile */,
 				F1A000000000000000000040 /* AgentLiveActivityWidget */,
 				7515E0402B76392350DE0E00 /* DeepSeekHarnessMobileTests */,
+				F2B000000000000000000005 /* DeepSeekHarnessMobileUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -508,11 +555,20 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		F2B000000000000000000006 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F2B000000000000000000001 /* WorkspaceDrawerUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		19F565C157878369B2723E65 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				39FD319C875F4B4A6893D676 /* GatewayProtocolTests.swift in Sources */,
+				CD86C5C4C6FF6F4BD8D715A6 /* VoiceInputTests.swift in Sources */,
 				CA11E000000000000000000F /* LocalizationCatalogTests.swift in Sources */,
 				75392054CB69B9596796C57A /* MultiGatewayTests.swift in Sources */,
 			);
@@ -522,6 +578,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BA1261E01FBB7F30C9AAE9D1 /* VoiceRipplePanel.swift in Sources */,
+				0DC425D67C678AF679BFF15A /* VoiceInputAdapter.swift in Sources */,
 				F1A000000000000000000001 /* AgentActivityAttributes.swift in Sources */,
 				F1A000000000000000000003 /* AgentApprovalIntents.swift in Sources */,
 				F1A000000000000000000005 /* AgentLiveActivityManager.swift in Sources */,
@@ -590,6 +648,36 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		F2B000000000000000000009 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "$(LOCAL_DEVELOPMENT_TEAM)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(LOCAL_BUNDLE_IDENTIFIER).uitests";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.10;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = DeepSeekHarnessMobile;
+		};
+			name = Debug;
+		};
+		F2B00000000000000000000A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "$(LOCAL_DEVELOPMENT_TEAM)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(LOCAL_BUNDLE_IDENTIFIER).uitests";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.10;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = DeepSeekHarnessMobile;
+		};
+			name = Release;
+		};
 		0DD215C4F718C79148B6B0EE /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = F2A000000000000000000001 /* config/Debug.xcconfig */;
@@ -781,7 +869,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 18;
+				CURRENT_PROJECT_VERSION = 19;
 				DEVELOPMENT_TEAM = "$(LOCAL_DEVELOPMENT_TEAM)";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AgentLiveActivityWidget/Info.plist;
@@ -791,7 +879,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.7.1;
+				MARKETING_VERSION = 1.7.2;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(LOCAL_BUNDLE_IDENTIFIER).AgentLiveActivityWidget";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -808,7 +896,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 18;
+				CURRENT_PROJECT_VERSION = 19;
 				DEVELOPMENT_TEAM = T58RY5HUA7;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AgentLiveActivityWidget/Info.plist;
@@ -818,7 +906,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.7.1;
+				MARKETING_VERSION = 1.7.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lichaofan.dshmobile.AgentLiveActivityWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -864,6 +952,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		F2B000000000000000000008 /* Build configuration list for PBXNativeTarget "DeepSeekHarnessMobileUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F2B00000000000000000000A /* Release */,
+				F2B000000000000000000009 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		62C8D12628E44A75D40278DD /* Build configuration list for PBXNativeTarget "DeepSeekHarnessMobile" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

@@ -1,0 +1,12 @@
+Whaleness iPhone 渲染素材来源与许可
+
+模型：Apple iPhone 15 Pro Max Black
+作者：polyman
+作者主页：https://sketchfab.com/Polyman_3D
+原始模型：https://sketchfab.com/3d-models/apple-iphone-15-pro-max-black-df17520841214c1792fb8a44c6783ee7
+许可：Creative Commons Attribution 4.0 International (CC BY 4.0)
+许可链接：https://creativecommons.org/licenses/by/4.0/
+
+适用素材：home.webp、conversation.webp、trajectory.webp、plugins.webp、tasks.webp、presets.webp，以及 Design/whaleness-iphone-mockups/ 中的透明 PNG 原稿。
+
+使用 Portrait Studio 导出，制作时调整机身材质、颜色、灯光和视角，替换 Whaleness 屏幕截图，并裁去透明留白、转换为 WebP。模型来自第三方作者，非 Apple 官方素材。

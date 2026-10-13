@@ -47,6 +47,16 @@
                ReferencedContainer = "container:DeepSeekHarnessMobile.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "F2B000000000000000000005"
+               BuildableName = "DeepSeekHarnessMobileUITests.xctest"
+               BlueprintName = "DeepSeekHarnessMobileUITests"
+               ReferencedContainer = "container:DeepSeekHarnessMobile.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction
