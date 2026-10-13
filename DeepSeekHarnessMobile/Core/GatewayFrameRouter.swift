@@ -212,6 +212,7 @@ enum GatewayFrameRouter {
             ))
         case "host":
             return .content(.host(GatewayHostSnapshot(
+                dshVersion: frame.dshVersion,
                 version: frame.version,
                 cwd: frame.cwd,
                 provider: frame.provider,

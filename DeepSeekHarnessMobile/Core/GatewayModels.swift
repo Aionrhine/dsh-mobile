@@ -779,6 +779,7 @@ struct WorkspaceLocalFile: Identifiable, Equatable {
 }
 
 struct GatewayHostSnapshot: Codable, Hashable, Sendable {
+    var dshVersion: String?
     var version: String?
     var cwd: String?
     var provider: String?

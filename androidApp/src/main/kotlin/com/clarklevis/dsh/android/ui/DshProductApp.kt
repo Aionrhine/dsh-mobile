@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -54,6 +55,7 @@ import androidx.compose.runtime.Composable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -141,10 +143,12 @@ internal fun DshProductApp(
     val systemDark = isSystemInDarkTheme()
     val view = LocalView.current
     SideEffect {
+        // 首页系统栏随抽屉阈值变化，由 WorkspaceDrawer 管理，避免网关刷新时覆盖。
+        if (isWorkspace) return@SideEffect
         val window = (view.context as? Activity)?.window ?: return@SideEffect
         WindowCompat.getInsetsController(window, view).apply {
-            isAppearanceLightStatusBars = !isWorkspace && !systemDark
-            isAppearanceLightNavigationBars = !isWorkspace && !systemDark
+            isAppearanceLightStatusBars = !systemDark
+            isAppearanceLightNavigationBars = !systemDark
         }
     }
     NavHost(
@@ -290,6 +294,7 @@ private fun WorkspaceScreen(
     onPlugins: () -> Unit,
     onScheduledTasks: () -> Unit
 ) {
+    val workspaceListState = rememberLazyListState()
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var showManualPairing by rememberSaveable { mutableStateOf(false) }
     var showQrScanner by rememberSaveable { mutableStateOf(false) }
@@ -328,15 +333,21 @@ private fun WorkspaceScreen(
     }
 
     WorkspaceDrawer(onPlugins = onPlugins, onScheduledTasks = onScheduledTasks) { openDrawer, canScrollVertically ->
+        val backgroundAnimationEnabled by remember(canScrollVertically, workspaceListState) {
+            derivedStateOf { canScrollVertically && !workspaceListState.isScrollInProgress }
+        }
         DshLiquidGlassHost(
             modifier = Modifier.fillMaxSize().testTag("workspace-screen"),
-            background = { backdropModifier -> HarnessAnimatedBackground(backdropModifier) }
+            background = { backdropModifier ->
+                HarnessAnimatedBackground(backdropModifier, animationEnabled = backgroundAnimationEnabled)
+            }
         ) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = WindowInsets.safeDrawing.asPaddingValues(),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                userScrollEnabled = canScrollVertically
+                userScrollEnabled = canScrollVertically,
+                state = workspaceListState
             ) {
                 item {
                     Column(

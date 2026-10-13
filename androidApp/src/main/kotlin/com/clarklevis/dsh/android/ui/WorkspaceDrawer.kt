@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
@@ -29,7 +28,8 @@ import androidx.compose.foundation.shape.AbsoluteRoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -38,12 +38,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
@@ -53,7 +51,6 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import com.clarklevis.dsh.android.R
@@ -77,20 +74,27 @@ internal fun WorkspaceDrawer(
         var horizontalDragActive by remember { mutableStateOf(false) }
         var animationJob by remember { mutableStateOf<Job?>(null) }
         val scope = rememberCoroutineScope()
-        val progress = (offsetPx / drawerWidthPx).coerceIn(0f, 1f)
-        // 页面向右移动时仅露出左侧边缘；回位过程中圆角同步收敛到零。
-        val pageCornerRadius = drawerPageCornerRadius * progress
-        val pageShape = AbsoluteRoundedCornerShape(
-            topLeft = pageCornerRadius,
-            bottomLeft = pageCornerRadius
-        )
+        // 连续位移只在图层阶段读取；组合阶段只观察跨阈值的交互状态。
+        val progress = remember(drawerWidthPx) {
+            derivedStateOf { (offsetPx / drawerWidthPx).coerceIn(0f, 1f) }
+        }
+        val drawerVisible by remember { derivedStateOf { offsetPx > 0f } }
+        val interceptContent by remember(drawerWidthPx) {
+            derivedStateOf { progress.value > 0.98f }
+        }
+        val canScrollVertically by remember {
+            derivedStateOf { !horizontalDragActive && offsetPx == 0f }
+        }
         val dark = isSystemInDarkTheme()
+        val lightSystemBars by remember(drawerWidthPx, dark) {
+            derivedStateOf { progress.value > 0.5f && !dark }
+        }
         val view = LocalView.current
-        SideEffect {
-            val window = (view.context as? Activity)?.window ?: return@SideEffect
+        LaunchedEffect(view, lightSystemBars) {
+            val window = (view.context as? Activity)?.window ?: return@LaunchedEffect
             WindowCompat.getInsetsController(window, view).apply {
-                isAppearanceLightStatusBars = progress > 0.5f && !dark
-                isAppearanceLightNavigationBars = progress > 0.5f && !dark
+                isAppearanceLightStatusBars = lightSystemBars
+                isAppearanceLightNavigationBars = lightSystemBars
             }
         }
 
@@ -107,21 +111,23 @@ internal fun WorkspaceDrawer(
                 offsetPx = targetOffset
             }
         }
-        BackHandler(enabled = progress > 0f) { settle(open = false) }
+        val openDrawer = remember(drawerWidthPx, scope) { { settle(open = true) } }
+        BackHandler(enabled = drawerVisible) { settle(open = false) }
 
         Box(Modifier.fillMaxSize().background(if (dark) Color(0xFF242426) else Color.White)) {
             Column(
                 modifier = Modifier.width(drawerWidth).fillMaxHeight()
                     .safeDrawingPadding()
                     .graphicsLayer {
-                        alpha = 0.6f + 0.4f * progress
-                        scaleX = 0.9f + 0.1f * progress
-                        scaleY = 0.9f + 0.1f * progress
+                        val fraction = progress.value
+                        alpha = 0.6f + 0.4f * fraction
+                        scaleX = 0.9f + 0.1f * fraction
+                        scaleY = 0.9f + 0.1f * fraction
                         transformOrigin = TransformOrigin(0f, 0.5f)
                     }
                     .padding(horizontal = 18.dp, vertical = 18.dp)
                     .testTag("workspace-drawer")
-                    .then(if (progress == 0f) Modifier.clearAndSetSemantics {} else Modifier),
+                    .then(if (!drawerVisible) Modifier.clearAndSetSemantics {} else Modifier),
                 verticalArrangement = Arrangement.Top
             ) {
                 Row(
@@ -151,27 +157,14 @@ internal fun WorkspaceDrawer(
 
             Box(
                 Modifier.fillMaxSize()
-                    .graphicsLayer { translationX = offsetPx }
-                    .dropShadow(
-                        shape = pageShape,
-                        shadow = Shadow(
-                            radius = 25.dp * progress,
-                            color = Color.Black.copy(alpha = 0.18f * progress),
-                            offset = DpOffset(x = -4.dp * progress, y = 0.dp)
-                        )
-                    )
-                    .dropShadow(
-                        shape = pageShape,
-                        shadow = Shadow(
-                            radius = 9.dp * progress,
-                            color = Color.Black.copy(alpha = 0.12f * progress),
-                            offset = DpOffset(x = -2.dp * progress, y = 0.dp)
-                        )
-                    )
-                    // 裁剪层始终存在，避免在零位附近增删 Modifier 引起闪烁。
+                    // 单个硬件图层负责平移、圆角和阴影，避免逐帧生成全屏模糊遮罩。
                     .graphicsLayer {
-                        shape = pageShape
-                        clip = true
+                        val fraction = progress.value
+                        val radius = drawerPageCornerRadius * fraction
+                        translationX = offsetPx
+                        shape = AbsoluteRoundedCornerShape(topLeft = radius, bottomLeft = radius)
+                        shadowElevation = 18.dp.toPx() * fraction
+                        clip = fraction > 0f
                     }
                     .draggable(
                         orientation = Orientation.Horizontal,
@@ -179,7 +172,10 @@ internal fun WorkspaceDrawer(
                             animationJob?.cancel()
                             offsetPx = (offsetPx + delta).coerceIn(0f, drawerWidthPx)
                         },
-                        onDragStarted = { horizontalDragActive = true },
+                        onDragStarted = {
+                            animationJob?.cancel()
+                            horizontalDragActive = true
+                        },
                         onDragStopped = { velocity ->
                             horizontalDragActive = false
                             val open = when {
@@ -193,10 +189,10 @@ internal fun WorkspaceDrawer(
                     .background(MaterialTheme.colorScheme.background)
                     .testTag("workspace-drawer-main")
             ) {
-                content({ settle(open = true) }, !horizontalDragActive && offsetPx == 0f)
-                if (progress > 0.98f) {
+                content(openDrawer, canScrollVertically)
+                if (interceptContent) {
                     Box(
-                        Modifier.fillMaxSize().clickable(
+                        Modifier.fillMaxSize().testTag("workspace-drawer-close").clickable(
                             role = Role.Button,
                             onClickLabel = "关闭侧边栏"
                         ) { settle(open = false) }

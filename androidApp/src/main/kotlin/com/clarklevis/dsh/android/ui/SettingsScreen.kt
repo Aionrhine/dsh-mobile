@@ -1,5 +1,9 @@
 package com.clarklevis.dsh.android.ui
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -36,6 +40,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import com.clarklevis.dsh.shared.protocol.GatewayPermissionOption
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -76,9 +84,26 @@ internal fun SettingsScreen(
     var showPermissionPicker by remember { mutableStateOf(false) }
     var pendingPermission by remember { mutableStateOf<String?>(null) }
     var showPrivacyPolicy by remember { mutableStateOf(false) }
+    var showReleaseNotes by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
+    val releaseInfo = remember(context) { AppReleaseInfo.load(context) }
+    val connectedGatewayVersion = if (isConnected(stateHolder) && !stateHolder.pluginsLoading && stateHolder.pluginsError == null) {
+        stateHolder.pluginCatalog?.bundles?.firstOrNull { it.name == "dsh-plugin-mobile-gateway" }?.version
+    } else null
+    val releaseScope = rememberCoroutineScope()
+    fun openRelease(repository: String, version: String?) {
+        releaseScope.launch {
+            val url = withContext(Dispatchers.IO) { resolveReleaseUrl(repository, version) }
+            runCatching { uriHandler.openUri(url) }
+        }
+    }
     val dark = isSystemInDarkTheme()
     val pageBackground = if (dark) Color(0xFF0D1118) else Color(0xFFF1F1F6)
-    LaunchedEffect(stateHolder.gatewayState.connection) { stateHolder.refreshProductState() }
+    LaunchedEffect(stateHolder.gatewayState.connection) {
+        stateHolder.refreshProductState()
+        if (isConnected(stateHolder)) stateHolder.refreshPlugins()
+    }
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
@@ -158,11 +183,7 @@ internal fun SettingsScreen(
                     }
                     stateHolder.snapshot.hostSnapshot?.let { host ->
                         SettingsSection("DSH Host") {
-                            SettingsValueRow("版本", host.version ?: "—")
-                            SettingsDivider()
-                            SettingsValueRow("Provider", host.provider ?: "—")
-                            SettingsDivider()
-                            SettingsValueRow("Model", host.model ?: "—")
+                            SettingsValueRow("版本", dshHostVersion(host.dshVersion, host.version))
                             SettingsDivider()
                             SettingsValueRow("已连接会话", "${host.attachedSessions ?: 0}")
                             host.cwd?.let { cwd ->
@@ -182,11 +203,25 @@ internal fun SettingsScreen(
                     SettingsSection("关于") {
                         SettingsValueRow(
                             title = "当前版本",
-                            value = "${updateModel.currentVersion} · 检查更新",
+                            value = updateModel.currentVersion,
                             enabled = !updateState.busy,
                             isLoading = updateState.busy,
-                            onClick = updateModel::check
+                            onClick = { openRelease("dsh-mobile", updateModel.currentVersion) }
                         )
+                        SettingsDivider()
+                        SettingsValueRow("要求网关版本", releaseInfo?.minimumGatewayVersion?.let { "≥ $it" } ?: "未提供") {
+                            openRelease("dsh-plugin-mobile-gateway", releaseInfo?.minimumGatewayVersion)
+                        }
+                        SettingsDivider()
+                        SettingsValueRow(
+                            "已连接网关版本",
+                            if (!isConnected(stateHolder)) "未连接" else connectedGatewayVersion ?: "未提供",
+                            isLoading = isConnected(stateHolder) && stateHolder.pluginsLoading
+                        ) { openRelease("dsh-plugin-mobile-gateway", connectedGatewayVersion) }
+                        SettingsDivider()
+                        SettingsValueRow("本版本新功能", "查看发布说明") { showReleaseNotes = true }
+                        SettingsDivider()
+                        SettingsActionRow("检查更新", enabled = !updateState.busy, onClick = updateModel::check)
                         SettingsDivider()
                         SettingsActionRow("隐私政策") {
                             showPrivacyPolicy = true
@@ -209,6 +244,24 @@ internal fun SettingsScreen(
             onConfirm = {
                 stateHolder.setDefault("permission", value)
                 pendingPermission = null
+            }
+        )
+    }
+    if (showReleaseNotes) {
+        DshAlertDialog(
+            title = "本版本新功能 ${updateModel.currentVersion}",
+            onDismissRequest = { showReleaseNotes = false },
+            dismissLabel = "完成",
+            confirmLabel = "GitHub 发布页",
+            onConfirm = { openRelease("dsh-mobile", null) },
+            content = {
+                Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                    DshMarkdownText(
+                        markdown = if (releaseInfo?.version == updateModel.currentVersion) releaseInfo.notes
+                            else "本版本发布说明暂未提供，请查看 GitHub 发布页。",
+                        compact = true
+                    )
+                }
             }
         )
     }

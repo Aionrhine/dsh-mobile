@@ -299,3 +299,13 @@ iOS 测试可在 Xcode 中选择 `DeepSeekHarnessMobile` Scheme 后执行 **Prod
 本项目是面向 DeepSeek Harness 的社区客户端，不代表 DeepSeek 官方发布。
 
 [![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/clarklevis1995/dsh-plugin-mobile-gateway)
+
+### 应用内发布说明资源
+
+Android 和 iOS 的“关于”页共用 `AppRelease/release-info.json` 与 `AppRelease/release-notes.md`。JSON 中的 `version` 必须与 App 版本一致，`minimumGatewayVersion` 表示必需的移动网关插件最低版本。Markdown 保存本版本发布说明；应用启动时从本地打包资源读取，不依赖网络获取正文。
+
+KMM 双端打包技能会在编译前写入经过整理的最终发布说明并同步资源版本，校验 APK、AAB 和 iOS Bundle 内资源与源文件完全一致；打包失败会恢复资源和版本文件。更新说明后需要重新构建应用，不能只修改打包输出目录中的说明文件。
+
+### Android Studio 的 iOS Metal 编译
+
+项目通过 `Build Metal Library` 阶段执行 `scripts/build_metal_library.sh`，自动查找已安装的 Metal 工具链，并把 `default.metallib` 写入应用 Bundle。该阶段只在子进程中清除 Android Studio 注入的 `TOOLCHAINS` 与 `SDKROOT`，编译时仍明确使用当前 iOS SDK 和部署目标，避免强制 `XcodeDefault` 导致误报缺少 Metal Toolchain。

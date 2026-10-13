@@ -324,6 +324,7 @@ class SharedMobileStore(
                 }
                 "host" -> hostSnapshot = GatewayHostSnapshot(
                     version = frame.version,
+                    dshVersion = frame.dshVersion,
                     cwd = frame.cwd,
                     provider = frame.provider,
                     model = frame.model,

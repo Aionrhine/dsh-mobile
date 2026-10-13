@@ -434,6 +434,7 @@ data class GatewayDirectoryItem(
 @Serializable
 data class GatewayHostSnapshot(
     val version: String? = null,
+    val dshVersion: String? = null,
     val cwd: String? = null,
     val provider: String? = null,
     val model: String? = null,

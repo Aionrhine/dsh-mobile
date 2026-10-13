@@ -1,11 +1,53 @@
 import SwiftUI
 import WebKit
+import MarkdownUI
 
 struct SettingsView: View {
+    @Environment(\.openURL) private var openURL
     @EnvironmentObject private var store: AppStore
     @State private var pendingPermission: DefaultPermissionChoice?
     @State private var observedGatewayState: ConnectionState?
     @State private var showsPrivacyPolicy = false
+    @State private var showsReleaseNotes = false
+    private let releaseInfo = BundledAppReleaseInfo.load()
+
+    private var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "未知"
+    }
+
+    private var connectedGatewayVersion: String? {
+        guard gatewayState.isConnected, !store.pluginsLoading, store.pluginsError == nil else { return nil }
+        return store.pluginCatalog?.bundles.first(where: { $0.name == "dsh-plugin-mobile-gateway" })?.version
+    }
+
+    private func openRelease(_ repository: String, version: String?) {
+        Task {
+            let root = URL(string: "https://github.com/Clarklevis1995/\(repository)")!
+            let fallback = repository == "dsh-mobile" ? root.appendingPathComponent("releases") : root
+            guard let version, !version.isEmpty else { openURL(fallback); return }
+            let tag = version.hasPrefix("v") ? version : "v\(version)"
+            let candidate = root.appendingPathComponent("releases/tag").appendingPathComponent(tag)
+            var request = URLRequest(url: candidate, timeoutInterval: 8)
+            request.httpMethod = "HEAD"
+            let response = try? await URLSession.shared.data(for: request)
+            let status = (response?.1 as? HTTPURLResponse)?.statusCode ?? 0
+            openURL((200..<300).contains(status) ? candidate : fallback)
+        }
+    }
+
+    private func releaseRow(_ title: String, value: String, repository: String, version: String?) -> some View {
+        Button { openRelease(repository, version: version) } label: {
+            HStack {
+                Text(LocalizedStringKey(title))
+                Spacer()
+                Text(verbatim: value).foregroundStyle(.secondary)
+                Image(systemName: "chevron.right").font(.footnote).foregroundStyle(.tertiary)
+            }
+            .frame(maxWidth: .infinity, minHeight: 32)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
 
     private var gatewayState: ConnectionState {
         observedGatewayState ?? store.gateway.state
@@ -136,9 +178,8 @@ struct SettingsView: View {
 
             if let host = store.hostSnapshot {
                 Section("DSH Host") {
-                    LabeledContent("版本", value: host.version ?? "—")
-                    LabeledContent("Provider", value: host.provider ?? "—")
-                    LabeledContent("Model", value: host.model ?? "—")
+                    LabeledContent("版本", value: [host.dshVersion, host.version].compactMap { $0 }
+                        .first { $0.range(of: "^v?[0-9]+\\.[0-9]+", options: .regularExpression) != nil } ?? "未提供")
                     LabeledContent("已连接会话", value: "\(host.attachedSessions ?? 0)")
                     if let cwd = host.cwd {
                         LabeledContent {
@@ -175,17 +216,26 @@ struct SettingsView: View {
             }
 
             Section("关于") {
+                releaseRow("当前版本", value: appVersion, repository: "dsh-mobile", version: appVersion)
+                releaseRow("要求网关版本", value: releaseInfo.map { "≥ \($0.minimumGatewayVersion)" } ?? "未提供",
+                           repository: "dsh-plugin-mobile-gateway", version: releaseInfo?.minimumGatewayVersion)
+                releaseRow("已连接网关版本", value: !gatewayState.isConnected ? "未连接" :
+                    store.pluginsLoading ? "读取中…" : connectedGatewayVersion ?? "未提供",
+                    repository: "dsh-plugin-mobile-gateway", version: connectedGatewayVersion)
+                Button("本版本新功能") { showsReleaseNotes = true }
                 Button("隐私政策") { showsPrivacyPolicy = true }
             }
         }
         .navigationTitle("设置")
         .task {
             store.refreshDefaultConfiguration()
+            if gatewayState.isConnected { store.refreshPlugins() }
         }
         .onReceive(store.gateway.$state) { state in
             let wasConnected = observedGatewayState?.isConnected ?? state.isConnected
             observedGatewayState = state
             if !wasConnected && state.isConnected {
+                store.refreshPlugins()
                 store.refreshDefaultConfiguration()
             }
         }
@@ -198,6 +248,24 @@ struct SettingsView: View {
                     store.setDefaultPermission(option.id)
                 }
             )
+        }
+        .sheet(isPresented: $showsReleaseNotes) {
+            NavigationStack {
+                ScrollView {
+                    Markdown(releaseInfo?.version == appVersion ? releaseInfo!.notes : "本版本发布说明暂未提供，请查看 GitHub 发布页。")
+                        .padding(20)
+                }
+                .navigationTitle("本版本新功能")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("完成") { showsReleaseNotes = false }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("GitHub 发布页") { openRelease("dsh-mobile", version: nil) }
+                    }
+                }
+            }
         }
         .sheet(isPresented: $showsPrivacyPolicy) {
             PrivacyPolicySheet()
@@ -720,5 +788,24 @@ private struct DefaultModelCard: View {
                 .stroke(isSelected ? Color.primary : Color.secondary.opacity(0.18), lineWidth: isSelected ? 1.5 : 1)
         }
         .opacity(isBusy ? 0.7 : 1)
+    }
+}
+
+
+private struct BundledAppReleaseInfo: Decodable {
+    let version: String
+    let minimumGatewayVersion: String
+    var notes: String = ""
+
+    private enum CodingKeys: String, CodingKey { case version, minimumGatewayVersion }
+
+    static func load() -> BundledAppReleaseInfo? {
+        guard let metadataURL = Bundle.main.url(forResource: "release-info", withExtension: "json"),
+              let notesURL = Bundle.main.url(forResource: "release-notes", withExtension: "md"),
+              let data = try? Data(contentsOf: metadataURL),
+              var info = try? JSONDecoder().decode(Self.self, from: data),
+              let notes = try? String(contentsOf: notesURL, encoding: .utf8) else { return nil }
+        info.notes = notes
+        return info
     }
 }

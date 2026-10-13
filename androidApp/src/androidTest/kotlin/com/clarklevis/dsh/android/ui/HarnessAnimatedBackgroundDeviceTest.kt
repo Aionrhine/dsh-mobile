@@ -1,14 +1,51 @@
 package com.clarklevis.dsh.android.ui
 
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlin.math.hypot
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class HarnessAnimatedBackgroundDeviceTest {
+    @get:Rule
+    val compose = createComposeRule()
+
+    @Test
+    fun pausingBackgroundStopsGlassInvalidationAndResumesFromCurrentFrame() {
+        val animationEnabled = mutableStateOf(true)
+        val frameSignal = mutableLongStateOf(0L)
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            CompositionLocalProvider(LocalDshGlassFrameSignal provides frameSignal) {
+                HarnessAnimatedBackground(animationEnabled = animationEnabled.value)
+            }
+        }
+        compose.mainClock.advanceTimeBy(500)
+        compose.waitForIdle()
+        val beforePause = frameSignal.longValue
+        assertTrue("背景应正常播放", beforePause > 0L)
+        compose.runOnIdle { animationEnabled.value = false }
+        compose.mainClock.advanceTimeByFrame()
+        compose.waitForIdle()
+        val pausedFrame = frameSignal.longValue
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        assertEquals("手势期间不应重新采样玻璃背景", pausedFrame, frameSignal.longValue)
+        compose.runOnIdle { animationEnabled.value = true }
+        compose.mainClock.advanceTimeBy(200)
+        compose.waitForIdle()
+        assertTrue("恢复时应接着播放而非归零", frameSignal.longValue > pausedFrame)
+        compose.mainClock.autoAdvance = true
+    }
+
     @Test
     fun whaleParticlesKeepTheSourceAspectRatioAndInteriorBellyDetail() {
         val particles = makeWhaleParticles()

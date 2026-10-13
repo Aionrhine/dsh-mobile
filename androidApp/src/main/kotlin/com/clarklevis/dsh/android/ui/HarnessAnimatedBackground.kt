@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -26,7 +27,6 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shader
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -39,7 +39,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.PathParser
 import androidx.core.graphics.createBitmap
-import kotlinx.coroutines.delay
 import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.hypot
@@ -48,9 +47,9 @@ import kotlin.math.sin
 
 /** SwiftUI HarnessAnimatedBackground 的 Android 对位实现。 */
 @Composable
-internal fun HarnessAnimatedBackground(modifier: Modifier = Modifier) {
+internal fun HarnessAnimatedBackground(modifier: Modifier = Modifier, animationEnabled: Boolean = true) {
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
+    val active = rememberBackgroundActive()
     val liquidGlassFrameSignal = LocalDshGlassFrameSignal.current
     val motionEnabled = remember {
         Settings.Global.getFloat(
@@ -59,25 +58,23 @@ internal fun HarnessAnimatedBackground(modifier: Modifier = Modifier) {
             1f
         ) > 0f
     }
-    var active by remember { mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
-    var elapsed by remember { mutableFloatStateOf(0f) }
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, _ ->
-            active = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-    LaunchedEffect(active, motionEnabled) {
-        if (!active || !motionEnabled) {
-            elapsed = 0f
-            return@LaunchedEffect
-        }
-        val started = System.nanoTime()
+    val elapsed = remember { mutableFloatStateOf(0f) }
+    val currentTime = remember { { elapsed.floatValue } }
+    LaunchedEffect(active, motionEnabled, animationEnabled) {
+        // 手势期间保留当前画面与玻璃采样，恢复后接着播放，避免回到第一帧。
+        if (!active || !motionEnabled || !animationEnabled) return@LaunchedEffect
+        val initialTime = elapsed.floatValue
+        var started = 0L
+        var lastFrame = 0L
         while (true) {
-            elapsed = ((System.nanoTime() - started) / 1_000_000_000.0 % 4096.0).toFloat()
-            liquidGlassFrameSignal?.longValue = (elapsed * 20f).toLong()
-            delay(33)
+            withFrameNanos { frameTime ->
+                if (started == 0L) started = frameTime
+                if (lastFrame == 0L || frameTime - lastFrame >= 33_333_333L) {
+                    elapsed.floatValue = (initialTime + (frameTime - started) / 1_000_000_000f) % 4096f
+                    liquidGlassFrameSignal?.longValue = (elapsed.floatValue * 20f).toLong()
+                    lastFrame = frameTime
+                }
+            }
         }
     }
 
@@ -88,12 +85,12 @@ internal fun HarnessAnimatedBackground(modifier: Modifier = Modifier) {
             .semantics { hideFromAccessibility() }
     ) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            FluidField(elapsed)
+            FluidField(currentTime)
         } else {
-            FluidFallback(elapsed)
+            FluidFallback(currentTime)
         }
         TechnicalGrid()
-        WhaleParticleField(elapsed, !motionEnabled)
+        WhaleParticleField(currentTime, !motionEnabled)
         Canvas(Modifier.fillMaxSize()) {
             drawRect(
                 Brush.verticalGradient(
@@ -106,18 +103,36 @@ internal fun HarnessAnimatedBackground(modifier: Modifier = Modifier) {
     }
 }
 
+@Composable
+private fun rememberBackgroundActive(): Boolean {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var active by remember(lifecycleOwner) {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+    }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, _ ->
+            active = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    return active
+}
+
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @Composable
-private fun FluidField(time: Float) {
+private fun FluidField(time: () -> Float) {
     val brush = remember { HarnessFluidBrush() }
-    brush.time = time
-    Canvas(Modifier.fillMaxSize()) { drawRect(brush) }
+    Canvas(Modifier.fillMaxSize()) {
+        brush.updateTime(time())
+        drawRect(brush)
+    }
 }
 
 @Composable
-private fun FluidFallback(time: Float) {
+private fun FluidFallback(time: () -> Float) {
     Canvas(Modifier.fillMaxSize()) {
-        val x = size.width * (0.46f + sin(time * 0.075f) * 0.08f)
+        val x = size.width * (0.46f + sin(time() * 0.075f) * 0.08f)
         drawRect(
             Brush.radialGradient(
                 colors = listOf(Color(0xFF234B79), Color(0xFF101F3B), Color(0xFF010510)),
@@ -131,11 +146,12 @@ private fun FluidFallback(time: Float) {
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 private class HarnessFluidBrush : ShaderBrush() {
     private val runtime = RuntimeShader(HARNESS_FLUID_SHADER)
-    var time: Float = 0f
+    fun updateTime(time: Float) {
+        runtime.setFloatUniform("time", time)
+    }
 
     override fun createShader(size: Size): Shader {
         runtime.setFloatUniform("size", size.width, size.height)
-        runtime.setFloatUniform("time", time)
         return runtime
     }
 }
@@ -179,7 +195,7 @@ private fun TechnicalGrid() {
 }
 
 @Composable
-private fun WhaleParticleField(time: Float, isStatic: Boolean) {
+private fun WhaleParticleField(time: () -> Float, isStatic: Boolean) {
     val particles = remember { makeWhaleParticles() }
     Canvas(Modifier.fillMaxSize()) {
         if (particles.isEmpty()) return@Canvas
@@ -187,7 +203,7 @@ private fun WhaleParticleField(time: Float, isStatic: Boolean) {
         val center = Offset(size.width * 0.55f, size.height * 0.34f)
         // 加密采样后同步缩小点，维持原有留白和整体亮度。
         val baseDot = max(1.45.dp.toPx(), square / 220f) * (60f / WHALE_SAMPLE_SIZE)
-        val t = if (isStatic) 0f else time
+        val t = if (isStatic) 0f else time()
         // 动态位移按 dp 计算，避免高密度屏幕上的几像素波动几乎不可见。
         val driftAmplitudeX = if (isStatic) 2.8f else 4.dp.toPx()
         val driftAmplitudeY = if (isStatic) 2.6f else 4.dp.toPx()
