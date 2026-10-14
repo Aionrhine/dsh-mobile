@@ -143,6 +143,9 @@ class GatewayRuntime(
     private var foregroundProbeJob: Job? = null
     private var foregroundRetryWindowJob: Job? = null
     private var foregroundFastRetryAvailable = false
+    private var lastConnectedEndpoint: String? = null
+    private var foregroundResumeEndpoint: String? = null
+    private var foregroundResumeWindowJob: Job? = null
 
     val state: StateFlow<GatewayRuntimeState> = mutableState.asStateFlow()
     /**
@@ -165,6 +168,8 @@ class GatewayRuntime(
     suspend fun connect(endpoint: String) = serialized {
         requireWebSocketEndpoint(endpoint)
         require(trustedEndpoints.isEmpty() || endpoint in trustedEndpoints) { "地址未经此主机确认" }
+        cancelForegroundResumeLocked()
+        lastConnectedEndpoint = null
         val existing = preferences.load()
         preferences.update(existing.copy(endpoint = endpoint, automaticallyConnect = true))
         this.endpoint = endpoint
@@ -181,6 +186,8 @@ class GatewayRuntime(
     suspend fun pair(encodedPayload: String) = serialized {
         val payload = GatewayPairingPayloadParser.parse(encodedPayload, clock.nowEpochMilliseconds())
         GatewayIdentity.validate(expectedGatewayId, payload.gatewayId)
+        cancelForegroundResumeLocked()
+        lastConnectedEndpoint = null
         expectedGatewayId = payload.gatewayId ?: expectedGatewayId
         val existing = preferences.load()
         preferences.update(existing.copy(endpoint = payload.publicUrl, automaticallyConnect = true))
@@ -210,6 +217,8 @@ class GatewayRuntime(
         }
         if (token.isNullOrBlank()) return@serialized false
         requireWebSocketEndpoint(stored.endpoint)
+        cancelForegroundResumeLocked()
+        lastConnectedEndpoint = null
         endpoint = stored.endpoint
         pairingCode = null
         isManualPairingAttempt = false
@@ -248,6 +257,7 @@ class GatewayRuntime(
     suspend fun applicationDidEnterBackground() = serialized {
         // 切后台不代表用户取消连接；空闲时不启动前台服务，也不主动关闭健康 socket。
         isInBackground = true
+        cancelForegroundResumeLocked()
         cancelForegroundProbeLocked()
         updateRequestTimeoutsLocked()
     }
@@ -265,8 +275,16 @@ class GatewayRuntime(
                     reconnectBlocked = false
                 }
                 if (canReconnectLocked()) {
+                    if (wasInBackground) startForegroundResumeLocked()
                     if (mutableState.value.connection == GatewayConnectionState.CONNECTED) {
                         if (wasInBackground) probeForegroundConnectionLocked()
+                    } else if (wasInBackground && foregroundResumeEndpoint != null) {
+                        // An attempt started before backgrounding may be stuck on an unreachable fallback.
+                        // A real foreground transition gets one fresh attempt at the last authenticated endpoint.
+                        endpoint = foregroundResumeEndpoint
+                        cancelForegroundResumeLocked()
+                        reconnectJob?.cancel()
+                        openTransportLocked(preserveTurns = true)
                     } else if (connectionAttemptTimeoutJob?.isActive != true) {
                         // 回前台直接尝试上一次可用地址，并取消后台退避等待。
                         scheduleReconnectLocked(immediate = true)
@@ -514,7 +532,9 @@ class GatewayRuntime(
     }
 
     private suspend fun handleTransportFailureLocked(failure: GatewayTransportState.Failed) {
-        val immediateForegroundRetry = foregroundFastRetryAvailable && !isInBackground
+        val resumeEndpoint = foregroundResumeEndpoint.takeIf { !isInBackground }
+        val immediateForegroundRetry = (foregroundFastRetryAvailable || resumeEndpoint != null) && !isInBackground
+        cancelForegroundResumeLocked()
         cancelForegroundProbeLocked()
         // failure 与 frame 共用有序通道；处理 failure 时立即作废代次，随后到达的旧帧只能被拒绝。
         connectionAttemptTimeoutJob?.cancel()
@@ -532,7 +552,10 @@ class GatewayRuntime(
             connection = if (shouldReconnect) GatewayConnectionState.CONNECTING else GatewayConnectionState.FAILED,
             lastError = failure.stableErrorCode()
         )
-        if (shouldReconnect) scheduleReconnectLocked(immediate = immediateForegroundRetry)
+        if (shouldReconnect) {
+            if (resumeEndpoint != null) endpoint = resumeEndpoint
+            scheduleReconnectLocked(immediate = immediateForegroundRetry)
+        }
     }
 
     private data class FrameDelivery(val event: GatewayRuntimeEvent.Frame, val bytes: Long)
@@ -616,6 +639,7 @@ class GatewayRuntime(
             isManualPairingAttempt = false
             recoveryDeadlineJob?.cancel()
             recoveryDeadlineJob = null
+            lastConnectedEndpoint = endpoint
             mutableState.value = mutableState.value.copy(
                 connection = GatewayConnectionState.CONNECTED,
                 serverPort = frame.port,
@@ -894,6 +918,7 @@ class GatewayRuntime(
     }
 
     private suspend fun clearConnectionWorkLocked() {
+        cancelForegroundResumeLocked()
         cancelPendingLocked(ERROR_CONNECTION_CLOSED)
         while (deferredRequests.isNotEmpty()) {
             emitCancelledLocked(deferredRequests.removeFirst(), ERROR_CONNECTION_CLOSED)
@@ -1127,6 +1152,24 @@ class GatewayRuntime(
         }
     }
 
+    private fun startForegroundResumeLocked() {
+        cancelForegroundResumeLocked()
+        foregroundResumeEndpoint = lastConnectedEndpoint ?: return
+        foregroundResumeWindowJob = scope.launch {
+            delay(FOREGROUND_RESUME_RETRY_WINDOW_MILLISECONDS)
+            serialized {
+                foregroundResumeWindowJob = null
+                foregroundResumeEndpoint = null
+            }
+        }
+    }
+
+    private fun cancelForegroundResumeLocked() {
+        foregroundResumeWindowJob?.cancel()
+        foregroundResumeWindowJob = null
+        foregroundResumeEndpoint = null
+    }
+
     private suspend fun probeForegroundConnectionLocked() {
         cancelForegroundProbeLocked()
         foregroundFastRetryAvailable = true
@@ -1256,6 +1299,7 @@ class GatewayRuntime(
         private const val DEFAULT_RECOVERY_WINDOW_MILLISECONDS = 60_000L
         private const val DEFAULT_CONNECTION_ATTEMPT_TIMEOUT_MILLISECONDS = 15_000L
         private const val DEFAULT_FOREGROUND_PROBE_TIMEOUT_MILLISECONDS = 2_000L
+        private const val FOREGROUND_RESUME_RETRY_WINDOW_MILLISECONDS = 5_000L
         private const val MAXIMUM_ATTACHMENT_BYTES = 8 * 1_024 * 1_024
         private const val MAXIMUM_OUTGOING_IMAGE_COUNT = 4
         private const val MAXIMUM_OUTGOING_IMAGE_CHARACTERS = 4_893_356
