@@ -212,11 +212,137 @@ class SharedVoiceInputStoreTest {
         store.permissionResult(token, true, 1001)
         val released = store.release(1100)
         assertEquals("stopping", released.snapshot.phase)
+        assertFalse(released.snapshot.overlayVisible)
+        assertEquals("", released.snapshot.status)
         assertFalse(released.effects.any { it.action == "stop" && it.discard })
         val stop = store.captureStarted(token, 1101).effects.single { it.action == "stop" }
         assertFalse(stop.discard)
         assertEquals(200L, stop.delayMilliseconds)
         assertEquals(1, store.captureFinished(token, Base64.encode(ByteArray(3200)), 1302).requests.size)
+    }
+
+    @Test
+    fun releaseHidesOverlayWhileBackgroundTranscriptionStillFillsDraft() {
+        val store = ready()
+        val token = capture(store)
+        assertTrue(store.snapshot().overlayVisible)
+        val release = store.release(1500)
+        assertTrue(release.snapshot.active)
+        assertFalse(release.snapshot.overlayVisible)
+        assertEquals("", release.snapshot.status)
+        assertTrue(release.effects.any { it.action == "stop" && !it.discard })
+        val captured = store.captureFinished(token, Base64.encode(ByteArray(16000)), 1700)
+        assertEquals("transcribing", captured.snapshot.phase)
+        assertTrue(captured.snapshot.active)
+        assertFalse(captured.snapshot.overlayVisible)
+        assertEquals("", captured.snapshot.status)
+        assertEquals("speech-transcribe", captured.requests.single().requestType)
+        val completed = store.acceptJson("""{"kind":"speech-transcript","requestId":"$token","text":"后台回填文字"}""")
+        assertEquals("后台回填文字", completed.draftUpdate)
+        assertFalse(completed.snapshot.overlayVisible)
+        assertFalse(completed.snapshot.keyboardVisible)
+        assertFalse(completed.effects.any { it.action == "focusEditor" })
+    }
+
+    @Test
+    fun hardwareWarmupIsScopedToConversationAndNeverStartsCapture() {
+        val store = SharedVoiceInputStore()
+        val catalog =
+            store
+                .connectionChanged(true, true)
+                .requests
+                .first { it.requestType == "speech-catalog" }
+                .correlationId
+        val metadata =
+            store.acceptJson(
+                """{"kind":"speech-catalog","requestId":"$catalog","available":true,"selection":{"providerId":"p"},"providers":[{"id":"p","preparation":{"phase":"ready"}}]}""",
+            )
+        assertTrue(metadata.effects.isEmpty())
+        val opened = store.open("conversation", "")
+        assertTrue(opened.effects.any { it.action == "warmCapture" })
+        assertFalse(opened.effects.any { it.action == "start" || it.action == "permission" })
+        assertFalse(opened.snapshot.active)
+        val suspended = store.suspendCapture()
+        assertTrue(suspended.effects.any { it.action == "releaseCapture" })
+        assertEquals(listOf("warmCapture"), store.resumeCapture().effects.map { it.action })
+        store.leave()
+        assertTrue(store.resumeCapture().effects.isEmpty())
+    }
+
+    @Test
+    fun authorizedTouchCapturesBeforeLongPressButShowsOverlayOnlyAfterConfirmation() {
+        val store = ready()
+        val down = store.touchDown(1000, true)
+        val token = down.effects.single { it.action == "start" }.recordingId
+        assertEquals("priming", down.snapshot.phase)
+        assertFalse(down.snapshot.overlayVisible)
+        assertFalse(down.snapshot.inputBlocked)
+        assertTrue(down.requests.isEmpty())
+        val firstAudio = store.captureStarted(token, 1020)
+        assertFalse(firstAudio.snapshot.overlayVisible)
+        assertTrue(firstAudio.effects.isEmpty())
+        store.level(token, 0.1f, 1020)
+        val hold = store.press(1080)
+        assertTrue(hold.snapshot.overlayVisible)
+        assertTrue(hold.snapshot.inputBlocked)
+        assertEquals(1, hold.effects.count { it.action == "hapticStart" })
+        assertFalse(hold.effects.any { it.action == "permission" || it.action == "start" })
+        assertTrue(store.touchFinished().snapshot.overlayVisible)
+        store.release(1100)
+        val request = store.captureFinished(token, Base64.encode(ByteArray(3200)), 1300).requests.single()
+        assertEquals(token, request.correlationId)
+    }
+
+    @Test
+    fun coldMicrophoneCannotShowRecordingBeforeFirstSamples() {
+        val store = ready()
+        val token =
+            store
+                .touchDown(1000, true)
+                .effects
+                .single { it.action == "start" }
+                .recordingId
+        val hold = store.press(1080)
+        assertEquals("starting", hold.snapshot.phase)
+        assertTrue(hold.snapshot.inputBlocked)
+        assertFalse(hold.snapshot.overlayVisible)
+        assertEquals(1, hold.effects.count { it.action == "hapticStart" })
+        store.tick(1500)
+        assertFalse(store.snapshot().overlayVisible)
+        val first = store.captureStarted(token, 1600)
+        assertTrue(first.snapshot.overlayVisible)
+        assertFalse(first.effects.any { it.action.startsWith("haptic") })
+    }
+
+    @Test
+    fun shortTapDiscardsPreCaptureAndLateSamplesCannotResumeIt() {
+        val store = ready()
+        val token =
+            store
+                .touchDown(1000, true)
+                .effects
+                .single { it.action == "start" }
+                .recordingId
+        val tap = store.touchFinished()
+        assertEquals("idle", tap.snapshot.phase)
+        assertTrue(tap.effects.any { it.action == "stop" && it.discard })
+        assertFalse(tap.effects.any { it.action.startsWith("haptic") })
+        assertTrue(tap.requests.isEmpty())
+        val late = store.captureStarted(token, 1200)
+        assertFalse(late.snapshot.overlayVisible)
+        assertTrue(late.effects.single { it.action == "stop" }.discard)
+        assertTrue(store.captureFinished(token, Base64.encode(ByteArray(3200)), 1300).requests.isEmpty())
+    }
+
+    @Test
+    fun ungrantedTouchCannotStartMicrophoneOrPromptUntilLongPress() {
+        val store = ready()
+        assertTrue(store.touchDown(1000, false).effects.isEmpty())
+        assertEquals("idle", store.snapshot().phase)
+        val hold = store.press(1080)
+        assertEquals("authorizing", hold.snapshot.phase)
+        assertFalse(hold.snapshot.overlayVisible)
+        assertEquals(1, hold.effects.count { it.action == "permission" })
     }
 
     @Test fun speechSelectionDoesNotBreakGeneralWireDecoder() {
@@ -493,15 +619,19 @@ class SharedVoiceInputStoreTest {
     }
 
     @Test
-    fun hapticStartCoincidesWithOverlayAndDoesNotRepeatOnCaptureStart() {
+    fun hapticStartOccursOnLongPressWithoutWaitingForMicrophoneAndDoesNotRepeat() {
         val store = ready()
         val press = store.press(1000)
         assertTrue(press.snapshot.active)
+        assertFalse(press.snapshot.overlayVisible)
         assertEquals(1, press.effects.count { it.action == "hapticStart" })
         assertFalse(store.press(1001).effects.any { it.action.startsWith("haptic") })
         val token = press.effects.first { it.action == "permission" }.recordingId
         assertFalse(store.permissionResult(token, true, 1002).effects.any { it.action.startsWith("haptic") })
-        assertFalse(store.captureStarted(token, 1003).effects.any { it.action.startsWith("haptic") })
+        val ready = store.captureStarted(token, 1003)
+        assertTrue(ready.snapshot.overlayVisible)
+        assertFalse(ready.effects.any { it.action.startsWith("haptic") })
+        assertTrue(store.captureStarted(token, 1004).effects.isEmpty())
         store.cancel()
         store.connectionChanged(true, false)
         assertFalse(store.press(2000).effects.any { it.action.startsWith("haptic") })

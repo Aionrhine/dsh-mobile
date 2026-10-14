@@ -400,11 +400,11 @@ private struct ScheduledTasksView: View {
         HStack(spacing: 0) {
             if isSearching {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 17, weight: .medium))
+                    .appFont(.system(size: 17, weight: .medium))
                     .foregroundStyle(.secondary)
                     .padding(.leading, 14)
                 TextField("搜索定时任务", text: $searchQuery)
-                    .font(.system(size: 15))
+                    .appFont(.system(size: 15))
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .submitLabel(.search)
@@ -420,7 +420,7 @@ private struct ScheduledTasksView: View {
                     }
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 18))
+                        .appFont(.system(size: 18))
                         .foregroundStyle(.secondary)
                         .frame(width: 40, height: 46)
                 }
@@ -433,7 +433,7 @@ private struct ScheduledTasksView: View {
                     }
                 } label: {
                     Image(systemName: "magnifyingglass")
-                        .font(.system(size: 18, weight: .medium))
+                        .appFont(.system(size: 18, weight: .medium))
                         .frame(width: 46, height: 46)
                         .contentShape(Rectangle())
                 }
@@ -453,7 +453,7 @@ private struct ScheduledTasksView: View {
                     }
                 } label: {
                     Image(systemName: "line.3.horizontal.decrease")
-                        .font(.system(size: 18, weight: .medium))
+                        .appFont(.system(size: 18, weight: .medium))
                         .frame(width: 46, height: 46)
                         .contentShape(Rectangle())
                 }
@@ -484,14 +484,14 @@ private struct ScheduledTaskCard: View {
             } label: {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(ScheduledTaskFormat.shortRule(task))
-                        .font(.system(size: 15, weight: .medium))
+                        .appFont(.system(size: 15, weight: .medium))
                         .foregroundStyle(Color(red: 0.03, green: 0.51, blue: 0.97))
                     Text(task.title)
-                        .font(.system(size: 21, weight: .semibold))
+                        .appFont(.system(size: 21, weight: .semibold))
                         .foregroundStyle(.primary)
                         .multilineTextAlignment(.leading)
                     Text(task.prompt)
-                        .font(.system(size: 16))
+                        .appFont(.system(size: 16))
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.leading)
                         .lineLimit(3)
@@ -512,11 +512,11 @@ private struct ScheduledTaskCard: View {
             } label: {
                 HStack {
                     Text(task.status == "active" ? ScheduledTaskFormat.date(task.scheduledAt) : String(localized: "已结束"))
-                        .font(.system(size: 15))
+                        .appFont(.system(size: 15))
                         .foregroundStyle(.secondary)
                     Spacer()
                     Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 14, weight: .semibold))
+                        .appFont(.system(size: 14, weight: .semibold))
                         .foregroundStyle(.secondary)
                         .frame(width: 36, height: 34)
                 }
@@ -573,7 +573,7 @@ private struct ScheduledTaskCard: View {
             Text(label).foregroundStyle(.secondary).frame(width: 92, alignment: .leading)
             Text(value).foregroundStyle(.primary).frame(maxWidth: .infinity, alignment: .leading)
         }
-        .font(.system(size: 14))
+        .appFont(.system(size: 14))
     }
 }
 
@@ -652,7 +652,7 @@ private struct ScheduledTaskEditSheet: View {
             HStack {
                 Button("取消") { dismiss() }
                 Spacer()
-                Text("编辑定时任务").font(.system(size: 17, weight: .semibold))
+                Text("编辑定时任务").appFont(.system(size: 17, weight: .semibold))
                 Spacer()
                 Button("保存") { save() }
                     .fontWeight(.semibold)
@@ -664,15 +664,15 @@ private struct ScheduledTaskEditSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("标题").font(.subheadline.weight(.medium))
+                        Text("标题").appFont(.subheadline.weight(.medium))
                         TextField("任务标题", text: $title)
                             .textInputAutocapitalization(.never)
                             .padding(13)
                             .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
-                        Text("最多 120 个字").font(.caption).foregroundStyle(.secondary)
+                        Text("最多 120 个字").appFont(.caption).foregroundStyle(.secondary)
                     }
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("任务内容").font(.subheadline.weight(.medium))
+                        Text("任务内容").appFont(.subheadline.weight(.medium))
                         TextEditor(text: $prompt)
                             .scrollContentBackground(.hidden)
                             .frame(minHeight: 130)
@@ -680,7 +680,7 @@ private struct ScheduledTaskEditSheet: View {
                             .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
                     }
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("执行时间").font(.subheadline.weight(.medium))
+                        Text("执行时间").appFont(.subheadline.weight(.medium))
                         if isRepeating {
                             Toggle("改为指定日期执行一次", isOn: $useSpecificDate)
                                 .tint(Color(red: 0.03, green: 0.51, blue: 0.97))
@@ -691,24 +691,24 @@ private struct ScheduledTaskEditSheet: View {
                             DatePicker("执行时刻", selection: $selectedDate, displayedComponents: .hourAndMinute)
                                 .datePickerStyle(.wheel)
                             Text("按当前设备时区 \(TimeZone.current.identifier) 选择，保存后按该时间执行一次。")
-                                .font(.caption).foregroundStyle(.secondary)
+                                .appFont(.caption).foregroundStyle(.secondary)
                             if timingChange != nil && selectedDate <= .now {
                                 Text("请选择未来的日期和时间。")
-                                    .font(.caption).foregroundStyle(.red)
+                                    .appFont(.caption).foregroundStyle(.red)
                             }
                         } else if task.kind == "daily" || task.kind == "weekly" {
                             DatePicker("执行时刻", selection: $selectedTime, displayedComponents: .hourAndMinute)
                                 .datePickerStyle(.wheel)
                                 .environment(\.timeZone, zone)
                             Text("保留原有\(task.kind == "daily" ? "每日" : "每周")规则和时区 \(zone.identifier)。")
-                                .font(.caption).foregroundStyle(.secondary)
+                                .appFont(.caption).foregroundStyle(.secondary)
                         } else {
                             Text("当前规则：\(ScheduledTaskFormat.fullRule(task))。选择上方选项后，可用日期和时间选择器改为单次执行。")
-                                .font(.subheadline).foregroundStyle(.secondary)
+                                .appFont(.subheadline).foregroundStyle(.secondary)
                         }
                     }
                     if let error = localError ?? (pendingRequestID != nil ? store.scheduledTaskMutationError : nil) {
-                        Text(error).font(.subheadline).foregroundStyle(.red)
+                        Text(error).appFont(.subheadline).foregroundStyle(.red)
                     }
                     if pendingRequestID != nil { ProgressView("正在保存…") }
                 }
@@ -955,7 +955,7 @@ private struct WorkspaceFilesSheet: View {
                         ProgressView(value: progress)
                         HStack {
                             Text("正在下载 · \(Int(progress * 100))%")
-                                .font(.caption.monospacedDigit())
+                                .appFont(.caption.monospacedDigit())
                                 .foregroundStyle(.secondary)
                             Spacer()
                             Button("取消", role: .cancel) { store.cancelWorkspaceFileDownload() }
@@ -1013,7 +1013,7 @@ private struct WorkspaceFilesSheet: View {
             Spacer()
             if store.workspaceFilesAreLoading { ProgressView().controlSize(.small) }
         }
-        .font(.subheadline)
+        .appFont(.subheadline)
         .foregroundStyle(.secondary)
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -1104,7 +1104,7 @@ private struct WorkspaceFileRow: View {
                 } label: {
                     HStack(spacing: 12) {
                         Image(systemName: workspaceFileIcon(item))
-                            .font(.title3)
+                            .appFont(.title3)
                             .foregroundStyle(DSHColor.ocean)
                             .frame(width: 28)
                         VStack(alignment: .leading, spacing: 3) {
@@ -1112,7 +1112,7 @@ private struct WorkspaceFileRow: View {
                                 .foregroundStyle(.primary)
                                 .lineLimit(1)
                             Text(workspaceFileDetail(item))
-                                .font(.caption)
+                                .appFont(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                         }
@@ -1143,11 +1143,11 @@ private struct WorkspaceFileRow: View {
                 .frame(width: 24, height: 24)
                 .overlay {
                     Image(systemName: "arrow.down")
-                        .font(.system(size: 9, weight: .semibold))
+                        .appFont(.system(size: 9, weight: .semibold))
                 }
         } else {
             Image(systemName: isDownloaded ? "checkmark.circle" : "arrow.down.circle")
-                .font(.title3)
+                .appFont(.title3)
                 .foregroundStyle(isDownloaded ? DSHColor.success : Color.primary)
         }
     }
@@ -1291,15 +1291,15 @@ private struct WorkspaceCodeDocumentView: View {
         VStack(spacing: 0) {
             HStack {
                 Text(document.languageDisplayName)
-                    .font(.caption.weight(.semibold))
+                    .appFont(.caption.weight(.semibold))
                     .foregroundStyle(DSHColor.ocean)
                 Spacer()
                 Text("\(document.lineCount) 行 · UTF-8")
-                    .font(.caption)
+                    .appFont(.caption)
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 14)
-            .frame(height: 38)
+            .frame(minHeight: 38)
             .background(Color(uiColor: .secondarySystemBackground))
 
             WorkspaceCodeTextKitView(document: document, colorScheme: colorScheme)
@@ -1308,6 +1308,8 @@ private struct WorkspaceCodeDocumentView: View {
 }
 
 private struct WorkspaceCodeTextKitView: UIViewRepresentable {
+    @AppStorage(AppFontScale.key) private var fontScale = 1.0
+    @AppStorage(AppFontScale.followsSystemKey) private var fontFollowsSystem = false
     let document: WorkspaceCodeDocument
     let colorScheme: ColorScheme
 
@@ -1324,9 +1326,10 @@ private struct WorkspaceCodeTextKitView: UIViewRepresentable {
 
 final class WorkspaceCodeTextKitContainer: UIView, UITextViewDelegate {
     private let gutterView = UIView()
+    private var gutterWidthConstraint: NSLayoutConstraint?
     private let lineNumberLabel = UILabel()
     private let codeTextView = UITextView(frame: .zero, textContainer: nil)
-    private let codeFont = UIFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+    private var codeFont: UIFont { UIFont.appMonospacedFont(ofSize: 13, weight: .regular) }
     private let lineSpacing: CGFloat = 4
     private var lineCount = 1
     private var maximumLineWidth: CGFloat = 0
@@ -1362,11 +1365,13 @@ final class WorkspaceCodeTextKitContainer: UIView, UITextViewDelegate {
         codeTextView.layoutManager.allowsNonContiguousLayout = true
         addSubview(codeTextView)
 
+        let gutterWidth = gutterView.widthAnchor.constraint(equalToConstant: 52)
+        gutterWidthConstraint = gutterWidth
         NSLayoutConstraint.activate([
             gutterView.leadingAnchor.constraint(equalTo: leadingAnchor),
             gutterView.topAnchor.constraint(equalTo: topAnchor),
             gutterView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            gutterView.widthAnchor.constraint(equalToConstant: 52),
+            gutterWidth,
             codeTextView.leadingAnchor.constraint(equalTo: gutterView.trailingAnchor),
             codeTextView.trailingAnchor.constraint(equalTo: trailingAnchor),
             codeTextView.topAnchor.constraint(equalTo: topAnchor),
@@ -1380,10 +1385,12 @@ final class WorkspaceCodeTextKitContainer: UIView, UITextViewDelegate {
     }
 
     func configure(document: WorkspaceCodeDocument, isDark: Bool) {
-        let revision = "\(document.text.hashValue)-\(document.tokens.count)-\(isDark)"
+        let revision = "\(document.text.hashValue)-\(document.tokens.count)-\(isDark)-\(AppFontScale.current)"
         guard configuredRevision != revision else { return }
         configuredRevision = revision
         lineCount = max(1, Int(document.lineCount))
+        let numberWidth = (String(lineCount) as NSString).size(withAttributes: [.font: codeFont]).width
+        gutterWidthConstraint?.constant = max(52, ceil(numberWidth) + 24)
 
         let codeBackground = isDark
             ? UIColor(red: 0.05, green: 0.07, blue: 0.09, alpha: 1)
@@ -1447,7 +1454,7 @@ final class WorkspaceCodeTextKitContainer: UIView, UITextViewDelegate {
         lineNumberLabel.frame = CGRect(
             x: 0,
             y: 14 - codeTextView.contentOffset.y,
-            width: 40,
+            width: gutterView.bounds.width - 12,
             height: max(labelHeight, rowHeight)
         )
     }
@@ -1461,7 +1468,7 @@ private enum WorkspaceCodeAttributedText {
         let result = NSMutableAttributedString(
             string: document.text,
             attributes: [
-                .font: UIFont.monospacedSystemFont(ofSize: 13, weight: .regular),
+                .font: UIFont.appMonospacedFont(ofSize: 13, weight: .regular),
                 .foregroundColor: baseColor(isDark),
                 .paragraphStyle: paragraph
             ]
@@ -1646,7 +1653,7 @@ private struct ConversationNavigationStatus: View {
         HStack(spacing: 7) {
             ConnectionDot(state: gateway.state)
             Text(agentPresetTitle)
-                .font(.caption.weight(.medium))
+                .appFont(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)

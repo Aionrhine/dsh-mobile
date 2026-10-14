@@ -7,6 +7,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.click
@@ -94,6 +95,10 @@ class ConversationKeyboardDeviceTest {
         shared.release(1500)
         shared.captureFinished(token, Base64.encodeToString(ByteArray(16000), Base64.NO_WRAP), 1501)
         val fixture = showConversation(shared)
+        compose.onNodeWithTag("voice-recording-overlay").assertDoesNotExist()
+        compose.onNodeWithText("正在整理录音").assertDoesNotExist()
+        compose.onNodeWithText("正在转成文字").assertDoesNotExist()
+        compose.onNodeWithTag("composer-input").assertIsEnabled().assertIsNotFocused()
         compose.runOnIdle {
             fixture.holder.voiceInput.accept("""{"kind":"speech-transcript","requestId":"$token","text":"语音草稿"}""")
         }
@@ -149,6 +154,9 @@ class ConversationKeyboardDeviceTest {
             compose.mainClock.autoAdvance = true
             compose.waitForIdle()
             assertTrue("松手应完成录音而非被原生手势取消", fixture.holder.voiceInput.state.phase == "stopping")
+            compose.onNodeWithTag("voice-recording-overlay").assertDoesNotExist()
+            compose.onNodeWithText("正在整理录音").assertDoesNotExist()
+            editor.assertIsEnabled().assertIsNotFocused()
             compose.runOnIdle {
                 shared.captureFinished(token, Base64.encodeToString(ByteArray(16000), Base64.NO_WRAP), 1501)
                 fixture.holder.voiceInput.draftChanged("")

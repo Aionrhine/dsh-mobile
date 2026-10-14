@@ -548,7 +548,7 @@ private fun ConversationPage(
         Column(
             Modifier
                 .align(Alignment.BottomCenter)
-                .graphicsLayer { alpha = if (stateHolder.voiceInput.state.active) 0f else 1f }
+                .graphicsLayer { alpha = if (stateHolder.voiceInput.state.overlayVisible) 0f else 1f }
                 .imePadding()
                 .onSizeChanged { size ->
                     bottomContentHeight = with(density) { size.height.toDp() }
@@ -628,7 +628,7 @@ private fun ConversationPage(
             }
         }
         AnimatedVisibility(
-            visible = stateHolder.voiceInput.state.active,
+            visible = stateHolder.voiceInput.state.overlayVisible,
             modifier = Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth().height(LocalConfiguration.current.screenHeightDp.dp * VoiceInputInteraction.OVERLAY_HEIGHT_FRACTION.toFloat()).zIndex(3f),
             enter = fadeIn(tween(VoiceInputInteraction.OVERLAY_FADE_IN_MILLISECONDS, easing = LinearOutSlowInEasing)),
@@ -1317,7 +1317,8 @@ private fun Composer(
         }
         voice.onDraftUpdate = { stateHolder.messageDraft = it }
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_PAUSE) voice.cancel()
+            if (event == Lifecycle.Event.ON_PAUSE) voice.suspendCapture()
+            if (event == Lifecycle.Event.ON_RESUME) voice.resumeCapture()
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
@@ -1328,8 +1329,8 @@ private fun Composer(
             voice.onHapticFeedback = null
         }
     }
-    LaunchedEffect(voice.state.active) {
-        if (voice.state.active) {
+    LaunchedEffect(voice.state.inputBlocked) {
+        if (voice.state.inputBlocked) {
             focusManager.clearFocus(force = true)
             keyboardController?.hide()
         }
@@ -1355,8 +1356,8 @@ private fun Composer(
     var observedSuccessfulSendCount by remember(stateHolder) {
         mutableStateOf(stateHolder.successfulMessageSendCount)
     }
-    LaunchedEffect(inputIsFocused, voice.state.active) {
-        if (inputIsFocused && !voice.state.active) keyboardController?.show() else keyboardController?.hide()
+    LaunchedEffect(inputIsFocused, voice.state.inputBlocked) {
+        if (inputIsFocused && !voice.state.inputBlocked) keyboardController?.show() else keyboardController?.hide()
     }
     LaunchedEffect(stateHolder.successfulMessageSendCount) {
         if (stateHolder.successfulMessageSendCount > observedSuccessfulSendCount) {
@@ -1424,10 +1425,10 @@ private fun Composer(
                 val commandToken = stateHolder.slashCommands.commandToken
                 val commandHint = stateHolder.slashCommands.argumentHint
                 Box(Modifier.fillMaxWidth().voiceHoldGesture(
-                    voice, voice.state.active || !voice.state.keyboardVisible, density.density,
+                    voice, voice.state.inputBlocked || voice.state.touchPending || (!voice.state.active && !voice.state.keyboardVisible), density.density,
                 )) {
                 BasicTextField(
-                    enabled = !voice.state.active,
+                    enabled = !voice.state.inputBlocked,
                     value = inputValue,
                     onValueChange = {
                         inputValue = it

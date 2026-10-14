@@ -108,6 +108,7 @@ import kotlinx.coroutines.delay
 private const val ROUTE_WORKSPACE = "workspace"
 private const val ROUTE_CONVERSATION = "conversation"
 private const val ROUTE_SETTINGS = "settings"
+private const val ROUTE_SETTINGS_FONT_SIZE = "settings/font-size"
 private const val ROUTE_SETTINGS_AGENT_PRESETS = "settings/agent-presets"
 private const val ROUTE_SETTINGS_DEFAULT_MODEL = "settings/default-model"
 private const val ROUTE_PLUGINS = "plugins"
@@ -196,8 +197,12 @@ internal fun DshProductApp(
                 stateHolder = stateHolder,
                 onBack = navController::popBackStack,
                 onOpenAgentPresets = { navController.navigate(ROUTE_SETTINGS_AGENT_PRESETS) },
-                onOpenDefaultModel = { navController.navigate(ROUTE_SETTINGS_DEFAULT_MODEL) }
+                onOpenDefaultModel = { navController.navigate(ROUTE_SETTINGS_DEFAULT_MODEL) },
+                onOpenFontSize = { navController.navigate(ROUTE_SETTINGS_FONT_SIZE) }
             )
+        }
+        composable(ROUTE_SETTINGS_FONT_SIZE) {
+            FontSizeSettingsScreen(navController::popBackStack)
         }
         composable(ROUTE_SETTINGS_AGENT_PRESETS) {
             AgentPresetSelectionScreen(stateHolder, navController::popBackStack)

@@ -16,9 +16,12 @@ final class VoiceInputAdapter: ObservableObject {
     private weak var gateway: GatewayClient?
     private var connectionObservation: AnyCancellable?
     private var ticker: Task<Void, Never>?
+    private var activityObservations = Set<AnyCancellable>()
     private let recorder: any VoiceAudioCapturing
     // AVAudioSession 激活和 AVAudioEngine 启停会阻塞；硬件操作串行执行，不能占用 UI 线程。
     private let recorderQueue = DispatchQueue(label: "ai.dsh.mobile.voice-capture", qos: .userInitiated)
+    private let permissionGranted: () -> Bool
+    private let captureRequests = VoiceCaptureRequestGate()
     private let requestPermission: (@escaping @Sendable (Bool) -> Void) -> Void
     private let startFeedback = UIImpactFeedbackGenerator(style: .soft)
     private let cancelFeedback = UISelectionFeedbackGenerator()
@@ -27,14 +30,22 @@ final class VoiceInputAdapter: ObservableObject {
     init(
         shared: SharedVoiceInputStore = SharedVoiceInputStore(),
         recorder: any VoiceAudioCapturing = IOSVoiceRecorder(),
+        permissionGranted: @escaping () -> Bool = { AVAudioApplication.shared.recordPermission == .granted },
         requestPermission: @escaping (@escaping @Sendable (Bool) -> Void) -> Void = { completion in
             AVAudioApplication.requestRecordPermission { completion($0) }
         }
     ) {
+        self.permissionGranted = permissionGranted
         self.recorder = recorder
         self.requestPermission = requestPermission
         self.shared = shared
         state = shared.snapshot()
+        NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification).sink { [weak self] _ in
+            Task { @MainActor in guard let self else { return }; self.apply(self.shared.suspendCapture()) }
+        }.store(in: &activityObservations)
+        NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification).sink { [weak self] _ in
+            Task { @MainActor in guard let self else { return }; self.apply(self.shared.resumeCapture()) }
+        }.store(in: &activityObservations)
     }
     private var now: Int64 { Int64(ProcessInfo.processInfo.systemUptime * 1000) }
     func bind(_ gateway: GatewayClient) {
@@ -54,6 +65,11 @@ final class VoiceInputAdapter: ObservableObject {
     }
     func draftChanged(_ text: String) { apply(shared.draftChanged(value: text)) }
     func keyboardChanged(_ visible: Bool) { apply(shared.keyboardChanged(visible: visible)) }
+    func touchDown() {
+        startFeedback.prepare()
+        apply(shared.touchDown(nowMilliseconds: now, microphoneGranted: permissionGranted()))
+    }
+    func touchFinished() { apply(shared.touchFinished()) }
     func press() { traceVoiceInputLatency("gesture-dispatched"); apply(shared.press(nowMilliseconds: now)) }
     func move(_ distance: CGFloat) { apply(shared.pointerMoved(verticalDistance: Float(distance))) }
     func release() { apply(shared.release(nowMilliseconds: now)) }
@@ -75,13 +91,16 @@ final class VoiceInputAdapter: ObservableObject {
         for effect in transition.effects {
             switch effect.action {
             case "hapticStart":
+                traceVoiceHaptic("hapticStart")
                 startFeedback.impactOccurred(intensity: 0.8)
                 cancelFeedback.prepare()
                 releaseFeedback.prepare()
             case "hapticCancel":
+                traceVoiceHaptic("hapticCancel")
                 cancelFeedback.selectionChanged()
                 cancelFeedback.prepare()
             case "hapticRelease":
+                traceVoiceHaptic("hapticRelease")
                 releaseFeedback.impactOccurred(intensity: 0.6)
             case "showToast":
                 toastDismissal?.cancel()
@@ -90,9 +109,22 @@ final class VoiceInputAdapter: ObservableObject {
                     do { try await Task.sleep(for: .seconds(2)) } catch { return }
                     self?.toastMessage = nil
                 }
+            case "warmCapture":
+                if permissionGranted() {
+                    let recorder = self.recorder
+                    recorderQueue.async { try? recorder.prepare() }
+                }
+            case "releaseCapture":
+                captureRequests.invalidate()
+                let recorder = self.recorder
+                recorderQueue.async { recorder.release() }
             case "permission":
                 let token = effect.recordingId
                 traceVoiceInputLatency("permission-request")
+                if permissionGranted() {
+                    apply(shared.permissionResult(id: token, granted: true, nowMilliseconds: now))
+                    continue
+                }
                 requestPermission { [weak self] granted in
                     traceVoiceInputLatency("permission-result")
                     Task { @MainActor in
@@ -103,11 +135,19 @@ final class VoiceInputAdapter: ObservableObject {
             case "start":
                 let token = effect.recordingId
                 let recorder = self.recorder
+                let captureRequests = self.captureRequests
+                captureRequests.schedule(token)
                 recorderQueue.async { [weak self] in
+                    guard captureRequests.contains(token) else { return }
                     let startedAt = ProcessInfo.processInfo.systemUptime
                     traceVoiceInputLatency("capture-start-begin")
                     do {
-                        try recorder.start(id: token, level: { [weak self] rms in
+                        try recorder.start(id: token, ready: { [weak self] in
+                            Task { @MainActor in
+                                guard let self else { return }
+                                self.apply(self.shared.captureStarted(id: token, nowMilliseconds: self.now))
+                            }
+                        }, level: { [weak self] rms in
                             Task { @MainActor in
                                 guard let self else { return }
                                 self.apply(self.shared.level(id: token, rms: rms, nowMilliseconds: self.now))
@@ -119,10 +159,6 @@ final class VoiceInputAdapter: ObservableObject {
                             }
                         })
                         traceVoiceInputLatency("capture-start-end", since: startedAt)
-                        Task { @MainActor in
-                            guard let self else { return }
-                            self.apply(self.shared.captureStarted(id: token, nowMilliseconds: self.now))
-                        }
                     } catch {
                         Task { @MainActor in
                             guard let self else { return }
@@ -133,6 +169,7 @@ final class VoiceInputAdapter: ObservableObject {
             case "stop":
                 let token = effect.recordingId
                 let discard = effect.discard
+                if discard { captureRequests.cancel(token) }
                 let recorder = self.recorder
                 let delay = discard ? 0 : Int(effect.delayMilliseconds)
                 recorderQueue.asyncAfter(deadline: .now() + .milliseconds(delay)) { [weak self] in
@@ -167,10 +204,28 @@ final class VoiceInputAdapter: ObservableObject {
     }
 }
 
-/// 可替换的硬件边界；调用方保证 start/stop 只在同一串行队列执行。
+/// 平台硬件命令令牌：短按撤销无需等待串行队列中的预热或旧启动完成。
+private final class VoiceCaptureRequestGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var token: String?
+    func schedule(_ token: String) { lock.lock(); self.token = token; lock.unlock() }
+    func contains(_ token: String) -> Bool { lock.lock(); defer { lock.unlock() }; return self.token == token }
+    func cancel(_ token: String) { lock.lock(); if self.token == token { self.token = nil }; lock.unlock() }
+    func invalidate() { lock.lock(); token = nil; lock.unlock() }
+}
+
+/// 可替换的硬件边界；ready 表示引擎已启动音频流，不等待 PCM 批次交付或格式转换。
+/// 调用方保证 start/stop 只在同一串行队列执行。
 protocol VoiceAudioCapturing: AnyObject, Sendable {
-    func start(id: String, level: @escaping @Sendable (Float) -> Void, failure: @escaping @Sendable () -> Void) throws
+    func start(id: String, ready: @escaping @Sendable () -> Void, level: @escaping @Sendable (Float) -> Void, failure: @escaping @Sendable () -> Void) throws
     func stop(id: String, discard: Bool) throws -> Data?
+    func prepare() throws
+    func release()
+}
+
+extension VoiceAudioCapturing {
+    func prepare() throws {}
+    func release() {}
 }
 
 /// 唯一音频采集器：把设备格式转换为 16 kHz 单声道 PCM16；WAV 封装在 KMM。
@@ -181,38 +236,90 @@ final class IOSVoiceRecorder: VoiceAudioCapturing, @unchecked Sendable {
         let lock = NSLock()
         var bytes = Data()
         var stopped = false
+        var reportedReady = false
+        let requestedAt: TimeInterval
         let converter: AVAudioConverter
         let format: AVAudioFormat
-        init(id: String, converter: AVAudioConverter, format: AVAudioFormat) {
+        init(id: String, converter: AVAudioConverter, format: AVAudioFormat, requestedAt: TimeInterval) {
             self.id = id
             self.converter = converter
             self.format = format
+            self.requestedAt = requestedAt
         }
     }
-    private let engine = AVAudioEngine()
+    private let engine: AVAudioEngine
     private var capture: Capture?
     private var notification: NSObjectProtocol?
+    private let sessionStateLock = NSLock()
+    private var sessionPrepared = false
+    private var sessionObservers: [NSObjectProtocol] = []
 
-    func start(id: String, level: @escaping @Sendable (Float) -> Void, failure: @escaping @Sendable () -> Void) throws {
+    init(engine: AVAudioEngine = AVAudioEngine()) {
+        self.engine = engine
+        for name in [AVAudioSession.interruptionNotification, AVAudioSession.routeChangeNotification, AVAudioSession.mediaServicesWereResetNotification] {
+            sessionObservers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: nil) { [weak self] _ in
+                self?.invalidateSessionPreparation()
+            })
+        }
+    }
+
+    deinit { for observer in sessionObservers { NotificationCenter.default.removeObserver(observer) } }
+
+    private func invalidateSessionPreparation() {
+        sessionStateLock.lock(); sessionPrepared = false; sessionStateLock.unlock()
+    }
+
+    private func prepareSession() throws {
+        let session = AVAudioSession.sharedInstance()
+        sessionStateLock.lock(); let prepared = sessionPrepared; sessionStateLock.unlock()
+        guard !prepared || session.category != .record || session.mode != .measurement ||
+              !session.allowHapticsAndSystemSoundsDuringRecording else { return }
+        let began = ProcessInfo.processInfo.systemUptime
+        try session.setCategory(.record, mode: .measurement, options: [])
+        // 默认 false 会在音频输入期间抑制 UIKit 触感；必须在预采集/录音启动前启用。
+        try session.setAllowHapticsAndSystemSoundsDuringRecording(true)
+        try? session.setPreferredIOBufferDuration(0.01)
+        try session.setActive(true)
+        sessionStateLock.lock(); sessionPrepared = true; sessionStateLock.unlock()
+        traceVoiceInputLatency("session-prepared", since: began)
+    }
+
+    func prepare() throws {
+        guard capture == nil else { return }
+        try prepareSession()
+        // I/O 节点按需创建；空引擎 prepare 会抛出 Swift try? 无法捕获的 NSException。
+        let input = engine.inputNode
+        let hardwareFormat = input.inputFormat(forBus: 0)
+        guard hardwareFormat.sampleRate > 0, hardwareFormat.channelCount > 0 else { return }
+        engine.prepare()
+    }
+
+    func release() {
+        if let old = capture { _ = try? stop(id: old.id, discard: true) }
+        engine.stop()
+        engine.reset()
+        // 会话内保持激活但不空闲录音，离开页面/后台才完整释放。
+        invalidateSessionPreparation()
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    func start(id: String, ready: @escaping @Sendable () -> Void, level: @escaping @Sendable (Float) -> Void, failure: @escaping @Sendable () -> Void) throws {
+        let requestedAt = ProcessInfo.processInfo.systemUptime
         if let old = capture { _ = try? stop(id: old.id, discard: true) }
         let session = AVAudioSession.sharedInstance()
-        let categoryStartedAt = ProcessInfo.processInfo.systemUptime
-        try session.setCategory(.record, mode: .measurement, options: [])
-        traceVoiceInputLatency("session-category", since: categoryStartedAt)
-        let activationStartedAt = ProcessInfo.processInfo.systemUptime
-        try session.setActive(true)
-        traceVoiceInputLatency("session-activate", since: activationStartedAt)
+        try prepareSession()
         let input = engine.inputNode
         let source = input.outputFormat(forBus: 0)
         guard source.sampleRate > 0, source.channelCount > 0,
               let target = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16000, channels: 1, interleaved: true),
               let converter = AVAudioConverter(from: source, to: target) else {
+            invalidateSessionPreparation()
             try? session.setActive(false, options: .notifyOthersOnDeactivation)
             throw NSError(domain: "VoiceRecorder", code: 1)
         }
-        let current = Capture(id: id, converter: converter, format: target)
+        let current = Capture(id: id, converter: converter, format: target, requestedAt: requestedAt)
         capture = current
-        input.installTap(onBus: 0, bufferSize: 2048, format: source) { buffer, _ in
+        input.installTap(onBus: 0, bufferSize: AVAudioFrameCount(max(128, source.sampleRate * Double(VoiceInputInteraction.shared.CAPTURE_WINDOW_MILLISECONDS) / 1000)), format: source) { buffer, _ in
             current.lock.lock()
             defer { current.lock.unlock() }
             guard !current.stopped else { return }
@@ -229,6 +336,10 @@ final class IOSVoiceRecorder: VoiceAudioCapturing, @unchecked Sendable {
             guard count > 0 else { return }
             guard current.bytes.count + count * 2 <= 4 * 1024 * 1024 else { failure(); return }
             current.bytes.append(UnsafeRawPointer(samples).assumingMemoryBound(to: UInt8.self), count: count * 2)
+            if !current.reportedReady {
+                current.reportedReady = true
+                traceVoiceInputLatency("first-pcm", since: current.requestedAt)
+            }
             var energy: Double = 0
             for index in 0..<count { let value = Double(samples[index]) / 32768; energy += value * value }
             level(Float(sqrt(energy / Double(count))))
@@ -240,9 +351,12 @@ final class IOSVoiceRecorder: VoiceAudioCapturing, @unchecked Sendable {
             traceVoiceInputLatency("engine-prepare", since: prepareStartedAt)
             let engineStartedAt = ProcessInfo.processInfo.systemUptime
             try engine.start()
+            guard engine.isRunning else { throw NSError(domain: "VoiceRecorder", code: 6) }
             traceVoiceInputLatency("engine-start", since: engineStartedAt)
+            // start 成功后音频已流入 tap 的系统缓冲；不用等第一批 PCM 或转换器输出才反馈。
+            ready()
         }
-        catch { _ = try? stop(id: id, discard: true); throw error }
+        catch { _ = try? stop(id: id, discard: true); invalidateSessionPreparation(); throw error }
     }
     func stop(id: String, discard: Bool) throws -> Data? {
         guard let current = capture, current.id == id else { return nil }
@@ -251,7 +365,7 @@ final class IOSVoiceRecorder: VoiceAudioCapturing, @unchecked Sendable {
         engine.inputNode.removeTap(onBus: 0); engine.stop()
         if let notification { NotificationCenter.default.removeObserver(notification) }
         notification = nil
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        // 结束单次采集保留音频会话激活，避免下一次按下重新承担激活成本。
         current.lock.lock(); defer { current.lock.unlock() }
         guard !discard else { return nil }
         let tail = try finishVoicePCMConversion(current.converter, format: current.format)
@@ -297,5 +411,14 @@ func traceVoiceInputLatency(_ stage: String, since: TimeInterval? = nil) {
     let uptime = ProcessInfo.processInfo.systemUptime
     let elapsed = since.map { (uptime - $0) * 1000 } ?? 0
     voiceInputLatencyLogger.notice("VoiceInputLatency stage=\(stage, privacy: .public) uptime=\(uptime) durationMs=\(elapsed)")
+#endif
+}
+
+
+/// 记录已请求的触感及系统录音开关，不将请求日志视为实体马达已执行的证明。
+private func traceVoiceHaptic(_ cue: String) {
+#if DEBUG
+    let allowed = AVAudioSession.sharedInstance().allowHapticsAndSystemSoundsDuringRecording
+    voiceInputLatencyLogger.notice("VoiceInputHaptic cue=\(cue, privacy: .public) recordingAllowed=\(allowed)")
 #endif
 }

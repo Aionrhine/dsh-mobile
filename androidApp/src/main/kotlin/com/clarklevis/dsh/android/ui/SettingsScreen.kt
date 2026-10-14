@@ -63,6 +63,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
 import com.clarklevis.dsh.android.AndroidSharedStateHolder
 import com.clarklevis.dsh.android.R
 import com.clarklevis.dsh.shared.gateway.GatewayConnectionState
@@ -78,6 +79,7 @@ internal fun SettingsScreen(
     onBack: () -> Unit,
     onOpenAgentPresets: () -> Unit,
     onOpenDefaultModel: () -> Unit,
+    onOpenFontSize: () -> Unit,
     updateModel: com.clarklevis.dsh.android.update.AppUpdateViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 ) {
     val updateState by updateModel.state.collectAsStateWithLifecycle()
@@ -199,6 +201,8 @@ internal fun SettingsScreen(
                         InterfaceStyleSettingsRow()
                         SettingsDivider()
                         LanguageSettingsRow()
+                        SettingsDivider()
+                        FontSizeSettingsRow(onOpenFontSize)
                     }
                     SettingsSection("关于") {
                         SettingsValueRow(
@@ -748,6 +752,16 @@ private fun SettingsValueRow(
             )
         }
     }
+}
+
+@Composable
+internal fun FontSizeSettingsRow(onClick: () -> Unit) {
+    val appearance = LocalAppearanceSettings.current
+    SettingsValueRow(
+        title = "字体大小",
+        value = if (appearance.fontFollowsSystem) "跟随系统" else "${(appearance.fontScale * 100).roundToInt()}%",
+        onClick = onClick
+    )
 }
 
 @Composable

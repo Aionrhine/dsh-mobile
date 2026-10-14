@@ -63,6 +63,7 @@ internal fun PrivacyPolicyBottomSheet(onDismiss: () -> Unit) {
     var loadFailed by remember { mutableStateOf(false) }
     var reloadKey by remember { mutableStateOf(0) }
     val dark = isSystemInDarkTheme()
+    val textZoom = (LocalDensity.current.fontScale * 100).toInt()
     val hostContext = LocalContext.current
     val pageBackground = if (dark) Color(0xFF0C1420) else Color(0xFFF7F9FC)
     val titleSidePadding = (40.dp + 32.dp * LocalDensity.current.fontScale).coerceAtLeast(80.dp)
@@ -134,6 +135,7 @@ internal fun PrivacyPolicyBottomSheet(onDismiss: () -> Unit) {
                             WebView(themedContext).apply {
                                 setBackgroundColor(pageBackground.toArgb())
                                 settings.javaScriptEnabled = false
+                                settings.textZoom = textZoom
                                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                                     isForceDarkAllowed = false
                                 }
@@ -180,6 +182,7 @@ internal fun PrivacyPolicyBottomSheet(onDismiss: () -> Unit) {
                                 loadUrl(PRIVACY_POLICY_URL)
                             }
                         },
+                        update = { webView -> webView.settings.textZoom = textZoom },
                         onRelease = { webView ->
                             webView.stopLoading()
                             webView.webViewClient = WebViewClient()

@@ -21,7 +21,15 @@ import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.coroutineContext
 
-internal data class AndroidRelease(val version: String, val url: String, val size: Long, val digest: String?)
+internal data class AndroidRelease(
+    val version: String,
+    val url: String,
+    val size: Long,
+    val digest: String?,
+    val versionCode: Long? = null,
+    val fallbackUrl: String? = null,
+    val releaseNotes: String? = null
+)
 internal data class UpdateState(
     val busy: Boolean = false,
     val status: String? = null,
@@ -80,6 +88,8 @@ internal class AppUpdateViewModel(application: Application) : AndroidViewModel(a
     private val context = application
     private val client = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS).callTimeout(10, TimeUnit.MINUTES).build()
+    private val metadataClient = client.newBuilder().connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(8, TimeUnit.SECONDS).callTimeout(15, TimeUnit.SECONDS).build()
     private val mutableState = MutableStateFlow(UpdateState())
     val state = mutableState.asStateFlow()
     @Suppress("DEPRECATION")
@@ -109,9 +119,43 @@ internal class AppUpdateViewModel(application: Application) : AndroidViewModel(a
     fun check() = performCheck(automatic = false)
 
     private fun performCheck(automatic: Boolean) = runOperation(silent = automatic) {
-        val release = try {
+        val release = withUpdateFallback(
+            primary = {
+                val json = metadataClient.newCall(Request.Builder().url(UPDATE_MANIFEST_URL)
+                    .header("Cache-Control", "no-cache")
+                    .header("User-Agent", "DSH-Mobile-Android").build()).execute().use { response ->
+                    check(response.isSuccessful) { "R2 检查更新失败（${response.code}）" }
+                    check((response.body?.contentLength() ?: -1) <= 256 * 1024) { "更新配置过大" }
+                    response.body?.byteStream()?.use { input ->
+                        val buffer = ByteArray(256 * 1024 + 1)
+                        var count = 0
+                        while (count < buffer.size) {
+                            val read = input.read(buffer, count, buffer.size - count)
+                            if (read < 0) break
+                            count += read
+                        }
+                        check(count <= 256 * 1024) { "更新配置过大" }
+                        String(buffer, 0, count, Charsets.UTF_8)
+                    } ?: error("更新配置为空")
+                }
+                parseUpdateManifest(json, context.packageName, currentVersion,
+                    PackageInfoCompat.getLongVersionCode(installed))
+            },
+            fallback = { checkGitHubRelease() }
+        )
+        val visibleRelease = release?.takeUnless {
+            automatic && isSkippedVersion(it.version, preferences.getString("skipped_version", null))
+        }
+        UpdateState(
+            release = visibleRelease,
+            status = if (!automatic && release == null) "当前已是最新 Android 版本" else null
+        )
+    }
+
+    private fun checkGitHubRelease(): AndroidRelease? {
+        return try {
             check(System.currentTimeMillis() >= apiRetryAt) { "GitHub API 暂时限流" }
-            val json = client.newCall(Request.Builder()
+            val json = metadataClient.newCall(Request.Builder()
                 .url("https://api.github.com/repos/Clarklevis1995/dsh-mobile/releases?per_page=100")
                 .header("Accept", "application/vnd.github+json")
                 .header("User-Agent", "DSH-Mobile-Android").build()).execute().use { response ->
@@ -131,17 +175,10 @@ internal class AppUpdateViewModel(application: Application) : AndroidViewModel(a
         } catch (exception: Exception) {
             checkReleasePage()
         }
-        val visibleRelease = release?.takeUnless {
-            automatic && isSkippedVersion(it.version, preferences.getString("skipped_version", null))
-        }
-        UpdateState(
-            release = visibleRelease,
-            status = if (!automatic && release == null) "当前已是最新 Android 版本" else null
-        )
     }
 
     private fun checkReleasePage(): AndroidRelease? {
-        val version = client.newCall(Request.Builder()
+        val version = metadataClient.newCall(Request.Builder()
             .url("https://github.com/Clarklevis1995/dsh-mobile/releases/latest")
             .header("User-Agent", "DSH-Mobile-Android").build()).execute().use { response ->
             check(response.isSuccessful) { "无法访问 GitHub 发布页（${response.code}），请检查网络后重试" }
@@ -153,7 +190,7 @@ internal class AppUpdateViewModel(application: Application) : AndroidViewModel(a
         }
         check(Regex("v?\\d+\\.\\d+\\.\\d+").matches(version)) { "无法识别 GitHub 发布版本" }
         // Verify that the release really contains an Android APK before declaring it up to date.
-        val html = client.newCall(Request.Builder()
+        val html = metadataClient.newCall(Request.Builder()
             .url("https://github.com/Clarklevis1995/dsh-mobile/releases/expanded_assets/$version")
             .header("User-Agent", "DSH-Mobile-Android").build()).execute().use { response ->
             check(response.isSuccessful) { "无法读取 GitHub Android 发布包（${response.code}），请稍后重试" }
@@ -168,36 +205,47 @@ internal class AppUpdateViewModel(application: Application) : AndroidViewModel(a
         val target = File(directory, "update.apk")
         val partial = File(directory, "update.part")
         try {
-            client.newCall(Request.Builder().url(release.url).build()).execute().use { response ->
-                check(response.isSuccessful) { "下载失败（${response.code}）" }
-                val body = response.body ?: error("下载内容为空")
-                val expectedSize = release.size.takeIf { it > 0 } ?: body.contentLength()
-                body.byteStream().use { input ->
-                    partial.outputStream().use { output ->
-                        val buffer = ByteArray(64 * 1024)
-                        var total = 0L
-                        while (true) {
-                            coroutineContext.ensureActive()
-                            val count = input.read(buffer)
-                            if (count < 0) break
-                            total += count
-                            check(expectedSize <= 0 || total <= expectedSize) { "安装包大小异常" }
-                            output.write(buffer, 0, count)
-                            mutableState.value = UpdateState(busy = true, status = if (expectedSize > 0) "正在下载 ${total * 100 / expectedSize}%" else "正在下载 ${total / 1024 / 1024} MB")
+            suspend fun downloadAndValidate(url: String) {
+                partial.delete()
+                client.newCall(Request.Builder().url(url).build()).execute().use { response ->
+                    check(response.isSuccessful) { "下载失败（${response.code}）" }
+                    val body = response.body ?: error("下载内容为空")
+                    val expectedSize = release.size.takeIf { it > 0 } ?: body.contentLength()
+                    body.byteStream().use { input ->
+                        partial.outputStream().use { output ->
+                            val buffer = ByteArray(64 * 1024)
+                            var total = 0L
+                            while (true) {
+                                coroutineContext.ensureActive()
+                                val count = input.read(buffer)
+                                if (count < 0) break
+                                total += count
+                                check(expectedSize <= 0 || total <= expectedSize) { "安装包大小异常" }
+                                output.write(buffer, 0, count)
+                                mutableState.value = UpdateState(busy = true, status = if (expectedSize > 0) "正在下载 ${total * 100 / expectedSize}%" else "正在下载 ${total / 1024 / 1024} MB")
+                            }
+                            check((expectedSize <= 0 || total == expectedSize) && total > 0) { "安装包下载不完整" }
                         }
-                        check((expectedSize <= 0 || total == expectedSize) && total > 0) { "安装包下载不完整" }
                     }
                 }
-            }
-            release.digest?.takeIf { it.startsWith("sha256:") }?.let { expected ->
-                val hash = MessageDigest.getInstance("SHA-256")
-                partial.inputStream().use { input ->
-                    val buffer = ByteArray(64 * 1024)
-                    while (true) { val count = input.read(buffer); if (count < 0) break; hash.update(buffer, 0, count) }
+                release.digest?.takeIf { it.startsWith("sha256:") }?.let { expected ->
+                    val hash = MessageDigest.getInstance("SHA-256")
+                    partial.inputStream().use { input ->
+                        val buffer = ByteArray(64 * 1024)
+                        while (true) { val count = input.read(buffer); if (count < 0) break; hash.update(buffer, 0, count) }
+                    }
+                    check(hash.digest().joinToString("") { "%02x".format(it) } == expected.removePrefix("sha256:")) { "安装包校验失败" }
                 }
-                check(hash.digest().joinToString("") { "%02x".format(it) } == expected.removePrefix("sha256:")) { "安装包校验失败" }
+                validateApk(partial, release)
             }
-            validateApk(partial)
+            withUpdateFallback(
+                primary = { downloadAndValidate(release.url) },
+                fallback = {
+                    val fallback = release.fallbackUrl ?: error("下载失败，请检查网络后重试")
+                    mutableState.value = UpdateState(busy = true, status = "加速源下载失败，正在切换 GitHub…")
+                    downloadAndValidate(fallback)
+                }
+            )
             target.delete()
             check(partial.renameTo(target)) { "无法保存安装包" }
             UpdateState(apk = target)
@@ -205,11 +253,16 @@ internal class AppUpdateViewModel(application: Application) : AndroidViewModel(a
     }
 
     @Suppress("DEPRECATION")
-    private fun validateApk(file: File) {
+    private fun validateApk(file: File, release: AndroidRelease) {
         val flags = if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES else PackageManager.GET_SIGNATURES
         val archive = context.packageManager.getPackageArchiveInfo(file.path, flags) ?: error("无效的 APK 安装包")
         check(archive.packageName == context.packageName) { "安装包不属于当前应用" }
         check(PackageInfoCompat.getLongVersionCode(archive) > PackageInfoCompat.getLongVersionCode(installed)) { "安装包构建号未高于当前版本" }
+        release.versionCode?.let { expected ->
+            check(PackageInfoCompat.getLongVersionCode(archive) == expected && archive.versionName == release.version) {
+                "安装包版本与更新配置不一致"
+            }
+        }
         val current = context.packageManager.getPackageInfo(context.packageName, flags)
         val archiveSignatures = if (Build.VERSION.SDK_INT >= 28) archive.signingInfo?.apkContentsSigners else archive.signatures
         val currentSignatures = if (Build.VERSION.SDK_INT >= 28) current.signingInfo?.apkContentsSigners else current.signatures

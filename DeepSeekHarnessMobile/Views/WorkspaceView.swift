@@ -3,6 +3,7 @@ import AVFoundation
 
 struct WorkspaceView: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var store: AppStore
     @EnvironmentObject private var hosts: MultiGatewayStore
     let onOpenSession: (SessionSummary) -> Void
@@ -20,6 +21,8 @@ struct WorkspaceView: View {
     @State private var showsManualPairing = false
     @State private var drawerOffset: CGFloat = 0
     @State private var drawerDragStart: CGFloat?
+    @State private var drawerFeedback = WorkspaceDrawerFeedback()
+    @GestureState private var drawerClosingGestureActive = false
     @FocusState private var sessionSearchIsFocused: Bool
 
     var body: some View {
@@ -37,6 +40,7 @@ struct WorkspaceView: View {
                     : Color.white)
                 drawerContent(progress: progress, topInset: topInset, width: drawerWidth)
                     .frame(width: drawerWidth, height: fullHeight, alignment: .topLeading)
+                    .highPriorityGesture(drawerClosingGesture(width: drawerWidth))
 
                 workspaceContent(openDrawer: { openDrawer(width: drawerWidth) }, topInset: topInset, drawerWidth: drawerWidth)
                     .frame(width: geometry.size.width, height: fullHeight)
@@ -60,15 +64,11 @@ struct WorkspaceView: View {
                         y: 0
                     )
                     .overlay(alignment: .leading) {
-                        if progress > 0.98 {
+                        if progress > 0.98 || drawerDragStart != nil {
                             Color.clear
                                 .contentShape(Rectangle())
                                 .onTapGesture { closeDrawer() }
-                                .gesture(
-                                    DragGesture(minimumDistance: 6).onEnded { value in
-                                        if value.translation.width < -35 { closeDrawer() }
-                                    }
-                                )
+                                .highPriorityGesture(drawerClosingGesture(width: drawerWidth))
                                 .accessibilityLabel("关闭侧边栏")
                                 .accessibilityAddTraits(.isButton)
                         }
@@ -77,6 +77,11 @@ struct WorkspaceView: View {
             }
             .frame(width: geometry.size.width, height: fullHeight)
             .offset(y: -topInset)
+            .onChange(of: drawerClosingGestureActive) { _, active in
+                if !active {
+                    finishDrawerDrag(translation: 0, velocity: 0, cancelled: true, width: drawerWidth)
+                }
+            }
         }
         .background(DSHColor.navy.ignoresSafeArea())
         .onChange(of: drawerOffset) { _, value in
@@ -85,6 +90,10 @@ struct WorkspaceView: View {
         .foregroundStyle(.white)
         .onAppear {
             store.refreshRemoteState()
+        }
+        .onDisappear {
+            drawerFeedback.endDrag(cancelled: true)
+            drawerDragStart = nil
         }
         .onReceive(store.gateway.$state) { connectionIsReady = $0.isConnected }
         .alert("重命名会话", isPresented: Binding(
@@ -146,10 +155,10 @@ struct WorkspaceView: View {
                     Spacer(minLength: 44)
                     VStack(alignment: .leading, spacing: 7) {
                         Text("探索未至之境")
-                            .font(.system(size: 32, weight: .bold))
+                            .appFont(.system(size: 32, weight: .bold))
                         if connectionIsReady {
                             Text("已连接Deepseek Harness预览版")
-                                .font(.subheadline).foregroundStyle(.white.opacity(0.65))
+                                .appFont(.subheadline).foregroundStyle(.white.opacity(0.65))
                         }
                     }
                     .id("workspace-hero")
@@ -172,23 +181,13 @@ struct WorkspaceView: View {
                             return drawerOffset > 0 ? translation.x < 0 : translation.x > 0
                         },
                         onChanged: { translation in
-                            if drawerDragStart == nil { drawerDragStart = drawerOffset }
-                            drawerOffset = min(max((drawerDragStart ?? 0) + translation, 0), drawerWidth)
+                            updateDrawerDrag(translation: translation, width: drawerWidth)
                         },
                         onEnded: { translation, velocity, cancelled in
-                            guard let start = drawerDragStart else { return }
-                            drawerDragStart = nil
-                            let open: Bool
-                            if cancelled {
-                                open = start > drawerWidth * 0.5
-                            } else if start == 0 {
-                                open = translation > 24 || velocity > 250
-                            } else {
-                                open = translation >= -24 && velocity >= -250
-                            }
-                            withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-                                drawerOffset = open ? drawerWidth : 0
-                            }
+                            finishDrawerDrag(
+                                translation: translation, velocity: velocity,
+                                cancelled: cancelled, width: drawerWidth
+                            )
                         }
                     )
                 }
@@ -233,7 +232,7 @@ struct WorkspaceView: View {
             }, action: { selectDrawerItem(onPlugins) })
             drawerItem("定时任务", icon: {
                 Image(systemName: "clock")
-                    .font(.system(size: 20, weight: .medium))
+                    .appFont(.system(size: 20, weight: .medium))
                     .frame(width: 24)
             }, action: { selectDrawerItem(onScheduledTasks) })
             Spacer(minLength: 0)
@@ -254,10 +253,10 @@ struct WorkspaceView: View {
         Button(action: action) {
             HStack(spacing: 10) {
                 icon()
-                Text(title).font(.system(size: 17))
+                Text(title).appFont(.system(size: 17))
                 Spacer(minLength: 0)
             }
-            .frame(height: 52)
+            .frame(minHeight: 52)
             .padding(.horizontal, 14)
             .contentShape(Rectangle())
         }
@@ -266,20 +265,81 @@ struct WorkspaceView: View {
 
     private func openDrawer(width: CGFloat) {
         sessionSearchIsFocused = false
-        withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-            drawerOffset = width
+        settleDrawer(to: width)
+    }
+
+    private func drawerClosingGesture(width: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 6, coordinateSpace: .global)
+            .updating($drawerClosingGestureActive) { value, active, _ in
+                active = drawerDragStart != nil || (
+                    drawerOffset > 0 && value.translation.width < 0 &&
+                    abs(value.translation.width) > abs(value.translation.height) * 1.2
+                )
+            }
+            .onChanged { value in
+                // 尚未锁定方向时只接受左滑，拖动开始后允许反向拉回。
+                guard drawerDragStart != nil || (
+                    drawerOffset > 0 && value.translation.width < 0 &&
+                    abs(value.translation.width) > abs(value.translation.height) * 1.2
+                ) else { return }
+                updateDrawerDrag(translation: value.translation.width, width: width)
+            }
+            .onEnded { value in
+                finishDrawerDrag(
+                    translation: value.translation.width, velocity: value.velocity.width,
+                    cancelled: false, width: width
+                )
+            }
+    }
+
+    private func updateDrawerDrag(translation: CGFloat, width: CGFloat) {
+        if drawerDragStart == nil {
+            drawerDragStart = drawerOffset
+            drawerFeedback.beginDrag()
+        }
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            drawerOffset = min(max((drawerDragStart ?? 0) + translation, 0), width)
         }
     }
 
+    private func finishDrawerDrag(translation: CGFloat, velocity: CGFloat, cancelled: Bool, width: CGFloat) {
+        guard let start = drawerDragStart else { return }
+        drawerDragStart = nil
+        drawerFeedback.endDrag(cancelled: cancelled)
+        let open: Bool
+        if cancelled {
+            open = start > width * 0.5
+        } else if start == 0 {
+            open = translation > 24 || velocity > 250
+        } else {
+            open = translation >= -24 && velocity >= -250
+        }
+        settleDrawer(to: open ? width : 0, feedback: false)
+    }
+
     private func closeDrawer() {
-        withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-            drawerOffset = 0
+        settleDrawer(to: 0)
+    }
+
+    private func settleDrawer(to target: CGFloat, feedback: Bool = true) {
+        if feedback { drawerFeedback.tap() }
+        if reduceMotion {
+            var transaction = Transaction(animation: nil)
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { drawerOffset = target }
+        } else {
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+                drawerOffset = target
+            }
         }
     }
 
     private func selectDrawerItem(_ action: @escaping () -> Void) {
         // Start the destination push immediately. Reset the workspace behind it
         // without a closing animation so Back reveals the main page.
+        drawerFeedback.tap()
         action()
         var transaction = Transaction(animation: nil)
         transaction.disablesAnimations = true
@@ -327,7 +387,7 @@ struct WorkspaceView: View {
 
     private func headerButtonLabel(systemName: String) -> some View {
         Image(systemName: systemName)
-            .font(.system(size: 17, weight: .semibold))
+            .appFont(.system(size: 17, weight: .semibold))
             .frame(width: 40, height: 40)
             .contentShape(Circle())
     }
@@ -374,14 +434,14 @@ struct WorkspaceView: View {
 
     private var workspaceCardLabel: some View {
         HStack(spacing: 12) {
-            Image(systemName: "folder").foregroundStyle(.blue).font(.title3)
+            Image(systemName: "folder").foregroundStyle(.blue).appFont(.title3)
             VStack(alignment: .leading, spacing: 2) {
-                Text(workspaceDisplayTitle).font(.subheadline.weight(.semibold))
-                Text(workspaceDisplayPath).font(.caption).foregroundStyle(.white.opacity(0.55)).lineLimit(1)
+                Text(workspaceDisplayTitle).appFont(.subheadline.weight(.semibold))
+                Text(workspaceDisplayPath).appFont(.caption).foregroundStyle(.white.opacity(0.55)).lineLimit(1)
             }
             Spacer()
             GatewayConnectionIndicator(gateway: store.gateway)
-            Image(systemName: "chevron.down").font(.caption).foregroundStyle(.white.opacity(0.55))
+            Image(systemName: "chevron.down").appFont(.caption).foregroundStyle(.white.opacity(0.55))
         }
         .padding(16)
         .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 15))
@@ -391,7 +451,7 @@ struct WorkspaceView: View {
 
     private var sessionsHeader: some View {
         HStack {
-            Text("最近会话").font(.headline)
+            Text("最近会话").appFont(.headline)
             Spacer()
             GatewayConnectionStatusText(gateway: store.gateway)
         }
@@ -424,14 +484,14 @@ struct WorkspaceView: View {
             .submitLabel(.search)
             .onSubmit { sessionSearchIsFocused = false }
         }
-        .padding(.horizontal, 12).frame(height: 42)
+        .padding(.horizontal, 12).frame(minHeight: 42)
         .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 13))
         .overlay(RoundedRectangle(cornerRadius: 13).stroke(.white.opacity(0.1)))
     }
 
     private var emptySessions: some View {
         Text("暂无已知会话。连接服务后创建第一个任务。")
-            .font(.subheadline).foregroundStyle(.white.opacity(0.5))
+            .appFont(.subheadline).foregroundStyle(.white.opacity(0.5))
             .frame(maxWidth: .infinity, alignment: .leading).padding(18)
             .background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 15))
     }
@@ -500,12 +560,12 @@ struct WorkspaceView: View {
                 .frame(width: 7, height: 7)
                 .shadow(color: session.isRunning ? DSHColor.success : .clear, radius: 5)
             VStack(alignment: .leading, spacing: 3) {
-                Text(session.title).lineLimit(1).font(.subheadline.weight(.medium))
-                Text(String(session.id.prefix(16))).font(.caption2.monospaced()).foregroundStyle(.white.opacity(0.42))
+                Text(session.title).lineLimit(1).appFont(.subheadline.weight(.medium))
+                Text(String(session.id.prefix(16))).appFont(.caption2.monospaced()).foregroundStyle(.white.opacity(0.42))
             }
             Spacer()
             Text(session.isRunning ? String(localized: "运行中") : session.lastActivity.formatted(.relative(presentation: .named)))
-                .font(.caption).foregroundStyle(session.isRunning ? .blue : .white.opacity(0.48))
+                .appFont(.caption).foregroundStyle(session.isRunning ? .blue : .white.opacity(0.48))
         }
         .padding(.horizontal, 4)
         .padding(.vertical, 10)
@@ -532,13 +592,49 @@ struct WorkspaceView: View {
 
     private var newSessionButtonLabel: some View {
         HStack(spacing: 10) {
-            Image(systemName: "plus").font(.system(size: 15, weight: .semibold))
+            Image(systemName: "plus").appFont(.system(size: 15, weight: .semibold))
                 .frame(width: 28, height: 28)
                 .background(.white.opacity(0.1), in: Circle())
-            Text("新建会话").font(.headline)
+            Text("新建会话").appFont(.headline)
         }
-        .frame(maxWidth: .infinity).frame(height: 38)
+        .frame(maxWidth: .infinity).frame(minHeight: 38)
         .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+}
+
+/// 拖拽开始预热，松手同步反馈；取消和后续动画均不补震。
+@MainActor
+final class WorkspaceDrawerFeedback {
+    private let prepare: () -> Void
+    private let impact: () -> Void
+    private var dragging = false
+
+    convenience init() {
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        self.init(prepare: { generator.prepare() }, impact: { generator.impactOccurred(intensity: 1) })
+    }
+
+    init(prepare: @escaping () -> Void, impact: @escaping () -> Void) {
+        self.prepare = prepare
+        self.impact = impact
+    }
+
+    func beginDrag() {
+        guard !dragging else { return }
+        dragging = true
+        prepare()
+    }
+
+    func endDrag(cancelled: Bool) {
+        guard dragging else { return }
+        dragging = false
+        if !cancelled { impact() }
+    }
+
+    func tap() {
+        dragging = false
+        prepare()
+        impact()
     }
 }
 
@@ -686,7 +782,7 @@ private struct DirectoryBrowserSheet: View {
                         VStack(alignment: .leading, spacing: 5) {
                             Text("当前目录")
                             Text(store.directoryPath ?? String(localized: "正在读取…"))
-                                .font(.caption.monospaced())
+                                .appFont(.caption.monospaced())
                                 .textCase(nil)
                                 .foregroundStyle(.secondary)
                         }
@@ -792,13 +888,13 @@ private struct DirectoryBrowserSheet: View {
                 Text(title).foregroundStyle(Color(uiColor: .label))
                 if let subtitle {
                     Text(subtitle)
-                        .font(.caption)
+                        .appFont(.caption)
                         .foregroundStyle(Color(uiColor: .secondaryLabel))
                 }
             }
             Spacer()
             Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
+                .appFont(.caption.weight(.semibold))
                 .foregroundStyle(.tertiary)
         }
         .contentShape(Rectangle())
@@ -808,7 +904,7 @@ private struct DirectoryBrowserSheet: View {
         VStack(spacing: 8) {
             if let path = store.directoryPath {
                 Text(path)
-                    .font(.caption.monospaced())
+                    .appFont(.caption.monospaced())
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -852,7 +948,7 @@ private struct DirectoryBrowserSheet: View {
                     ProgressView()
                     Text("正在创建文件夹…")
                 }
-                .font(.caption)
+                .appFont(.caption)
                 .foregroundStyle(.secondary)
             }
         }
@@ -898,7 +994,7 @@ private struct GatewayAuthenticationMenu: View {
             }
         } label: {
             Image(systemName: "person.badge.key.fill")
-                .font(.system(size: 17, weight: .semibold))
+                .appFont(.system(size: 17, weight: .semibold))
                 .frame(width: 40, height: 40)
                 .contentShape(Circle())
         }
@@ -912,7 +1008,7 @@ private struct GatewayConnectionStatusText: View {
 
     var body: some View {
         Text(gateway.state.label)
-            .font(.caption.weight(.medium))
+            .appFont(.caption.weight(.medium))
             .foregroundStyle(color)
             .animation(.easeInOut(duration: 0.18), value: gateway.state)
     }
@@ -942,23 +1038,23 @@ private struct ManualGatewayPairingSheet: View {
                 VStack(alignment: .leading, spacing: 22) {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("手动输入配对信息")
-                            .font(.title2.bold())
+                            .appFont(.title2.bold())
                         Text("粘贴 Harness WebUI 提供的 Base64URL 配对字符串。长期设备 token 仍只会保存到 Keychain。")
-                            .font(.subheadline)
+                            .appFont(.subheadline)
                             .foregroundStyle(.secondary)
                     }
 
                     ZStack(alignment: .topLeading) {
                         if pairingText.isEmpty {
                             Text(Self.placeholder)
-                                .font(.system(.footnote, design: .monospaced))
+                                .appFont(.system(.footnote, design: .monospaced))
                                 .foregroundStyle(.tertiary)
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 18)
                                 .allowsHitTesting(false)
                         }
                         TextEditor(text: $pairingText)
-                            .font(.system(.footnote, design: .monospaced))
+                            .appFont(.system(.footnote, design: .monospaced))
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .scrollContentBackground(.hidden)
@@ -990,7 +1086,7 @@ private struct ManualGatewayPairingSheet: View {
                                 .fontWeight(.semibold)
                         }
                         .frame(maxWidth: .infinity)
-                        .frame(height: 50)
+                        .frame(minHeight: 50)
                         .foregroundStyle(.white)
                         .background(DSHColor.ocean, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
@@ -1066,13 +1162,13 @@ private struct ManualGatewayPairingSheet: View {
     private func resultCard(title: String, detail: String, color: Color, symbol: String) -> some View {
         HStack(alignment: .top, spacing: 13) {
             Image(systemName: symbol)
-                .font(.title3.weight(.semibold))
+                .appFont(.title3.weight(.semibold))
                 .foregroundStyle(color)
                 .frame(width: 26)
             VStack(alignment: .leading, spacing: 5) {
-                Text(title).font(.headline)
+                Text(title).appFont(.headline)
                 Text(detail)
-                    .font(.subheadline)
+                    .appFont(.subheadline)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
             }
@@ -1135,15 +1231,15 @@ private struct GatewayQRScannerView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("扫描设备配对码")
-                            .font(.title2.bold())
+                            .appFont(.title2.bold())
                         Text("请扫描 Harness WebUI 生成的二维码")
-                            .font(.subheadline)
+                            .appFont(.subheadline)
                             .foregroundStyle(.white.opacity(0.72))
                     }
                     Spacer()
                     Button(action: onCancel) {
                         Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .semibold))
+                            .appFont(.system(size: 16, weight: .semibold))
                             .frame(width: 44, height: 44)
                     }
                     .buttonStyle(.plain)
@@ -1160,7 +1256,7 @@ private struct GatewayQRScannerView: View {
                     .frame(width: 272, height: 272)
                     .overlay(alignment: .bottom) {
                         Text("将二维码完整放入框内")
-                            .font(.subheadline.weight(.medium))
+                            .appFont(.subheadline.weight(.medium))
                             .padding(.horizontal, 16)
                             .padding(.vertical, 9)
                             .background(.ultraThinMaterial, in: Capsule())

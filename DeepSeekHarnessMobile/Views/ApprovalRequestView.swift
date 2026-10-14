@@ -48,16 +48,16 @@ struct ApprovalRequestView: View {
                 Circle().fill(amber).frame(width: 9, height: 9)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(String(localized: "Agent 正在等待审批"))
-                        .font(.subheadline.weight(.semibold))
+                        .appFont(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                     Text(requestReason)
-                        .font(.caption)
+                        .appFont(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
                 Spacer(minLength: 8)
                 Image(systemName: "chevron.up")
-                    .font(.caption.weight(.bold))
+                    .appFont(.caption.weight(.bold))
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 16)
@@ -74,7 +74,7 @@ struct ApprovalRequestView: View {
 
             VStack(alignment: .leading, spacing: 12) {
                 Text(requestReason)
-                    .font(.body.weight(.medium))
+                    .appFont(.body.weight(.medium))
                     .fixedSize(horizontal: false, vertical: true)
 
                 if let commandPreview, !commandPreview.isEmpty {
@@ -82,7 +82,7 @@ struct ApprovalRequestView: View {
                     // 会被推出屏幕外。命令预览在固定高度内滚动，按钮始终可见。
                     ScrollView(.vertical) {
                         Text(commandPreview)
-                            .font(.system(.subheadline, design: .monospaced))
+                            .appFont(.system(.subheadline, design: .monospaced))
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
@@ -99,7 +99,7 @@ struct ApprovalRequestView: View {
 
                 if case .failed(let message) = status {
                     Label(message, systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption)
+                        .appFont(.caption)
                         .foregroundStyle(.red)
                 }
 
@@ -113,11 +113,11 @@ struct ApprovalRequestView: View {
         HStack(spacing: 10) {
             Circle().fill(amber).frame(width: 9, height: 9)
             Text(String(localized: "等待审批"))
-                .font(.subheadline.weight(.semibold))
+                .appFont(.subheadline.weight(.semibold))
                 .foregroundStyle(amber)
             if request.replay {
                 Text("· \(String(localized: "已恢复"))")
-                    .font(.caption)
+                    .appFont(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer()
@@ -126,7 +126,7 @@ struct ApprovalRequestView: View {
                 withAnimation(.snappy(duration: 0.24)) { isCollapsed = true }
             } label: {
                 Image(systemName: "chevron.down")
-                    .font(.caption.weight(.bold))
+                    .appFont(.caption.weight(.bold))
                     .foregroundStyle(.secondary)
                     .frame(width: 30, height: 30)
             }
@@ -164,7 +164,7 @@ struct ApprovalRequestView: View {
             .frame(maxHeight: 190)
         } label: {
             Label(String(localized: "审批详情"), systemImage: "curlybraces")
-                .font(.caption.weight(.semibold))
+                .appFont(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 12)
@@ -189,10 +189,10 @@ private struct ApprovalDetailsView: View {
                 ForEach(object.keys.sorted(), id: \.self) { key in
                     VStack(alignment: .leading, spacing: 4) {
                         Text(key)
-                            .font(.caption2.weight(.semibold))
+                            .appFont(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
                         Text(detailText(object[key] ?? .null))
-                            .font(.system(.caption, design: .monospaced))
+                            .appFont(.system(.caption, design: .monospaced))
                             .foregroundStyle(.primary)
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
@@ -205,7 +205,7 @@ private struct ApprovalDetailsView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         } else {
             Text(value.jsonDisplayText)
-                .font(.system(.caption, design: .monospaced))
+                .appFont(.system(.caption, design: .monospaced))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }

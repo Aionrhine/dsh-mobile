@@ -27,7 +27,7 @@ class VoiceInputLatencyDeviceTest {
     val compose = createComposeRule()
 
     @Test
-    fun touchToOverlayDoesNotWaitForMicrophoneOrOneSecond() {
+    fun touchToLongPressIsFastButPendingPermissionCannotShowRecording() {
         val shared = SharedVoiceInputStore()
         shared.open("latency", "")
         val request = shared.connectionChanged(true, true).requests.first { it.requestType == "speech-catalog" }
@@ -71,7 +71,7 @@ class VoiceInputLatencyDeviceTest {
         }
         val drawListener =
             ViewTreeObserver.OnDrawListener {
-                if (voice.state.active) drawAt.compareAndSet(0, SystemClock.uptimeMillis())
+                if (voice.state.overlayVisible) drawAt.compareAndSet(0, SystemClock.uptimeMillis())
             }
         compose.runOnIdle {
             // 仅替换权限硬件回调；真实页面、手势、状态机、触感和蒙层渲染都保留。
@@ -106,16 +106,15 @@ class VoiceInputLatencyDeviceTest {
         }
         try {
             send(MotionEvent.ACTION_DOWN)
-            compose.waitUntil(2_000) { drawAt.get() > 0 }
-            compose.onNodeWithTag("voice-recording-overlay").assertExists()
+            compose.waitUntil(2_000) { permissionAt.get() > 0 }
+            compose.onNodeWithTag("voice-recording-overlay").assertDoesNotExist()
             val recognized = permissionAt.get() - downAt
-            val painted = drawAt.get() - downAt
             Log.i(
                 "VoiceInputLatency",
-                "touchToPermission=${recognized}ms touchToOverlayDraw=${painted}ms permissionStillPending=${voice.state.phase}",
+                "touchToPermission=${recognized}ms overlayVisible=${voice.state.overlayVisible} permissionStillPending=${voice.state.phase}",
             )
             assertTrue("长按识别不应等待一秒：${recognized}ms", recognized in 60..350)
-            assertTrue("蒙层绘制不应等待权限或麦克风：${painted}ms", painted in 60..500)
+            assertTrue("未收到首批音频不能显示录音蒙层", drawAt.get() == 0L)
             assertTrue(voice.state.phase == "authorizing")
         } finally {
             send(MotionEvent.ACTION_UP)

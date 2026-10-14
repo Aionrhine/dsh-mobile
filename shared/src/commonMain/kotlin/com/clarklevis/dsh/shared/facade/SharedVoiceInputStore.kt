@@ -37,14 +37,18 @@ data class SharedVoiceInputSnapshot(
     val hint: String get() = if (keyboardVisible) "描述你想要构建的内容" else "输入内容或按住说话"
     val visualActivity: Float get() = if (waveformActive) 1f else 0f
     val active: Boolean get() = phase != "idle"
+
+    // 松手后任务继续在后台执行，蒙层和输入保护只随用户持有录音显示。
+    val overlayVisible: Boolean get() = phase == "recording"
+    val inputBlocked: Boolean get() = phase in setOf("authorizing", "starting", "recording")
+    val touchPending: Boolean get() = phase == "priming"
     val recording: Boolean get() = phase in setOf("authorizing", "starting", "recording", "stopping")
     val status: String get() =
         when {
+            !overlayVisible -> ""
             cancelArmed -> "松手取消"
-            phase == "transcribing" -> "正在转成文字"
             phase == "authorizing" -> "正在获取麦克风权限"
             phase == "starting" -> "正在开启麦克风"
-            phase == "stopping" -> "正在整理录音"
             phase == "recording" -> "松手转文字 · 上滑取消"
             preparing -> "正在准备语音模型"
             else -> error.orEmpty()
@@ -88,6 +92,7 @@ class SharedVoiceInputStore {
     private var startedAt = 0L
     private var phaseStartedAt = 0L
     private var stopWhenCaptureStarts = false
+    private var captureReady = false
     private var maxAudioBytes = VoiceAudioFormat.MAX_CAPTURE_BYTES
     private var maxDurationSeconds = VoiceAudioFormat.MAX_DURATION_SECONDS
 
@@ -139,7 +144,10 @@ class SharedVoiceInputStore {
         if (contextId != context) state = state.copy(pendingTranscript = null, error = null, alertMessage = null)
         contextId = context
         draftChanged(currentDraft)
-        return cancelled.copy(snapshot = state)
+        return cancelled.copy(
+            snapshot = state,
+            effects = cancelled.effects + if (state.ready && !state.active) listOf(VoiceHardwareEffect("warmCapture")) else emptyList(),
+        )
     }
 
     fun draftChanged(value: String): SharedVoiceInputTransition {
@@ -185,7 +193,55 @@ class SharedVoiceInputStore {
         )
     }
 
+    private fun beginCapture(
+        phase: String,
+        nowMilliseconds: Long,
+    ) {
+        stopWhenCaptureStarts = false
+        captureReady = false
+        recordingId = id()
+        phaseStartedAt = nowMilliseconds
+        originalDraft = draft
+        originalRevision = draftRevision
+        recordedProvider = providerId
+        recordedLanguage = language
+        state =
+            state.copy(
+                phase = phase,
+                error = null,
+                alertMessage = null,
+                waveformLevels = List(WAVEFORM_HISTORY_SIZE) { 0f },
+                level = 0f,
+                waveformActive = false,
+                recordingSeconds = 0.0,
+                cancelArmed = false,
+                pendingTranscript = null,
+            )
+    }
+
+    /** 已授权时从真实 down 启动预采集；未确认长按前不显示蒙层、不发送音频。 */
+    fun touchDown(
+        nowMilliseconds: Long,
+        microphoneGranted: Boolean,
+    ): SharedVoiceInputTransition {
+        if (!microphoneGranted || state.active || state.keyboardVisible ||
+            !state.connected || !state.supported || !state.ready
+        ) {
+            return result()
+        }
+        beginCapture("priming", nowMilliseconds)
+        return result(effects = listOf(VoiceHardwareEffect("startTicker"), VoiceHardwareEffect("start", requireNotNull(recordingId))))
+    }
+
+    /** 短按或原生手势失败只丢弃预采集，不影响已经确认的长按或后台转写。 */
+    fun touchFinished(): SharedVoiceInputTransition = if (state.touchPending) cancel() else result()
+
     fun press(nowMilliseconds: Long): SharedVoiceInputTransition {
+        if (state.touchPending) {
+            state = state.copy(phase = if (captureReady) "recording" else "starting")
+            phaseStartedAt = nowMilliseconds
+            return result(effects = listOf(VoiceHardwareEffect("hapticStart")))
+        }
         if (state.active || state.keyboardVisible) return result()
         val unavailableMessage =
             when {
@@ -199,25 +255,7 @@ class SharedVoiceInputStore {
             state = state.copy(alertMessage = unavailableMessage, error = null)
             return result()
         }
-        stopWhenCaptureStarts = false
-        recordingId = id()
-        phaseStartedAt = nowMilliseconds
-        originalDraft = draft
-        originalRevision = draftRevision
-        recordedProvider = providerId
-        recordedLanguage = language
-        state =
-            state.copy(
-                phase = "authorizing",
-                error = null,
-                alertMessage = null,
-                waveformLevels = List(WAVEFORM_HISTORY_SIZE) { 0f },
-                level = 0f,
-                waveformActive = false,
-                recordingSeconds = 0.0,
-                cancelArmed = false,
-                pendingTranscript = null,
-            )
+        beginCapture("authorizing", nowMilliseconds)
         return result(
             effects =
                 listOf(
@@ -249,13 +287,18 @@ class SharedVoiceInputStore {
             phaseStartedAt = nowMilliseconds
             return result(effects = listOf(stopCapture(id)))
         }
-        if (id != recordingId ||
-            state.phase != "starting"
-        ) {
+        if (id == recordingId && state.touchPending) {
+            captureReady = true
+            startedAt = nowMilliseconds
+            return result()
+        }
+        if (id == recordingId && state.phase == "recording") return result()
+        if (id != recordingId || state.phase != "starting") {
             return result(effects = listOf(VoiceHardwareEffect("stop", id, true)))
         }
         startedAt = nowMilliseconds
         phaseStartedAt = nowMilliseconds
+        captureReady = true
         state = state.copy(phase = "recording")
         return result()
     }
@@ -263,14 +306,19 @@ class SharedVoiceInputStore {
     fun captureFailed(
         id: String,
         message: String,
-    ): SharedVoiceInputTransition = if (id == recordingId) fail(message) else result()
+    ): SharedVoiceInputTransition =
+        when {
+            id != recordingId -> result()
+            state.touchPending -> cancel()
+            else -> fail(message)
+        }
 
     fun level(
         id: String,
         rms: Float,
         nowMilliseconds: Long,
     ): SharedVoiceInputTransition {
-        if (id != recordingId || state.phase != "recording") return result()
+        if (id != recordingId || state.phase !in setOf("priming", "recording")) return result()
         val normalized =
             if (rms.isFinite()) {
                 (
@@ -431,7 +479,20 @@ class SharedVoiceInputStore {
                 preparationProgress = catalog.progress,
                 error = catalog.error,
             )
-        return if (!catalog.available && state.active) fail("语音服务已关闭，请重试") else result()
+        return if (!catalog.available && state.active) {
+            fail("语音服务已关闭，请重试")
+        } else {
+            result(
+                effects =
+                    if (contextId != null && state.ready &&
+                        !state.active
+                    ) {
+                        listOf(VoiceHardwareEffect("warmCapture"))
+                    } else {
+                        emptyList()
+                    },
+            )
+        }
     }
 
     private fun acceptTranscript(frame: JsonObject): SharedVoiceInputTransition {
@@ -522,6 +583,7 @@ class SharedVoiceInputStore {
             }
         recordingId = null
         stopWhenCaptureStarts = false
+        captureReady = false
         state = state.copy(phase = "idle", level = 0f, waveformActive = false, cancelArmed = false)
         val effects =
             listOfNotNull(
@@ -531,8 +593,16 @@ class SharedVoiceInputStore {
         return result(requests, effects)
     }
 
-    fun leave(): SharedVoiceInputTransition {
+    fun resumeCapture(): SharedVoiceInputTransition =
+        result(effects = if (contextId != null && state.ready && !state.active) listOf(VoiceHardwareEffect("warmCapture")) else emptyList())
+
+    fun suspendCapture(): SharedVoiceInputTransition {
         val cancelled = cancel()
+        return cancelled.copy(effects = cancelled.effects + VoiceHardwareEffect("releaseCapture"))
+    }
+
+    fun leave(): SharedVoiceInputTransition {
+        val cancelled = suspendCapture()
         contextId = null
         val unsubscribe =
             if (followId != null &&

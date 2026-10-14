@@ -8,4 +8,5 @@ object VoiceInputInteraction {
     const val OVERLAY_FADE_IN_MILLISECONDS = 160
     const val OVERLAY_FADE_OUT_MILLISECONDS = 280
     const val CAPTURE_TAIL_MILLISECONDS = 200L
+    const val CAPTURE_WINDOW_MILLISECONDS = 20L
 }

@@ -6,6 +6,42 @@ import DeepSeekHarnessShared
 @testable import DeepSeekHarnessMobile
 
 final class VoiceInputTests: XCTestCase {
+    func testNativeAudioSessionEnablesHapticsForColdCachedAndReopenedPreparation() throws {
+        let session = AVAudioSession.sharedInstance()
+        let originalPermission = session.allowHapticsAndSystemSoundsDuringRecording
+        let recorder = IOSVoiceRecorder()
+        defer {
+            recorder.release()
+            try? session.setAllowHapticsAndSystemSoundsDuringRecording(originalPermission)
+        }
+        for _ in 0..<2 {
+            try session.setAllowHapticsAndSystemSoundsDuringRecording(false)
+            try recorder.prepare()
+            XCTAssertTrue(session.allowHapticsAndSystemSoundsDuringRecording, "录音会话必须允许三个节点的触感")
+            // 其他音频配置改回 false 时，准备缓存也不能跳过系统设置。
+            try session.setAllowHapticsAndSystemSoundsDuringRecording(false)
+            try recorder.prepare()
+            XCTAssertTrue(session.allowHapticsAndSystemSoundsDuringRecording, "复用会话仍需检查录音触感开关")
+            recorder.release()
+        }
+    }
+
+    func testNativeRecorderCanPrewarmColdEngineAndAfterReleaseWithoutRecording() throws {
+        let engine = AVAudioEngine()
+        let recorder = IOSVoiceRecorder(engine: engine)
+        defer { recorder.release() }
+        // 真实 AVAudioEngine：替身无法检测未建立 I/O 节点时 prepare 的 NSException。
+        for _ in 0..<3 {
+            try recorder.prepare()
+            try recorder.prepare()
+            XCTAssertFalse(engine.isRunning, "预热不得启动音频采集")
+            XCTAssertTrue(engine.attachedNodes.contains(engine.inputNode), "必须先建立真实输入节点")
+            XCTAssertNil(try recorder.stop(id: "not-recording", discard: false))
+            recorder.release()
+            XCTAssertFalse(engine.isRunning)
+        }
+    }
+
     func testEndOfStreamPreservesBufferedTailSamples() throws {
         let source = try XCTUnwrap(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48000, channels: 1, interleaved: false))
         let target = try XCTUnwrap(AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16000, channels: 1, interleaved: true))
@@ -80,7 +116,7 @@ final class VoiceInputTests: XCTestCase {
     }
 
     @MainActor
-    func testSlowMicrophoneStartupDoesNotBlockOverlayOrCancellation() async throws {
+    func testSlowMicrophoneCannotPretendToBeReadyAndCancellationRemainsResponsive() async throws {
         let shared = SharedVoiceInputStore()
         _ = shared.open(context: "latency", currentDraft: "")
         let opening = shared.connectionChanged(connected: true, supported: true)
@@ -90,7 +126,8 @@ final class VoiceInputTests: XCTestCase {
         """)
         let startupFinished = expectation(description: "slow hardware completed")
         let hardwareStopped = expectation(description: "cancelled hardware cleaned up")
-        let overlayAppeared = expectation(description: "overlay appears while hardware is still starting")
+        let overlayAppeared = expectation(description: "硬件尚未启动不能显示录音蒙层")
+        overlayAppeared.isInverted = true
         let recorder = SlowVoiceRecorder(startupFinished: startupFinished, stopped: hardwareStopped)
         let voice = VoiceInputAdapter(shared: shared, recorder: recorder, requestPermission: { $0(true) })
         let controller = UIHostingController(rootView: VoiceLatencyHarness(voice: voice, appeared: { overlayAppeared.fulfill() }))
@@ -102,17 +139,18 @@ final class VoiceInputTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(100))
         let began = ProcessInfo.processInfo.systemUptime
         voice.press()
-        await fulfillment(of: [overlayAppeared], timeout: 0.35)
+        await fulfillment(of: [overlayAppeared], timeout: 0.15)
         try await Task.sleep(for: .milliseconds(60))
         let elapsed = ProcessInfo.processInfo.systemUptime - began
         XCTAssertLessThan(elapsed, 0.35, "蒙层与主线程不能等待耗时一秒的麦克风启动")
         XCTAssertEqual(voice.state.phase, "starting")
+        XCTAssertFalse(voice.state.overlayVisible)
         XCTAssertFalse(recorder.startedOnMain)
         let image = UIGraphicsImageRenderer(size: window.bounds.size).image { context in
             controller.view.layer.render(in: context.cgContext)
         }
         let attachment = XCTAttachment(image: image)
-        attachment.name = "硬件仍在启动时蒙层已出现"
+        attachment.name = "等待硬件启动时不显示录音蒙层"
         attachment.lifetime = .keepAlways
         add(attachment)
         voice.cancel()
@@ -121,7 +159,109 @@ final class VoiceInputTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(50))
         XCTAssertEqual(voice.state.phase, "idle", "迟到的启动结果不能恢复已取消的录音")
         XCTAssertTrue(recorder.discarded)
-        print("VoiceInputLatency iOS recognizedToResponsiveOverlay=\(Int(elapsed * 1000))ms simulatedHardwareStartup=1000ms")
+        print("VoiceInputLatency iOS recognizedToResponsiveMain=\(Int(elapsed * 1000))ms simulatedHardwareStartup=1000ms")
+    }
+
+    @MainActor
+    func testAuthorizedTouchPreCapturesAndShortTapDiscardsAudio() async throws {
+        let (shared, _) = try recordingStore()
+        _ = shared.cancel()
+        let began = expectation(description: "down 已启动硬件，无需等 longpress")
+        let stopped = expectation(description: "短按丢弃预采集")
+        let recorder = ControlledVoiceRecorder(began: began, stopped: stopped)
+        let voice = VoiceInputAdapter(shared: shared, recorder: recorder, permissionGranted: { true }, requestPermission: { _ in XCTFail("已授权不应重复请求权限") })
+        voice.touchDown()
+        await fulfillment(of: [began], timeout: 0.5)
+        XCTAssertEqual(voice.state.phase, "priming")
+        XCTAssertFalse(voice.state.overlayVisible)
+        recorder.hardwareStarted()
+        try await Task.sleep(for: .milliseconds(40))
+        XCTAssertFalse(voice.state.overlayVisible)
+        voice.touchFinished()
+        await fulfillment(of: [stopped], timeout: 0.5)
+        XCTAssertTrue(recorder.discarded)
+        XCTAssertFalse(voice.state.active)
+        recorder.hardwareStarted()
+        try await Task.sleep(for: .milliseconds(40))
+        XCTAssertFalse(voice.state.overlayVisible)
+        voice.leave()
+    }
+
+    @MainActor
+    func testShortTapCancelsQueuedStartupBeforeWarmupFinishes() async throws {
+        let (shared, _) = try recordingStore()
+        _ = shared.cancel()
+        let preparing = expectation(description: "预热占用硬件串行队列")
+        let released = expectation(description: "退出会话已清理预热")
+        let recorder = DelayedPreparationVoiceRecorder(preparing: preparing, released: released)
+        let voice = VoiceInputAdapter(shared: shared, recorder: recorder, permissionGranted: { true })
+        defer { recorder.finishPreparation() }
+        voice.open(context: "queued-start", draft: "")
+        await fulfillment(of: [preparing], timeout: 0.5)
+        voice.touchDown()
+        voice.touchFinished()
+        recorder.finishPreparation()
+        voice.leave()
+        await fulfillment(of: [released], timeout: 1)
+        XCTAssertEqual(recorder.startCount, 0, "短按已撤销，排队的硬件启动不得在预热结束后执行")
+        XCTAssertFalse(voice.state.active)
+    }
+
+    @MainActor
+    func testRunningCaptureShowsOverlayBeforeFirstConvertedSamplesWithoutSecondStartup() async throws {
+        let (shared, _) = try recordingStore()
+        _ = shared.cancel()
+        let began = expectation(description: "硬件预采集启动")
+        let stopped = expectation(description: "测试结束清理采集")
+        let recorder = ControlledVoiceRecorder(began: began, stopped: stopped)
+        let voice = VoiceInputAdapter(shared: shared, recorder: recorder, permissionGranted: { true })
+        voice.touchDown()
+        await fulfillment(of: [began], timeout: 0.5)
+        recorder.hardwareStarted()
+        try await Task.sleep(for: .milliseconds(40))
+        voice.press()
+        XCTAssertEqual(voice.state.phase, "recording")
+        XCTAssertTrue(voice.state.overlayVisible)
+        XCTAssertFalse(voice.state.waveformActive, "没有音量回调也能显示正在运行的录音蒙层")
+        XCTAssertEqual(recorder.startCount, 1)
+        voice.cancel()
+        await fulfillment(of: [stopped], timeout: 0.5)
+        voice.leave()
+    }
+
+    @MainActor
+    func testReleaseRemovesOverlayBeforeTranscriptArrives() async throws {
+        let (shared, token) = try recordingStore()
+        let voice = VoiceInputAdapter(shared: shared)
+        var draft = "原草稿"
+        voice.onDraftUpdate = { draft = $0 }
+        let appeared = expectation(description: "录音蒙层显示")
+        let disappeared = expectation(description: "抬手后蒙层退出，转写仍在后台")
+        let controller = UIHostingController(rootView: VoiceLatencyHarness(voice: voice,
+            appeared: { appeared.fulfill() }, disappeared: { disappeared.fulfill() }))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; voice.leave() }
+        await fulfillment(of: [appeared], timeout: 0.5)
+        voice.release()
+        XCTAssertTrue(voice.state.active)
+        XCTAssertFalse(voice.state.overlayVisible)
+        XCTAssertEqual(voice.state.status, "")
+        await fulfillment(of: [disappeared], timeout: 0.7)
+        _ = shared.captureFinished(id: token, pcmBase64: Data(repeating: 0, count: 16000).base64EncodedString(), nowMilliseconds: 1700)
+        voice.draftChanged("原草稿")
+        XCTAssertEqual(voice.state.phase, "transcribing")
+        XCTAssertFalse(voice.state.overlayVisible)
+        XCTAssertEqual(voice.state.status, "")
+        voice.accept("""
+        {"kind":"speech-transcript","requestId":"\(token)","text":"后台回填文字"}
+        """)
+        XCTAssertEqual(draft, "原草稿\n后台回填文字")
+        XCTAssertFalse(voice.state.active)
+        XCTAssertFalse(voice.state.keyboardVisible)
     }
 
     private func recordingStore() throws -> (SharedVoiceInputStore, String) {
@@ -168,7 +308,7 @@ final class VoiceInputTests: XCTestCase {
         for scheme in [ColorScheme.light, .dark] {
             let theme = scheme == .dark ? "dark" : "light"
             for (name, snapshot) in [("speaking", speaking), ("cancel", cancellation), ("silent", silent), ("paused", paused)] {
-                let renderer = ImageRenderer(content: VoiceRipplePanel(state: snapshot, stop: {})
+                let renderer = ImageRenderer(content: VoiceRipplePanel(state: snapshot)
                     .frame(width: 390, height: 844 * VoiceInputInteraction.shared.OVERLAY_HEIGHT_FRACTION)
                     .background(scheme == .dark ? Color.black : Color.white)
                     .environment(\.colorScheme, scheme))
@@ -180,6 +320,26 @@ final class VoiceInputTests: XCTestCase {
                 attachment.lifetime = .keepAlways
                 add(attachment)
             }
+            // 用实际文字背景展示白色外晕如何淡化重叠内容；单色背景无法体现这层效果。
+            let underlayRenderer = ImageRenderer(content: ZStack {
+                (scheme == .dark ? Color.black : Color.white)
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(0..<11, id: \.self) { _ in
+                        Text("会话内容与柔和的椭圆外晕自然衔接")
+                            .font(.system(size: 16))
+                    }
+                }
+                .foregroundStyle(scheme == .dark ? Color.white : Color.black)
+                VoiceRipplePanel(state: silent)
+            }
+            .frame(width: 390, height: 844 * VoiceInputInteraction.shared.OVERLAY_HEIGHT_FRACTION)
+            .environment(\.colorScheme, scheme))
+            underlayRenderer.scale = 3
+            let underlayImage = try XCTUnwrap(underlayRenderer.uiImage)
+            let underlayAttachment = XCTAttachment(image: underlayImage)
+            underlayAttachment.name = "voice-halo-\(theme)-underlay"
+            underlayAttachment.lifetime = .keepAlways
+            add(underlayAttachment)
         }
     }
 
@@ -357,17 +517,19 @@ private func voiceTextView(in view: UIView) -> UITextView? {
 private struct VoiceLatencyHarness: View {
     @ObservedObject var voice: VoiceInputAdapter
     let appeared: () -> Void
+    var disappeared: () -> Void = {}
     var body: some View {
         ZStack(alignment: .bottom) {
             Color.white
-            if voice.state.active {
-                VoiceRipplePanel(state: voice.state, stop: {})
+            if voice.state.overlayVisible {
+                VoiceRipplePanel(state: voice.state)
                     .frame(height: 844 * VoiceInputInteraction.shared.OVERLAY_HEIGHT_FRACTION)
                     .transition(.opacity)
                     .onAppear(perform: appeared)
+                    .onDisappear(perform: disappeared)
             }
         }
-        .animation(voiceOverlayAnimation(active: voice.state.active), value: voice.state.active)
+        .animation(voiceOverlayAnimation(active: voice.state.overlayVisible), value: voice.state.overlayVisible)
     }
 }
 
@@ -385,10 +547,11 @@ private final class SlowVoiceRecorder: VoiceAudioCapturing, @unchecked Sendable 
     }
     var startedOnMain: Bool { lock.lock(); defer { lock.unlock() }; return mainThread }
     var discarded: Bool { lock.lock(); defer { lock.unlock() }; return didDiscard }
-    func start(id: String, level: @escaping @Sendable (Float) -> Void, failure: @escaping @Sendable () -> Void) throws {
+    func start(id: String, ready: @escaping @Sendable () -> Void, level: @escaping @Sendable (Float) -> Void, failure: @escaping @Sendable () -> Void) throws {
         lock.lock(); token = id; mainThread = Thread.isMainThread; lock.unlock()
         Thread.sleep(forTimeInterval: 1)
         startupFinished.fulfill()
+        ready()
     }
     func stop(id: String, discard: Bool) -> Data? {
         lock.lock()
@@ -398,4 +561,55 @@ private final class SlowVoiceRecorder: VoiceAudioCapturing, @unchecked Sendable 
         stopped.fulfill()
         return discard ? nil : Data(repeating: 0, count: 16000)
     }
+}
+
+
+/// 已授权的可控采集器：首批 PCM 就绪由测试单独触发。
+private final class ControlledVoiceRecorder: VoiceAudioCapturing, @unchecked Sendable {
+    private let lock = NSLock()
+    private var ready: (@Sendable () -> Void)?
+    private var level: (@Sendable (Float) -> Void)?
+    private var token: String?
+    private var starts = 0
+    private var didDiscard = false
+    let began: XCTestExpectation
+    let stopped: XCTestExpectation
+    init(began: XCTestExpectation, stopped: XCTestExpectation) { self.began = began; self.stopped = stopped }
+    var startCount: Int { lock.lock(); defer { lock.unlock() }; return starts }
+    var discarded: Bool { lock.lock(); defer { lock.unlock() }; return didDiscard }
+    func start(id: String, ready: @escaping @Sendable () -> Void, level: @escaping @Sendable (Float) -> Void, failure: @escaping @Sendable () -> Void) throws {
+        lock.lock(); self.ready = ready; self.level = level; token = id; starts += 1; lock.unlock()
+        began.fulfill()
+    }
+    func hardwareStarted() {
+        lock.lock(); let ready = ready; lock.unlock()
+        ready?()
+    }
+    func stop(id: String, discard: Bool) -> Data? {
+        lock.lock()
+        guard token == id else { lock.unlock(); return nil }
+        token = nil; didDiscard = discard; lock.unlock()
+        stopped.fulfill()
+        return nil
+    }
+}
+
+
+private final class DelayedPreparationVoiceRecorder: VoiceAudioCapturing, @unchecked Sendable {
+    private let gate = DispatchSemaphore(value: 0)
+    private let lock = NSLock()
+    private var starts = 0
+    private let preparing: XCTestExpectation
+    private let released: XCTestExpectation
+    init(preparing: XCTestExpectation, released: XCTestExpectation) {
+        self.preparing = preparing; self.released = released
+    }
+    var startCount: Int { lock.lock(); defer { lock.unlock() }; return starts }
+    func finishPreparation() { gate.signal() }
+    func prepare() throws { preparing.fulfill(); _ = gate.wait(timeout: .now() + 2) }
+    func release() { released.fulfill() }
+    func start(id: String, ready: @escaping @Sendable () -> Void, level: @escaping @Sendable (Float) -> Void, failure: @escaping @Sendable () -> Void) throws {
+        lock.lock(); starts += 1; lock.unlock(); ready()
+    }
+    func stop(id: String, discard: Bool) throws -> Data? { nil }
 }

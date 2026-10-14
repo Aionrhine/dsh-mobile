@@ -37,6 +37,26 @@
   document.querySelectorAll('.navigation a').forEach(link => link.addEventListener('click', closeMenu));
   document.addEventListener('keydown', event => { if (event.key === 'Escape') closeMenu(); });
 
+  const supportDialog = document.getElementById('support-dialog');
+  let supportTrigger;
+  document.querySelectorAll('[data-support-dialog]').forEach(button => {
+    button.addEventListener('click', () => {
+      supportTrigger = button;
+      closeMenu();
+      if (typeof supportDialog.showModal === 'function') supportDialog.showModal();
+      else window.open(supportDialog.querySelector('img').src, '_blank', 'noopener');
+    });
+  });
+  supportDialog.addEventListener('click', event => {
+    const bounds = supportDialog.getBoundingClientRect();
+    if (event.target === supportDialog && (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom)) supportDialog.close();
+  });
+  supportDialog.addEventListener('close', () => {
+    // A collapsed mobile menu hides its trigger; return focus to the menu button.
+    const target = supportTrigger?.closest('.navigation') && getComputedStyle(document.querySelector('.navigation')).display === 'none' ? menuButton : supportTrigger;
+    target?.focus();
+  });
+
   const features = {
     conversation: { image: 'conversation', name: '实时对话', alt: 'Whaleness 实时对话，展示消息、工具执行结果和输入区域' },
     trajectory: { image: 'trajectory', name: '执行轨迹', alt: 'Whaleness 执行轨迹，展示耗时概览和模型、工具事件时间线' },

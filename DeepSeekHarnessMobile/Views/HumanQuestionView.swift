@@ -66,20 +66,20 @@ struct HumanQuestionView: View {
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: "questionmark.bubble.fill")
-                    .font(.system(size: 18, weight: .semibold))
+                    .appFont(.system(size: 18, weight: .semibold))
                     .foregroundStyle(DSHColor.ocean)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(String(localized: "Agent 正在等待回答"))
-                        .font(.subheadline.weight(.semibold))
+                        .appFont(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                     Text(request.questions[currentIndex].question)
-                        .font(.caption)
+                        .appFont(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
                 Spacer(minLength: 8)
                 Image(systemName: "chevron.up")
-                    .font(.caption.weight(.bold))
+                    .appFont(.caption.weight(.bold))
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 16)
@@ -114,14 +114,14 @@ struct HumanQuestionView: View {
     private var header: some View {
         HStack(spacing: 11) {
             Image(systemName: "questionmark.bubble")
-                .font(.system(size: 16, weight: .semibold))
+                .appFont(.system(size: 16, weight: .semibold))
                 .foregroundStyle(DSHColor.ocean)
             VStack(alignment: .leading, spacing: 1) {
                 Text(String(localized: "需要你的回答"))
-                    .font(.subheadline.weight(.semibold))
+                    .appFont(.subheadline.weight(.semibold))
                 if request.replay {
                     Text(String(localized: "已从断线前恢复"))
-                        .font(.caption2)
+                        .appFont(.caption2)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -136,7 +136,7 @@ struct HumanQuestionView: View {
             .accessibilityLabel(String(localized: "收起问题卡片"))
             Button { showsCancelConfirmation = true } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .semibold))
+                    .appFont(.system(size: 14, weight: .semibold))
                     .frame(width: 30, height: 30)
             }
             .accessibilityLabel(String(localized: "放弃整组问题"))
@@ -152,20 +152,20 @@ struct HumanQuestionView: View {
         VStack(alignment: .leading, spacing: 7) {
             if let header = question.header, !header.isEmpty {
                 Text(header)
-                    .font(.caption.weight(.medium))
+                    .appFont(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
             }
             Text(question.question)
-                .font(.title3.weight(.semibold))
+                .appFont(.title3.weight(.semibold))
                 .fixedSize(horizontal: false, vertical: true)
             if let detail = question.detail, !detail.isEmpty {
                 Markdown(detail)
                     .markdownTextStyle { ForegroundColor(.secondary) }
-                    .font(.subheadline)
+                    .appFont(.subheadline)
             }
             if question.allowsMultipleSelections {
                 Label(String(localized: "可以选择多项"), systemImage: "checklist")
-                    .font(.caption)
+                    .appFont(.caption)
                     .foregroundStyle(.secondary)
             }
         }
@@ -181,7 +181,7 @@ struct HumanQuestionView: View {
 
             if options.isEmpty {
                 TextEditor(text: customBinding(for: question))
-                    .font(.body)
+                    .appFont(.body)
                     .scrollContentBackground(.hidden)
                     .frame(minHeight: 92, maxHeight: 138)
                     .padding(10)
@@ -221,18 +221,18 @@ struct HumanQuestionView: View {
                 Image(systemName: isSelected
                       ? (question.allowsMultipleSelections ? "checkmark.square.fill" : "largecircle.fill.circle")
                       : (question.allowsMultipleSelections ? "square" : "circle"))
-                    .font(.system(size: 19, weight: .medium))
+                    .appFont(.system(size: 19, weight: .medium))
                     .foregroundStyle(isSelected ? DSHColor.ocean : Color.secondary.opacity(0.55))
                     .padding(.top, 1)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 7) {
                         Text(metadata.title)
-                            .font(.body.weight(.semibold))
+                            .appFont(.body.weight(.semibold))
                             .foregroundStyle(.primary)
                             .fixedSize(horizontal: false, vertical: true)
                         if metadata.isRecommended {
                             Text(String(localized: "推荐"))
-                                .font(.caption2.weight(.semibold))
+                                .appFont(.caption2.weight(.semibold))
                                 .foregroundStyle(DSHColor.ocean)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 3)
@@ -241,7 +241,7 @@ struct HumanQuestionView: View {
                     }
                     if let description = option.description, !description.isEmpty {
                         Text(description)
-                            .font(.subheadline)
+                            .appFont(.subheadline)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -265,7 +265,7 @@ struct HumanQuestionView: View {
         VStack(spacing: 9) {
             if let validationMessage {
                 Text(validationMessage)
-                    .font(.caption)
+                    .appFont(.caption)
                     .foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -276,7 +276,7 @@ struct HumanQuestionView: View {
                 }
                 .disabled(currentIndex == 0 || status.isBusy)
                 Text("\(currentIndex + 1) / \(request.questions.count)")
-                    .font(.subheadline.monospacedDigit())
+                    .appFont(.subheadline.monospacedDigit())
                     .foregroundStyle(.secondary)
                 Button { move(to: currentIndex + 1) } label: {
                     Image(systemName: "chevron.right")
@@ -309,13 +309,13 @@ struct HumanQuestionView: View {
             EmptyView()
         case .submitting(let action):
             Label(action == .answer ? String(localized: "questions.submitting.answers", defaultValue: "正在提交整组答案…") : String(localized: "questions.skipping", defaultValue: "正在跳过问题…"), systemImage: "arrow.triangle.2.circlepath")
-                .font(.caption).foregroundStyle(.secondary)
+                .appFont(.caption).foregroundStyle(.secondary)
         case .accepted:
             Label(String(localized: "服务端已接收，正在恢复 Agent…"), systemImage: "checkmark.circle.fill")
-                .font(.caption).foregroundStyle(.green)
+                .appFont(.caption).foregroundStyle(.green)
         case .rejected(let message):
             Label(message, systemImage: "exclamationmark.triangle.fill")
-                .font(.caption).foregroundStyle(.red)
+                .appFont(.caption).foregroundStyle(.red)
         }
     }
 
@@ -326,10 +326,10 @@ struct HumanQuestionView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 15) {
                     Label(String(localized: "计划待审"), systemImage: "doc.text.magnifyingglass")
-                        .font(.caption.weight(.semibold))
+                        .appFont(.caption.weight(.semibold))
                         .foregroundStyle(.orange)
                     Text(plan.question.question)
-                        .font(.title3.weight(.semibold))
+                        .appFont(.title3.weight(.semibold))
                     Markdown(plan.question.detail ?? "")
                     statusMessage
                 }

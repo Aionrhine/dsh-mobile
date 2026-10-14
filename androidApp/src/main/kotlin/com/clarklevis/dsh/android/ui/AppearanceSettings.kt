@@ -27,6 +27,26 @@ internal enum class AppLanguage(val title: String) {
 }
 
 internal class AppearanceSettings(private val preferences: SharedPreferences) {
+    var fontScale by mutableStateOf(normalizeFontScale(preferences.getFloat("font_scale", 1f)))
+        private set
+
+    var fontFollowsSystem by mutableStateOf(preferences.getBoolean("font_follows_system", false))
+        private set
+
+    val effectiveFontScale: Float
+        get() = if (fontFollowsSystem) 1f else fontScale
+
+    fun selectFontFollowsSystem(value: Boolean) {
+        preferences.edit().putBoolean("font_follows_system", value).apply()
+        fontFollowsSystem = value
+    }
+
+    fun selectFontScale(value: Float) {
+        val normalized = normalizeFontScale(value)
+        preferences.edit().putFloat("font_scale", normalized).apply()
+        fontScale = normalized
+    }
+
     var interfaceStyle by mutableStateOf(
         InterfaceStyle.entries.firstOrNull { it.name == preferences.getString("interface_style", null) }
             ?: InterfaceStyle.SYSTEM
@@ -70,6 +90,9 @@ internal class AppearanceSettings(private val preferences: SharedPreferences) {
         }
     }
 }
+
+internal fun normalizeFontScale(value: Float): Float =
+    if (value.isFinite()) value.coerceIn(0.8f, 1.5f) else 1f
 
 internal val LocalAppearanceSettings = staticCompositionLocalOf<AppearanceSettings> {
     error("AppearanceSettings must be provided by DshTheme")

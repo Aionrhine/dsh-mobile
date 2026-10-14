@@ -7,7 +7,6 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -17,9 +16,8 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -61,7 +59,7 @@ fun VoiceInputPanel(
     val currentState = voice.state
     // 退出动画保留最后可见画面，避免取消状态在淡出前瞬间切回蓝色。
     val presentation = remember(voice) { VoicePanelPresentation(currentState) }
-    if (currentState.active) presentation.snapshot = currentState
+    if (currentState.overlayVisible) presentation.snapshot = currentState
     val state = presentation.snapshot
     val transition = rememberInfiniteTransition(label = "voice-particles")
     val time by transition.animateFloat(
@@ -71,7 +69,17 @@ fun VoiceInputPanel(
         label = "particle-drift",
     )
     val gathering by animateFloatAsState(state.visualActivity, tween(if (state.waveformActive) 160 else 320), label = "particle-gathering")
-    val palette = voiceOverlayPalette(isSystemInDarkTheme(), state.cancelArmed)
+    val isDark = isSystemInDarkTheme()
+    val palette = voiceOverlayPalette(isDark, state.cancelArmed)
+    val haloColor = if (isDark) MaterialTheme.colorScheme.background else Color.White
+    val haloStops =
+        remember(haloColor) {
+            Array(33) { index ->
+                val radius = index / 32f
+                val progress = ((radius - 0.78f) / 0.22f).coerceIn(0f, 1f)
+                radius to haloColor.copy(alpha = 1 - progress * progress * (3 - 2 * progress))
+            }
+        }
     val base = palette.base
     val glow = palette.glow
     val ink = palette.ink
@@ -80,10 +88,11 @@ fun VoiceInputPanel(
         modifier
             .testTag(
                 "voice-recording-overlay",
-            ).clickable(enabled = currentState.active, interactionSource = interactions, indication = null) {},
+            ).clickable(enabled = currentState.overlayVisible, interactionSource = interactions, indication = null) {},
     ) {
         Canvas(Modifier.fillMaxSize()) {
             voice.overlayDrawn()
+            drawVoiceOuterHalo(haloStops)
             drawIntoCanvas { canvas ->
                 canvas.saveLayer(Rect(Offset.Zero, size), Paint())
                 drawVoiceBackdrop(base, glow)
@@ -98,19 +107,6 @@ fun VoiceInputPanel(
             fontSize = 17.sp,
             modifier = Modifier.align(Alignment.Center).padding(bottom = 32.dp),
         )
-        if (state.phase == "transcribing") {
-            TextButton(
-                onClick = voice::cancel,
-                enabled = currentState.active,
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 28.dp)
-                        .background(ink.copy(alpha = 0.10f), CircleShape),
-            ) {
-                Text("取消", color = ink.copy(alpha = 0.85f))
-            }
-        }
     }
 }
 
@@ -162,6 +158,25 @@ private fun DrawScope.drawVoiceBackdrop(
             radius = size.width * 0.9f,
         ),
     )
+}
+
+/** 独立绘制在彩色蒙层后方，避免被内层蒙版裁掉外缘。 */
+@Suppress("MagicNumber")
+private fun DrawScope.drawVoiceOuterHalo(stops: Array<Pair<Float, Color>>) {
+    val fadeHeight = size.height * 0.6f
+    val radiusX = size.width * 0.98f
+    clipRect(bottom = fadeHeight) {
+        withTransform({
+            translate(left = size.width / 2, top = fadeHeight)
+            scale(scaleX = radiusX, scaleY = fadeHeight, pivot = Offset.Zero)
+        }) {
+            drawRect(
+                Brush.radialGradient(*stops, center = Offset.Zero, radius = 1f),
+                topLeft = Offset(-size.width / (2 * radiusX), -1f),
+                size = Size(size.width / radiusX, 1f),
+            )
+        }
+    }
 }
 
 // .625 等于视图侧边的归一化半径；保证渐变与下方实色区域无接缝。
@@ -281,6 +296,8 @@ fun Modifier.voiceHoldGesture(
                 } catch (cancelled: CancellationException) {
                     if (holding) voice.cancel()
                     throw cancelled
+                } finally {
+                    if (!holding) voice.touchFinished()
                 }
             }
         }

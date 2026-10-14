@@ -7,6 +7,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.SwitchColors
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.darkColorScheme
@@ -20,8 +22,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 
@@ -84,6 +89,8 @@ internal fun DshTheme(
     content: @Composable () -> Unit
 ) {
     val view = LocalView.current
+    val systemDensity = LocalDensity.current
+    val appDensity = AppFontDensity(systemDensity, appearance.effectiveFontScale)
     val dark = appearance.interfaceStyle.isDark(isSystemInDarkTheme())
     val configuration = Configuration(LocalConfiguration.current).apply {
         uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or
@@ -104,10 +111,52 @@ internal fun DshTheme(
     // 所有页面的深浅色判断使用同一份有效配置，避免只更新 MaterialTheme 而留下浅色背景。
     CompositionLocalProvider(
         LocalAppearanceSettings provides appearance,
+        LocalDensity provides appDensity,
         LocalConfiguration provides configuration
     ) {
         MaterialTheme(colorScheme = if (dark) DarkColors else LightColors) {
             CompositionLocalProvider(LocalRippleConfiguration provides null, content = content)
         }
     }
+}
+
+// 保留 Android 的系统字号转换（包括非线性缩放），再应用用户选择的倍率。
+internal class AppFontDensity(
+    private val systemDensity: Density,
+    private val appScale: Float
+) : Density {
+    override val density: Float = systemDensity.density
+    override val fontScale: Float = systemDensity.fontScale * appScale
+
+    override fun TextUnit.toDp() = with(systemDensity) { this@toDp.toDp() } * appScale
+
+    override fun androidx.compose.ui.unit.Dp.toSp(): TextUnit =
+        with(systemDensity) { (this@toSp / appScale).toSp() }
+}
+
+@Composable
+internal fun dshSwitchColors(preserveDisabledColors: Boolean = false): SwitchColors {
+    val blue = if (isSystemInDarkTheme()) Color(0xFF1D447F) else Color(0xFF245AC4)
+    if (!preserveDisabledColors) return SwitchDefaults.colors(
+        checkedTrackColor = blue,
+        checkedBorderColor = blue,
+        checkedThumbColor = Color.White
+    )
+    val uncheckedTrack = MaterialTheme.colorScheme.surfaceContainerHighest
+    val uncheckedBorder = MaterialTheme.colorScheme.outline
+    val uncheckedThumb = MaterialTheme.colorScheme.outline
+    return SwitchDefaults.colors(
+        checkedTrackColor = blue,
+        checkedBorderColor = blue,
+        checkedThumbColor = Color.White,
+        uncheckedTrackColor = uncheckedTrack,
+        uncheckedBorderColor = uncheckedBorder,
+        uncheckedThumbColor = uncheckedThumb,
+        disabledCheckedTrackColor = blue,
+        disabledCheckedBorderColor = blue,
+        disabledCheckedThumbColor = Color.White,
+        disabledUncheckedTrackColor = uncheckedTrack,
+        disabledUncheckedBorderColor = uncheckedBorder,
+        disabledUncheckedThumbColor = uncheckedThumb
+    )
 }

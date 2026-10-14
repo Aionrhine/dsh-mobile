@@ -33,11 +33,33 @@ func slashCommandComposerPresentation(
     )
 }
 
+/// 原生 down 即预采集；短按/失败也会收到结束通知，不能依赖 longpress 的 action 收尾。
+final class VoiceHoldGestureRecognizer: UILongPressGestureRecognizer {
+    var onTouchDown: (() -> Void)?
+    var onTouchFinished: (() -> Void)?
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesBegan(touches, with: event)
+        onTouchDown?()
+    }
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesEnded(touches, with: event)
+        onTouchFinished?()
+    }
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesCancelled(touches, with: event)
+        onTouchFinished?()
+    }
+}
+
 struct SlashCommandTextView: UIViewRepresentable {
+    @AppStorage(AppFontScale.key) private var fontScale = 1.0
+    @AppStorage(AppFontScale.followsSystemKey) private var fontFollowsSystem = false
     @Binding var text: String
     let presentation: SlashCommandComposerPresentation?
     let placeholder: String
     @Binding var isFocused: Bool
+    var onVoiceTouchDown: (() -> Void)? = nil
+    var onVoiceTouchFinished: (() -> Void)? = nil
     var onVoicePress: (() -> Void)? = nil
     var onVoiceMove: ((CGFloat) -> Void)? = nil
     var onVoiceRelease: (() -> Void)? = nil
@@ -46,8 +68,10 @@ struct SlashCommandTextView: UIViewRepresentable {
     func makeUIView(context: Context) -> CommandTextView {
         let textView = CommandTextView()
         textView.delegate = context.coordinator
-        let voiceGesture = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.voiceGestureChanged(_:)))
+        let voiceGesture = VoiceHoldGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.voiceGestureChanged(_:)))
         voiceGesture.minimumPressDuration = Double(VoiceInputInteraction.shared.LONG_PRESS_MILLISECONDS) / 1000
+        voiceGesture.onTouchDown = { [weak coordinator = context.coordinator] in coordinator?.voiceTouchDown() }
+        voiceGesture.onTouchFinished = { [weak coordinator = context.coordinator] in coordinator?.voiceTouchFinished() }
         voiceGesture.cancelsTouchesInView = true
         voiceGesture.delegate = context.coordinator
         textView.addGestureRecognizer(voiceGesture)
@@ -55,8 +79,8 @@ struct SlashCommandTextView: UIViewRepresentable {
         textView.isScrollEnabled = false
         textView.textContainerInset = .zero
         textView.textContainer.lineFragmentPadding = 0
-        textView.font = .preferredFont(forTextStyle: .body)
-        textView.adjustsFontForContentSizeCategory = true
+        textView.font = .appPreferredFont(forTextStyle: .body)
+        textView.adjustsFontForContentSizeCategory = false
         textView.tintColor = .systemBlue
         textView.textColor = .label
         textView.apply(text: text, presentation: presentation, placeholder: placeholder)
@@ -64,6 +88,7 @@ struct SlashCommandTextView: UIViewRepresentable {
     }
 
     func updateUIView(_ textView: CommandTextView, context: Context) {
+        textView.font = .appPreferredFont(forTextStyle: .body)
         context.coordinator.update(parent: self)
         textView.apply(text: text, presentation: presentation, placeholder: placeholder)
         context.coordinator.synchronizeFocus(textView)
@@ -75,7 +100,7 @@ struct SlashCommandTextView: UIViewRepresentable {
         context: Context
     ) -> CGSize? {
         guard let width = proposal.width, width > 0 else { return nil }
-        let lineHeight = uiView.font?.lineHeight ?? UIFont.preferredFont(forTextStyle: .body).lineHeight
+        let lineHeight = uiView.font?.lineHeight ?? UIFont.appPreferredFont(forTextStyle: .body).lineHeight
         let minimumHeight = ceil(lineHeight)
         let maximumHeight = ceil(lineHeight * 5)
         let measured = uiView.sizeThatFits(
@@ -84,6 +109,11 @@ struct SlashCommandTextView: UIViewRepresentable {
         let height = min(max(measured, minimumHeight), maximumHeight)
         uiView.isScrollEnabled = measured > maximumHeight
         return CGSize(width: width, height: height)
+    }
+
+    static func dismantleUIView(_ uiView: CommandTextView, coordinator: Coordinator) {
+        coordinator.voiceTouchFinished()
+        uiView.delegate = nil
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -123,13 +153,16 @@ struct SlashCommandTextView: UIViewRepresentable {
 
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
             voiceOrigin = touch.location(in: nil)
-            let acceptsVoice = parent.onVoicePress != nil && !parent.isFocused
+            let acceptsVoice = parent.onVoicePress != nil && !parent.isFocused && gestureRecognizer.view?.isFirstResponder != true
             if acceptsVoice {
                 voiceTouchTimestamp = touch.timestamp
                 traceVoiceInputLatency("touch-down", since: touch.timestamp)
             }
             return acceptsVoice
         }
+
+        func voiceTouchDown() { parent.onVoiceTouchDown?() }
+        func voiceTouchFinished() { parent.onVoiceTouchFinished?() }
 
         @objc func voiceGestureChanged(_ gesture: UILongPressGestureRecognizer) {
             switch gesture.state {
@@ -174,7 +207,9 @@ struct VoiceComposerTextInput: View {
             presentation: presentation,
             placeholder: String(localized: String.LocalizationValue(state.hint)),
             isFocused: $isFocused,
-            onVoicePress: { onHoldingChanged(true); voice.press() },
+            onVoiceTouchDown: { voice.touchDown() },
+            onVoiceTouchFinished: { voice.touchFinished() },
+            onVoicePress: (!state.active || state.inputBlocked || state.touchPending) ? { onHoldingChanged(true); voice.press() } : nil,
             onVoiceMove: { voice.move($0) },
             onVoiceRelease: { voice.release(); onHoldingChanged(false) },
             onVoiceCancel: { voice.cancel(); onHoldingChanged(false) }
@@ -188,13 +223,16 @@ final class CommandTextView: UITextView {
     private var renderedText = ""
     private var renderedPresentation: SlashCommandComposerPresentation?
     private var renderedPlaceholder = ""
+    private var renderedFontSize: CGFloat?
 
     func apply(text: String, presentation: SlashCommandComposerPresentation?, placeholder: String) {
+        let fontChanged = renderedFontSize != font?.pointSize
+        renderedFontSize = font?.pointSize
         let needsTextSynchronization = self.text != text
         let textChanged = renderedText != text
         let presentationChanged = renderedPresentation != presentation
         let placeholderChanged = renderedPlaceholder != placeholder
-        guard needsTextSynchronization || textChanged || presentationChanged || placeholderChanged else { return }
+        guard needsTextSynchronization || textChanged || presentationChanged || placeholderChanged || fontChanged else { return }
 
         let selection = selectedRange
         let attributes = baseAttributes()
@@ -214,7 +252,7 @@ final class CommandTextView: UITextView {
         renderedText = text
         renderedPresentation = presentation
         renderedPlaceholder = placeholder
-        if needsTextSynchronization || presentationChanged {
+        if needsTextSynchronization || presentationChanged || fontChanged {
             applyCommandHighlight(presentation)
         }
         setNeedsDisplay()
@@ -246,7 +284,7 @@ final class CommandTextView: UITextView {
             (renderedPlaceholder as NSString).draw(
                 at: CGPoint(x: textContainerInset.left, y: textContainerInset.top),
                 withAttributes: [
-                    .font: font ?? UIFont.preferredFont(forTextStyle: .body),
+                    .font: font ?? UIFont.appPreferredFont(forTextStyle: .body),
                     .foregroundColor: UIColor.secondaryLabel.withAlphaComponent(0.62)
                 ]
             )
@@ -265,7 +303,7 @@ final class CommandTextView: UITextView {
         let needsLeadingSpace = presentation.argument.isEmpty
         let hintText = (needsLeadingSpace ? " " : "") + hint
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: font ?? UIFont.preferredFont(forTextStyle: .body),
+            .font: font ?? UIFont.appPreferredFont(forTextStyle: .body),
             .foregroundColor: UIColor.secondaryLabel.withAlphaComponent(0.62)
         ]
         (hintText as NSString).draw(
@@ -276,7 +314,7 @@ final class CommandTextView: UITextView {
 
     private func baseAttributes() -> [NSAttributedString.Key: Any] {
         [
-            .font: font ?? UIFont.preferredFont(forTextStyle: .body),
+            .font: font ?? UIFont.appPreferredFont(forTextStyle: .body),
             .foregroundColor: UIColor.label
         ]
     }
@@ -561,26 +599,24 @@ struct ConversationView: View {
                     }
                 }
             }
-            .opacity(voiceState.active ? 0 : 1)
+            .opacity(voiceState.overlayVisible ? 0 : 1)
             .zIndex(2)
             ZStack {
-                if voiceState.active {
-                    VoiceRipplePanel(state: voiceState, stop: {
-                        if voiceState.phase == "recording" { store.voiceInput.release() } else { store.voiceInput.cancel() }
-                    })
+                if voiceState.overlayVisible {
+                    VoiceRipplePanel(state: voiceState)
                     .transition(.opacity)
                 }
             }
             .frame(height: max(1, voiceWindowHeight * VoiceInputInteraction.shared.OVERLAY_HEIGHT_FRACTION))
             .ignoresSafeArea(.container, edges: .bottom)
-            .allowsHitTesting(voiceState.active && !voiceTouchActive)
-            .animation(voiceOverlayAnimation(active: voiceState.active, reduceMotion: reduceMotion), value: voiceState.active)
+            .allowsHitTesting(voiceState.overlayVisible && !voiceTouchActive)
+            .animation(voiceOverlayAnimation(active: voiceState.overlayVisible, reduceMotion: reduceMotion), value: voiceState.overlayVisible)
             .zIndex(3)
         }
         .overlay(alignment: .bottom) {
             if let voiceToast {
                 Text(LocalizedStringKey(voiceToast))
-                    .font(.system(size: 14, weight: .medium))
+                    .appFont(.system(size: 14, weight: .medium))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 18).padding(.vertical, 11)
                     .background(Color.black.opacity(0.78), in: Capsule())
@@ -697,9 +733,9 @@ struct ConversationView: View {
         VStack(spacing: 14) {
             WhalenessOrcaIcon(size: 52)
                 .foregroundStyle(colorScheme == .dark ? Color.white : Color.black)
-            Text("操作远端 DSH Agent").font(.title3.weight(.semibold))
+            Text("操作远端 DSH Agent").appFont(.title3.weight(.semibold))
             Text("发送任务后，工具调用、推理进度和最终回复会通过 Mobile Gateway 实时返回。")
-                .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                .appFont(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 28)
@@ -711,12 +747,12 @@ struct ConversationView: View {
 
     private func historyFailureState(_ error: String) -> some View {
         VStack(spacing: 14) {
-            Image(systemName: "exclamationmark.triangle").font(.largeTitle).foregroundStyle(.orange)
-            Text("历史记录加载失败").font(.title3.weight(.semibold))
+            Image(systemName: "exclamationmark.triangle").appFont(.largeTitle).foregroundStyle(.orange)
+            Text("历史记录加载失败").appFont(.title3.weight(.semibold))
             Text(error.contains("refuses this format")
                  ? "Host 无法读取旧格式会话，请修复或升级 Host 后重试。原始记录未修改。"
                  : error)
-                .font(.subheadline).foregroundStyle(.secondary)
+                .appFont(.subheadline).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center).lineLimit(6)
             Button("重新加载历史") {
                 if let id = store.selectedSessionId { store.loadHistory(for: id) }
@@ -769,9 +805,9 @@ struct ConversationView: View {
                 ProgressView()
                     .controlSize(.large)
                     .tint(DSHColor.ocean)
-                Text("正在加载历史记录").font(.title3.weight(.semibold))
+                Text("正在加载历史记录").appFont(.title3.weight(.semibold))
                 Text(historyProgressText)
-                    .font(.subheadline)
+                    .appFont(.subheadline)
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 28)
@@ -787,9 +823,9 @@ struct ConversationView: View {
                     .controlSize(.large)
                     .tint(DSHColor.ocean)
                 Text(isLoadingSelectedHistory ? String(localized: "正在加载历史记录") : String(localized: "正在准备会话"))
-                    .font(.title3.weight(.semibold))
+                    .appFont(.title3.weight(.semibold))
                 Text(isLoadingSelectedHistory ? historyProgressText : String(localized: "正在定位到最新消息…"))
-                    .font(.subheadline)
+                    .appFont(.subheadline)
                     .foregroundStyle(.secondary)
             }
             .multilineTextAlignment(.center)
@@ -802,7 +838,7 @@ struct ConversationView: View {
         HStack(spacing: 9) {
             ProgressView().tint(DSHColor.ocean)
             Text(historyProgressText)
-                .font(.caption)
+                .appFont(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
         }
@@ -857,7 +893,7 @@ struct ConversationView: View {
                     .tint(DSHColor.ocean)
             } else {
                 Image(systemName: "arrow.down")
-                    .font(.system(size: 15, weight: .semibold))
+                    .appFont(.system(size: 15, weight: .semibold))
             }
         }
         .frame(width: 36, height: 36)
@@ -903,13 +939,13 @@ struct ConversationView: View {
             )
             if let pending = voiceState.pendingTranscript {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(pending).font(.caption).lineLimit(3)
+                    Text(pending).appFont(.caption).lineLimit(3)
                     HStack {
-                        Text("草稿已更改，请确认插入识别文字").font(.caption2).foregroundStyle(.secondary)
+                        Text("草稿已更改，请确认插入识别文字").appFont(.caption2).foregroundStyle(.secondary)
                         Spacer()
                         Button("插入") { store.voiceInput.insertPending() }
                         Button("丢弃") { store.voiceInput.dismissFeedback() }
-                    }.font(.caption)
+                    }.appFont(.caption)
                 }
             }
             HStack(spacing: 7) {
@@ -923,7 +959,7 @@ struct ConversationView: View {
                             ProgressView().controlSize(.small)
                         } else {
                             Image(systemName: "photo.on.rectangle.angled")
-                                .font(.system(size: 16, weight: .semibold))
+                                .appFont(.system(size: 16, weight: .semibold))
                         }
                     }
                     .frame(width: 32, height: 32)
@@ -990,7 +1026,7 @@ struct ConversationView: View {
                                 .frame(width: 14, height: 14)
                         } else {
                             Image(systemName: "arrow.up")
-                                .font(.system(size: 17, weight: .bold))
+                                .appFont(.system(size: 17, weight: .bold))
                                 .foregroundStyle(.white)
                         }
                     }
@@ -1067,7 +1103,7 @@ struct ConversationView: View {
             ContentSizedCommandScrollView {
                 if let optionsCommand = state.optionsCommand {
                     Text("/\(optionsCommand.name)")
-                        .font(.caption)
+                        .appFont(.caption)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 9)
@@ -1079,7 +1115,7 @@ struct ConversationView: View {
                     if state.optionsCommand == nil {
                         ForEach(state.filteredGroups, id: \.id) { group in
                             Text(group.title)
-                                .font(.subheadline.weight(.medium))
+                                .appFont(.subheadline.weight(.medium))
                                 .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, 14)
@@ -1092,16 +1128,16 @@ struct ConversationView: View {
                                 } label: {
                                     HStack(spacing: 10) {
                                         Text(command.name)
-                                            .font(.body.weight(.medium))
+                                            .appFont(.body.weight(.medium))
                                             .foregroundStyle(.primary)
                                         Text(command.description_)
-                                            .font(.subheadline)
+                                            .appFont(.subheadline)
                                             .foregroundStyle(.secondary)
                                             .lineLimit(1)
                                         Spacer(minLength: 4)
                                         if command.ui.kind == "select" {
                                             Image(systemName: "chevron.right")
-                                                .font(.caption.weight(.semibold))
+                                                .appFont(.caption.weight(.semibold))
                                                 .foregroundStyle(.tertiary)
                                         }
                                     }
@@ -1123,11 +1159,11 @@ struct ConversationView: View {
                                 HStack(spacing: 10) {
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(option.label)
-                                            .font(.body.weight(.medium))
+                                            .appFont(.body.weight(.medium))
                                             .foregroundStyle(.primary)
                                         if let detail = option.description_ ?? option.detail {
                                             Text(detail)
-                                                .font(.caption)
+                                                .appFont(.caption)
                                                 .foregroundStyle(.secondary)
                                                 .lineLimit(1)
                                         }
@@ -1135,7 +1171,7 @@ struct ConversationView: View {
                                     Spacer(minLength: 4)
                                     if option.selected == true {
                                         Image(systemName: "checkmark")
-                                            .font(.body.weight(.semibold))
+                                            .appFont(.body.weight(.semibold))
                                             .foregroundStyle(DSHColor.ocean)
                                     }
                                 }
@@ -1187,7 +1223,7 @@ struct ConversationView: View {
                             Image(systemName: "chevron.up")
                                 .rotationEffect(.degrees(queueExpanded ? 180 : 0))
                         }
-                        .font(.subheadline)
+                        .appFont(.subheadline)
                         .padding(10)
                     }
                     .buttonStyle(.plain)
@@ -1227,9 +1263,9 @@ struct ConversationView: View {
                         Image(systemName: "text.bubble").foregroundStyle(.secondary)
                     }
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(item.preview).font(.subheadline).lineLimit(2)
+                        Text(item.preview).appFont(.subheadline).lineLimit(2)
                         if item.attachmentCount > 0 {
-                            Text("\(item.attachmentCount) 个附件").font(.caption).foregroundStyle(.secondary)
+                            Text("\(item.attachmentCount) 个附件").appFont(.caption).foregroundStyle(.secondary)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1255,7 +1291,7 @@ struct ConversationView: View {
 
     private func queueActionButton(_ symbol: String, label: String, itemID: String, action: String, enabled: Bool = true) -> some View {
         Button { store.updateQueuedMessage(itemID, action: action) } label: {
-            Image(systemName: symbol).font(.system(size: 15)).frame(width: 36, height: 40)
+            Image(systemName: symbol).appFont(.system(size: 15)).frame(width: 36, height: 40)
         }
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)
@@ -1290,7 +1326,7 @@ struct ConversationView: View {
                             Image(systemName: "xmark.circle.fill")
                                 .symbolRenderingMode(.palette)
                                 .foregroundStyle(.white, .black.opacity(0.68))
-                                .font(.system(size: 20))
+                                .appFont(.system(size: 20))
                         }
                         .buttonStyle(.plain)
                         .offset(x: 5, y: -5)
@@ -1423,10 +1459,10 @@ struct ConversationView: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
                     Image(systemName: "chevron.down")
-                        .font(.caption2.weight(.semibold))
+                        .appFont(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
-                .font(.subheadline.weight(.medium))
+                .appFont(.subheadline.weight(.medium))
                 .padding(.horizontal, 12)
                 .frame(height: composerCapsuleHeight)
                 .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -1452,18 +1488,18 @@ struct ConversationView: View {
                                 HStack(spacing: 10) {
                                     VStack(alignment: .leading, spacing: 5) {
                                         Text(preset.name ?? agentPresetTitle(preset.id))
-                                            .font(.body.weight(.medium))
+                                            .appFont(.body.weight(.medium))
                                         Text(preset.broken?.boolValue == true
                                              ? preset.brokenReason ?? "模式不可用"
                                              : agentPresetCompactDescription(preset.id, description: preset.description_))
-                                            .font(.caption)
+                                            .appFont(.caption)
                                             .foregroundStyle(.secondary)
                                     }
                                     .lineLimit(1)
                                     .truncationMode(.tail)
                                     Spacer(minLength: 0)
                                     if preset.id == state.agentPreset {
-                                        Image(systemName: "checkmark").font(.body.weight(.medium))
+                                        Image(systemName: "checkmark").appFont(.body.weight(.medium))
                                     }
                                 }
                                 .foregroundStyle(.primary)
@@ -1505,12 +1541,12 @@ struct ConversationView: View {
             } label: {
                 HStack(spacing: 7) {
                     Text(SessionStatsFormatter.turnsStepsLine(snapshot.stats) ?? String(localized: "正在读取会话统计…"))
-                        .font(.caption.monospacedDigit())
+                        .appFont(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
                     Image(systemName: "chevron.up")
-                        .font(.caption2.weight(.semibold))
+                        .appFont(.caption2.weight(.semibold))
                         .foregroundStyle(.tertiary)
                 }
                 .contentShape(Rectangle())
@@ -1552,7 +1588,7 @@ struct ConversationView: View {
                     Text("默认权限")
                 }
             }
-            .font(.caption.weight(.medium))
+            .appFont(.caption.weight(.medium))
             .foregroundStyle(.secondary)
             .lineLimit(1)
             .frame(width: 92, alignment: .leading)
@@ -1577,7 +1613,7 @@ struct ConversationView: View {
                         .allowsTightening(true)
                     if let effort = defaultModelEffortTitle {
                         Text(effort)
-                            .font(.caption2.weight(.semibold))
+                            .appFont(.caption2.weight(.semibold))
                             .foregroundStyle(.primary)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 3)
@@ -1585,7 +1621,7 @@ struct ConversationView: View {
                     }
                 }
             }
-            .font(.caption.weight(.medium))
+            .appFont(.caption.weight(.medium))
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .trailing)
             .accessibilityElement(children: .combine)
@@ -1625,7 +1661,7 @@ struct ConversationView: View {
                 }
                 Text(permissionTitle(currentPermission)).lineLimit(1)
             }
-            .font(.caption.weight(.medium))
+            .appFont(.caption.weight(.medium))
             .foregroundStyle(.secondary)
             .frame(width: 78, alignment: .leading)
             .contentShape(Rectangle())
@@ -1683,7 +1719,7 @@ struct ConversationView: View {
                         .layoutPriority(1)
                     if let effort = currentEffortTitle {
                         Text(effort)
-                            .font(.caption2.weight(.semibold))
+                            .appFont(.caption2.weight(.semibold))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                             .fixedSize(horizontal: true, vertical: false)
@@ -1694,10 +1730,10 @@ struct ConversationView: View {
                     }
                 }
                 Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 8, weight: .semibold))
+                    .appFont(.system(size: 8, weight: .semibold))
                     .foregroundStyle(.tertiary)
             }
-            .font(.caption.weight(.medium))
+            .appFont(.caption.weight(.medium))
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .trailing)
             .contentShape(Rectangle())
@@ -1831,7 +1867,7 @@ struct ConversationView: View {
                 revision: revision,
                 content: AnyView(
                     Button("加载更早记录") { store.loadHistory(for: sessionID, older: true) }
-                        .font(.caption)
+                        .appFont(.caption)
                         .frame(maxWidth: .infinity)
                 )
             ))
@@ -2127,7 +2163,7 @@ private struct DeepSearchProgressRow: View {
                         .frame(width: 18, height: 18)
                         .accessibilityHidden(true)
                     Text("\(phrase)，用时 \(elapsed) 秒…")
-                        .font(.system(size: 14, weight: .medium))
+                        .appFont(.system(size: 14, weight: .medium))
                         .foregroundStyle(
                             LinearGradient(
                                 colors: [base, reduceMotion ? base : highlight, base],
@@ -2205,16 +2241,16 @@ private struct TaskGoalPanels: View {
             Button { tasksExpanded.toggle() } label: {
                 HStack(spacing: 10) {
                     Image(systemName: "list.bullet")
-                        .font(.system(size: 18, weight: .medium))
+                        .appFont(.system(size: 18, weight: .medium))
                         .foregroundStyle(.secondary)
-                    Text("任务").font(.headline)
+                    Text("任务").appFont(.headline)
                     Text(taskSummary)
-                        .font(.subheadline)
+                        .appFont(.subheadline)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                     Spacer(minLength: 0)
                     Image(systemName: tasksExpanded ? "chevron.up" : "chevron.down")
-                        .font(.subheadline.weight(.semibold))
+                        .appFont(.subheadline.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
                 .contentShape(Rectangle())
@@ -2228,7 +2264,7 @@ private struct TaskGoalPanels: View {
                         HStack(spacing: 11) {
                             taskStatusIcon(task.status)
                             Text(task.content)
-                                .font(.body)
+                                .appFont(.body)
                                 .foregroundStyle(task.status == "completed" ? .secondary : .primary)
                                 .multilineTextAlignment(.leading)
                             Spacer(minLength: 0)
@@ -2251,14 +2287,14 @@ private struct TaskGoalPanels: View {
         let active = goal.goal.phase == "active"
         return HStack(spacing: 10) {
             Image(systemName: "target")
-                .font(.system(size: 21, weight: .medium))
+                .appFont(.system(size: 21, weight: .medium))
                 .foregroundStyle(.secondary)
             HStack(spacing: 10) {
                 Text(goalPhaseLabel(goal.goal.phase))
-                    .font(.headline)
+                    .appFont(.headline)
                     .fixedSize(horizontal: true, vertical: false)
                 Text(goal.goal.objective)
-                    .font(.body)
+                    .appFont(.body)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
@@ -2325,7 +2361,7 @@ private struct TaskGoalPanels: View {
     private func goalActionButton(_ image: String, _ label: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: image)
-                .font(.system(size: 20, weight: .medium))
+                .appFont(.system(size: 20, weight: .medium))
                 .frame(width: 30, height: 30)
         }
         .buttonStyle(.plain)
@@ -2717,7 +2753,7 @@ private struct SessionStatsSheet: View {
 
                         if let asOfSeq = snapshot.asOfSeq {
                             Text("数据截至事件 #\(asOfSeq)")
-                                .font(.caption.monospacedDigit())
+                                .appFont(.caption.monospacedDigit())
                                 .foregroundStyle(.tertiary)
                         }
                     } else {
@@ -2742,7 +2778,7 @@ private struct SessionStatsSheet: View {
     @ViewBuilder
     private func metricsSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(title).font(.headline)
+            Text(title).appFont(.headline)
             VStack(spacing: 0) { content() }
                 .padding(.horizontal, 14)
                 .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -2753,7 +2789,7 @@ private struct SessionStatsSheet: View {
         HStack {
             Text(title).foregroundStyle(.secondary)
             Spacer()
-            Text(value).font(.body.monospacedDigit()).fontWeight(.medium)
+            Text(value).appFont(.body.monospacedDigit()).fontWeight(.medium)
         }
         .padding(.vertical, 10)
     }
@@ -2800,7 +2836,7 @@ private struct SessionStatsPopover: View {
                     Text("查看完整统计")
                     Spacer()
                 }
-                .font(.subheadline.weight(.medium))
+                .appFont(.subheadline.weight(.medium))
                 .foregroundStyle(.primary)
                 .contentShape(Rectangle())
             }
@@ -2818,7 +2854,7 @@ private struct SessionStatsPopover: View {
             Spacer()
             Text(value).monospacedDigit().fontWeight(.medium)
         }
-        .font(.subheadline)
+        .appFont(.subheadline)
     }
 }
 
@@ -2841,7 +2877,7 @@ private struct ContextUsagePopover: View {
                     .fontWeight(.semibold)
                 Spacer()
                 Text("~\(compact(pressureTokens)) / \(compact(contextWindow))")
-                    .font(.subheadline.monospacedDigit())
+                    .appFont(.subheadline.monospacedDigit())
             }
 
             ProgressView(value: progress)
@@ -2859,7 +2895,7 @@ private struct ContextUsagePopover: View {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
                     Text("正在读取上下文用量…")
-                        .font(.subheadline)
+                        .appFont(.subheadline)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -2879,7 +2915,7 @@ private struct ContextUsagePopover: View {
             Text(value.map { "~\(compact($0))" } ?? "—")
                 .monospacedDigit()
         }
-        .font(.subheadline)
+        .appFont(.subheadline)
     }
 
     private func compact(_ value: Int) -> String {
@@ -3307,27 +3343,27 @@ private struct ConversationProcessHeaderRow: View {
         HStack(spacing: 7) {
             if let command = group.command {
                 Image(systemName: "terminal")
-                    .font(.system(size: 13, weight: .medium))
+                    .appFont(.system(size: 13, weight: .medium))
                     .foregroundStyle(command.isError ? .red : .secondary)
                 Text(command.title)
-                    .font(.subheadline.weight(.medium))
+                    .appFont(.subheadline.weight(.medium))
                     .foregroundStyle(command.isError ? .red : .primary)
                     .lineLimit(1)
-                Text("·").font(.subheadline).foregroundStyle(.tertiary)
+                Text("·").appFont(.subheadline).foregroundStyle(.tertiary)
                 Text(group.commandPreview(command.text))
-                    .font(.subheadline)
+                    .appFont(.subheadline)
                     .foregroundStyle(command.isError ? .red : .secondary)
                     .lineLimit(1)
             } else {
                 Text(group.processTitle)
-                    .font(.subheadline.weight(.medium))
+                    .appFont(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
             Spacer(minLength: 8)
             if isExpandable {
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
+                    .appFont(.caption.weight(.semibold))
                     .foregroundStyle(.tertiary)
                     .rotationEffect(.degrees(expanded ? 90 : 0))
             }
@@ -3340,7 +3376,7 @@ private struct ConversationCommandDetailRow: View {
 
     var body: some View {
         Text(command.text)
-            .font(.system(.subheadline, design: .monospaced))
+            .appFont(.system(.subheadline, design: .monospaced))
             .foregroundStyle(command.isError ? .red : .primary)
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -3390,12 +3426,12 @@ private struct ConversationEventHeaderRow: View {
             Spacer(minLength: 8)
             if isExpandable {
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
+                    .appFont(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .rotationEffect(.degrees(expanded ? 90 : 0))
             }
         }
-        .font(.subheadline)
+        .appFont(.subheadline)
     }
 
     private var glyph: ConversationGlyph {
@@ -3459,19 +3495,19 @@ private struct ConversationReasoningHeaderRow: View {
                     .foregroundStyle(DSHColor.purple)
                     .frame(width: 18)
                 Text("Think")
-                    .font(.subheadline.weight(.medium))
+                    .appFont(.subheadline.weight(.medium))
                     .foregroundStyle(DSHColor.purple)
                 let summary = preview(text)
                 if !summary.isEmpty {
                     Text("·").foregroundStyle(.tertiary)
                     Text(summary)
-                        .font(.subheadline)
+                        .appFont(.subheadline)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
                 Spacer(minLength: 8)
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
+                    .appFont(.caption.weight(.semibold))
                     .foregroundStyle(.tertiary)
                     .rotationEffect(.degrees(expanded ? 90 : 0))
             }
@@ -3524,12 +3560,12 @@ private struct ConversationToolBundleHeaderRow: View {
                     .foregroundStyle(DSHColor.orange)
                     .frame(width: 18)
                 Text(bundleTitle)
-                    .font(.subheadline)
+                    .appFont(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Spacer(minLength: 8)
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
+                    .appFont(.caption.weight(.semibold))
                     .foregroundStyle(.tertiary)
                     .rotationEffect(.degrees(expanded ? 90 : 0))
             }
@@ -3583,22 +3619,22 @@ private struct ConversationProcessToolHeaderRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 7) {
                     Text(summary.label)
-                        .font(.subheadline.weight(.medium))
+                        .appFont(.subheadline.weight(.medium))
                         .foregroundStyle(.secondary)
                     if !summary.annotation.isEmpty {
                         Text(summary.annotation)
-                            .font(.caption.monospacedDigit())
+                            .appFont(.caption.monospacedDigit())
                             .foregroundStyle(.tertiary)
                     }
                     if tool.result?.isError == true {
-                        Text("失败").font(.caption2.weight(.semibold)).foregroundStyle(.red)
+                        Text("失败").appFont(.caption2.weight(.semibold)).foregroundStyle(.red)
                     } else if tool.result == nil {
-                        Text("等待结果").font(.caption2).foregroundStyle(.secondary)
+                        Text("等待结果").appFont(.caption2).foregroundStyle(.secondary)
                     }
                 }
                 if !summary.detail.isEmpty {
                     Text(summary.detail)
-                        .font(.caption.monospaced())
+                        .appFont(.caption.monospaced())
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                         .truncationMode(.middle)
@@ -3608,7 +3644,7 @@ private struct ConversationProcessToolHeaderRow: View {
             Spacer(minLength: 8)
             if isExpandable {
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
+                    .appFont(.caption.weight(.semibold))
                     .foregroundStyle(.tertiary)
                     .rotationEffect(.degrees(expanded ? 90 : 0))
             }
@@ -3624,13 +3660,13 @@ private struct ConversationProcessToolDetailRow: View {
         VStack(alignment: .leading, spacing: 9) {
             if let call = tool.call, !call.text.isEmpty {
                 Text("调用参数")
-                    .font(.caption.weight(.semibold))
+                    .appFont(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 ToolArgumentsView(text: call.text)
             }
             if let result = tool.result, !result.text.isEmpty {
                 Text(result.isError ? String(localized: "错误") : String(localized: "结果"))
-                    .font(.caption.weight(.semibold))
+                    .appFont(.caption.weight(.semibold))
                     .foregroundStyle(result.isError ? .red : .secondary)
                 ToolOutputView(text: result.text)
             }
@@ -3764,7 +3800,7 @@ struct ConversationRow: View {
                         AttachmentImageGrid(attachments: item.images, imageData: imageData)
                     }
                     if !item.text.isEmpty {
-                        Text(item.text).font(.body)
+                        Text(item.text).appFont(.body)
                     }
                 }
                 .padding(.horizontal, 10).padding(.vertical, 10)
@@ -3835,7 +3871,7 @@ struct ConversationRow: View {
         case .status:
             HStack(alignment: .firstTextBaseline, spacing: 9) {
                 Image(systemName: "terminal")
-                    .font(.system(size: 13, weight: .medium))
+                    .appFont(.system(size: 13, weight: .medium))
                     .foregroundStyle(item.isError ? .red : .secondary)
                 Text(item.title)
                     .foregroundStyle(item.isError ? .red : .primary)
@@ -3844,7 +3880,7 @@ struct ConversationRow: View {
                 Text(item.text)
                     .foregroundStyle(item.isError ? .red : .secondary)
             }
-            .font(.subheadline)
+            .appFont(.subheadline)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 6)
         case .system:
@@ -3852,8 +3888,8 @@ struct ConversationRow: View {
                 Image(systemName: item.isError ? "exclamationmark.circle.fill" : "antenna.radiowaves.left.and.right")
                     .foregroundStyle(item.isError ? .red : DSHColor.ocean)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(item.title).font(.caption.weight(.semibold))
-                    if !item.text.isEmpty { Text(item.text).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
+                    Text(item.title).appFont(.caption.weight(.semibold))
+                    if !item.text.isEmpty { Text(item.text).appFont(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
                 }
             }
             .padding(10).frame(maxWidth: .infinity, alignment: .leading)
@@ -3886,7 +3922,7 @@ struct CopyMessageButton: View {
             Group {
                 if copied {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 14, weight: .semibold))
+                        .appFont(.system(size: 14, weight: .semibold))
                 } else {
                     Image("CopyMessage")
                         .renderingMode(.template)
@@ -3930,7 +3966,7 @@ private struct ConversationFallbackEventRow: View {
                 }
                 Spacer(minLength: 8)
             }
-            .font(.subheadline)
+            .appFont(.subheadline)
 
             if !text.isEmpty {
                 HStack(alignment: .top, spacing: 10) {
@@ -3978,7 +4014,7 @@ private struct ToolOutputView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text("OUT")
-                .font(.caption2.monospaced())
+                .appFont(.caption2.monospaced())
                 .foregroundStyle(.secondary)
 
             if needsViewport {
@@ -3986,7 +4022,7 @@ private struct ToolOutputView: View {
                     LazyVStack(alignment: .leading, spacing: 2) {
                         ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
                             Text(line.isEmpty ? " " : line)
-                                .font(.caption.monospaced())
+                                .appFont(.caption.monospaced())
                                 .foregroundStyle(.primary)
                                 .fixedSize(horizontal: true, vertical: false)
                         }
@@ -3999,7 +4035,7 @@ private struct ToolOutputView: View {
                 .frame(height: 280)
             } else {
                 Text(text)
-                    .font(.caption.monospaced())
+                    .appFont(.caption.monospaced())
                     .foregroundStyle(.primary)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -4014,6 +4050,8 @@ private struct ToolOutputView: View {
 }
 
 struct MarkdownContent: View {
+    @AppStorage(AppFontScale.key) private var fontScale = 1.0
+    @AppStorage(AppFontScale.followsSystemKey) private var fontFollowsSystem = false
     let text: String
     var compact = false
 
@@ -4021,8 +4059,10 @@ struct MarkdownContent: View {
 
     var body: some View {
         Markdown(ParsedMarkdownCache.document(for: markdownSource))
-            .markdownTheme(.deepSeek(compact: compact))
+            .markdownTheme(.deepSeek(compact: compact, scale: CGFloat(AppFontScale.effective(fontScale, followsSystem: fontFollowsSystem))))
             .markdownCodeSyntaxHighlighter(DSHCodeSyntaxHighlighter())
+            // MarkdownUI 会自行应用 Dynamic Type。主题已合并系统与应用倍率，避免重复缩放。
+            .dynamicTypeSize(.large)
     }
 
     private var markdownSource: String {
@@ -4064,7 +4104,7 @@ private enum ParsedMarkdownCache {
 }
 
 private extension Theme {
-    static func deepSeek(compact: Bool) -> Theme {
+    static func deepSeek(compact: Bool, scale: CGFloat) -> Theme {
         let inlineCodeFallback: Color? = if #available(iOS 18.0, *) {
             nil
         } else {
@@ -4074,7 +4114,7 @@ private extension Theme {
             .text {
                 ForegroundColor(.primary)
                 BackgroundColor(nil)
-                FontSize(compact ? 13 : 17)
+                FontSize(UIFontMetrics.default.scaledValue(for: compact ? 13 : 17) * scale)
             }
             .code {
                 FontFamilyVariant(.monospaced)
@@ -4097,7 +4137,7 @@ private extension Theme {
                 VStack(alignment: .leading, spacing: 6) {
                     if let language = configuration.language, !language.isEmpty {
                         Text(language.uppercased())
-                            .font(.caption2.monospaced())
+                            .appFont(.caption2.monospaced())
                             .foregroundStyle(.secondary)
                     }
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -4105,7 +4145,7 @@ private extension Theme {
                             .fixedSize(horizontal: true, vertical: true)
                             .markdownTextStyle {
                                 FontFamilyVariant(.monospaced)
-                                FontSize(compact ? 11 : 13)
+                                FontSize(UIFontMetrics.default.scaledValue(for: compact ? 11 : 13) * scale)
                             }
                     }
                     // A horizontal ScrollView has no useful UIKit intrinsic

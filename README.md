@@ -309,3 +309,15 @@ KMM 双端打包技能会在编译前写入经过整理的最终发布说明并�
 ### Android Studio 的 iOS Metal 编译
 
 项目通过 `Build Metal Library` 阶段执行 `scripts/build_metal_library.sh`，自动查找已安装的 Metal 工具链，并把 `default.metallib` 写入应用 Bundle。该阶段只在子进程中清除 Android Studio 注入的 `TOOLCHAINS` 与 `SDKROOT`，编译时仍明确使用当前 iOS SDK 和部署目标，避免强制 `XcodeDefault` 导致误报缺少 Metal Toolchain。
+
+### Android 更新下载源
+
+Android 优先读取 `https://download.whaleness.cc/latest.json`，请求失败或配置无效时回退 GitHub Releases。配置格式为 `schemaVersion: 1`，包含 `version`、`versionCode`、`packageName`、`downloadUrl`、`size`、`sha256`，可包含 `githubDownloadUrl` 与 `releaseNotes`。下载仅接受配置中的可信加速域名和本项目 GitHub 地址；加速源失败时切换备用地址，仍按同一份配置校验安装包大小、SHA-256、版本、包名和签名。
+
+发布时先上传不可覆盖的版本 APK，再更新根目录的 `latest.json`。更新配置应绕过 CDN 缓存；APK 可缓存。未发现新构建时不请求 GitHub，启动检查保持静默，设置页手动检查显示结果。
+
+### R2 自动发布
+
+先运行 `python3 scripts/configure_r2_release.py`，将指定桶的 S3 对象读写凭据保存在 `~/.config/whaleness/r2-release.json`（权限 600）。执行 `sh scripts/r2_release.sh --check` 仅验证连接。执行 `sh scripts/r2_release.sh --prepare <发布目录>` 生成清单；`--publish <发布目录>` 才进行远程发布。S3 SDK 隔离安装在 `build/r2-tools`。
+
+KMM 双端打包技能在本机存在配置时自动发布：先校验本地包，再上传带构建号的不可变 APK，验证远程对象及公开下载内容，最后条件更新 `latest.json`。上传失败可用同一发布目录重试，不需要重新打包。只需本地打包时设 `R2_UPLOAD=0`。完整上传测试可能产生 R2 读取请求；首次连接验证不会修改远程对象。

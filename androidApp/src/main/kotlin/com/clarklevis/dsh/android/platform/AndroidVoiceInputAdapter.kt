@@ -18,6 +18,7 @@ import androidx.core.content.ContextCompat
 import com.clarklevis.dsh.shared.facade.SharedVoiceInputStore
 import com.clarklevis.dsh.shared.facade.SharedVoiceInputTransition
 import com.clarklevis.dsh.shared.facade.VoiceAudioFormat
+import com.clarklevis.dsh.shared.facade.VoiceInputInteraction
 import com.clarklevis.dsh.shared.gateway.GatewayRequest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +36,7 @@ class AndroidVoiceInputAdapter(
     private val context: Context?,
     private val send: (GatewayRequest) -> Unit,
     private val shared: SharedVoiceInputStore = SharedVoiceInputStore(),
+    private val recorder: AndroidVoiceAudioCapturing = AndroidVoiceRecorder(),
 ) {
     private companion object {
         const val LEVEL_TICK_MILLISECONDS = 100L
@@ -46,7 +48,6 @@ class AndroidVoiceInputAdapter(
     var onPermissionNeeded: (() -> Unit)? = null
     var onHapticFeedback: ((String) -> Unit)? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val recorder = AndroidVoiceRecorder()
     private var ticker: Job? = null
     private var toast: Toast? = null
     private var permissionId: String? = null
@@ -71,7 +72,21 @@ class AndroidVoiceInputAdapter(
 
     fun keyboardChanged(visible: Boolean) = apply(shared.keyboardChanged(visible))
 
-    fun touchDown(uptimeMilliseconds: Long) = latency.touchDown(uptimeMilliseconds)
+    fun touchDown(uptimeMilliseconds: Long) {
+        latency.touchDown(uptimeMilliseconds)
+        apply(shared.touchDown(SystemClock.elapsedRealtime(), microphoneGranted()))
+    }
+
+    fun touchFinished() = apply(shared.touchFinished())
+
+    fun suspendCapture() = apply(shared.suspendCapture())
+
+    fun resumeCapture() = apply(shared.resumeCapture())
+
+    private fun microphoneGranted(): Boolean =
+        context?.let {
+            ContextCompat.checkSelfPermission(it, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        } == true
 
     fun overlayDrawn() = latency.overlayDrawn()
 
@@ -157,6 +172,14 @@ class AndroidVoiceInputAdapter(
                     }
                 }
 
+                "warmCapture" -> {
+                    if (microphoneGranted()) recorder.prepare()
+                }
+
+                "releaseCapture" -> {
+                    recorder.release()
+                }
+
                 "permission" -> {
                     executePermission(effect.recordingId)
                 }
@@ -166,7 +189,10 @@ class AndroidVoiceInputAdapter(
                     latency.mark("capture-start-dispatched")
                     recorder.start(
                         token,
-                        started = { apply(shared.captureStarted(token, SystemClock.elapsedRealtime())) },
+                        started = {
+                            latency.mark("hardware-recording")
+                            apply(shared.captureStarted(token, SystemClock.elapsedRealtime()))
+                        },
                         level = { apply(shared.level(id = token, rms = it, nowMilliseconds = SystemClock.elapsedRealtime())) },
                         finished = { apply(shared.captureFinished(token, it, SystemClock.elapsedRealtime())) },
                         failure = { apply(shared.captureFailed(token, "无法录音，请检查麦克风权限或通话状态")) },
@@ -204,30 +230,107 @@ class AndroidVoiceInputAdapter(
     }
 }
 
-/** 硬件采集直接产生 PCM16/16 kHz/mono，公共层负责 WAV 与 ASR 请求。 */
-private class AndroidVoiceRecorder {
+/** 采集接口只执行硬件命令；started 表示设备已进入 RECORDSTATE_RECORDING，不等待首批 PCM 交付。 */
+interface AndroidVoiceAudioCapturing {
+    fun prepare()
+
+    fun release()
+
+    fun start(
+        id: String,
+        started: () -> Unit,
+        level: (Float) -> Unit,
+        finished: (String) -> Unit,
+        failure: () -> Unit,
+    )
+
+    fun stop(
+        id: String,
+        discard: Boolean,
+    )
+}
+
+/** 硬件读取不等待 UI；空闲预建 AudioRecord，但不调用 startRecording 或保存音频。 */
+private class AndroidVoiceRecorder : AndroidVoiceAudioCapturing {
     private companion object {
         const val PCM_SCALE = 32768.0
         const val BYTE_MASK = 255
         const val BYTE_BITS = 8
-        const val LEVEL_WINDOWS_PER_SECOND = 20
+        const val MILLISECONDS_PER_SECOND = 1000
+        const val LEVEL_INTERVAL_MILLISECONDS = 50L
+        const val BUFFER_MILLISECONDS = 200
     }
 
     private class Capture(
         val id: String,
+        val generation: Long,
     ) {
         @Volatile var stopped = false
 
         @Volatile var discard = false
-
-        @Volatile var audio: AudioRecord? = null
     }
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private var capture: Capture? = null
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
+    private val hardwareLock = Any()
+    private var prepared: AudioRecord? = null
+    private var generation = 0L
 
-    @Suppress("MissingPermission") // 权限 effect 已由平台检查；AudioRecord 初始化仍在 try/catch 中。
-    fun start(
+    @Volatile private var capture: Capture? = null
+
+    @Suppress("MissingPermission")
+    private fun createAudio(): AudioRecord {
+        val minimum =
+            AudioRecord.getMinBufferSize(
+                VoiceAudioFormat.SAMPLE_RATE,
+                AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT,
+            )
+        require(minimum > 0)
+        val audio =
+            AudioRecord(
+                MediaRecorder.AudioSource.VOICE_RECOGNITION,
+                VoiceAudioFormat.SAMPLE_RATE,
+                AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT,
+                maxOf(minimum, VoiceAudioFormat.BYTES_PER_SECOND * BUFFER_MILLISECONDS / MILLISECONDS_PER_SECOND),
+            )
+        if (audio.state != AudioRecord.STATE_INITIALIZED) {
+            audio.release()
+            error("AudioRecord initialization failed")
+        }
+        return audio
+    }
+
+    override fun prepare() {
+        val requestedGeneration = synchronized(hardwareLock) { generation }
+        scope.launch {
+            if (capture != null || synchronized(hardwareLock) { prepared != null || generation != requestedGeneration }) return@launch
+            val audio = runCatching { createAudio() }.getOrNull() ?: return@launch
+            val retained =
+                synchronized(hardwareLock) {
+                    if (capture == null && generation == requestedGeneration && prepared == null) {
+                        prepared = audio
+                        true
+                    } else {
+                        false
+                    }
+                }
+            if (!retained) audio.release()
+        }
+    }
+
+    override fun release() {
+        capture?.let { stop(it.id, true) }
+        val old =
+            synchronized(hardwareLock) {
+                generation++
+                prepared.also { prepared = null }
+            }
+        scope.launch { old?.release() }
+    }
+
+    @Suppress("MissingPermission")
+    override fun start(
         id: String,
         started: () -> Unit,
         level: (Float) -> Unit,
@@ -235,74 +338,89 @@ private class AndroidVoiceRecorder {
         failure: () -> Unit,
     ) {
         capture?.let { stop(it.id, true) }
-        val current = Capture(id)
+        val current = Capture(id, synchronized(hardwareLock) { generation })
         capture = current
         scope.launch {
             var audio: AudioRecord? = null
+            var encoded: String? = null
+            var failed = false
             try {
-                val minimum =
-                    AudioRecord.getMinBufferSize(
-                        VoiceAudioFormat.SAMPLE_RATE,
-                        AudioFormat.CHANNEL_IN_MONO,
-                        AudioFormat.ENCODING_PCM_16BIT,
-                    )
-                require(minimum > 0)
-                audio =
-                    AudioRecord(
-                        MediaRecorder.AudioSource.VOICE_RECOGNITION,
-                        VoiceAudioFormat.SAMPLE_RATE,
-                        AudioFormat.CHANNEL_IN_MONO,
-                        AudioFormat.ENCODING_PCM_16BIT,
-                        maxOf(minimum, VoiceAudioFormat.MIN_PCM_BYTES),
-                    )
-                current.audio = audio
-                check(audio.state == AudioRecord.STATE_INITIALIZED)
+                if (current.stopped) return@launch
+                audio = synchronized(hardwareLock) { prepared.also { prepared = null } } ?: createAudio()
                 if (current.stopped) return@launch
                 audio.startRecording()
-                withContext(Dispatchers.Main.immediate) { started() }
+                check(audio.recordingState == AudioRecord.RECORDSTATE_RECORDING)
+                scope.launch(Dispatchers.Main.immediate) { started() }
                 val bytes = ByteArrayOutputStream()
-                val samples = ShortArray(VoiceAudioFormat.SAMPLE_RATE / LEVEL_WINDOWS_PER_SECOND)
+                val samples =
+                    ShortArray(
+                        (
+                            VoiceAudioFormat.SAMPLE_RATE * VoiceInputInteraction.CAPTURE_WINDOW_MILLISECONDS /
+                                MILLISECONDS_PER_SECOND
+                        ).toInt(),
+                    )
+                var first = true
+                var lastLevelAt = 0L
                 while (!current.stopped) {
-                    val count = audio.read(samples, 0, samples.size)
+                    val count = audio.read(samples, 0, samples.size, AudioRecord.READ_BLOCKING)
                     if (count <= 0) {
                         check(current.stopped || count == 0) { "AudioRecord read failed" }
                     } else {
                         check(bytes.size() + count * 2 <= VoiceAudioFormat.MAX_CAPTURE_BYTES)
                         var energy = 0.0
-                        repeat(count) { i ->
-                            val sample = samples[i].toInt()
+                        repeat(count) { index ->
+                            val sample = samples[index].toInt()
                             bytes.write(sample and BYTE_MASK)
                             bytes.write((sample ushr BYTE_BITS) and BYTE_MASK)
                             val normalized = sample / PCM_SCALE
                             energy += normalized * normalized
                         }
-                        val rms = sqrt(energy / count).toFloat()
-                        withContext(Dispatchers.Main.immediate) { level(rms) }
+                        val now = SystemClock.elapsedRealtime()
+                        if (first || now - lastLevelAt >= LEVEL_INTERVAL_MILLISECONDS) {
+                            if (first) Log.d("VoiceInputLatency", "stage=first-pcm uptimeMs=$now")
+                            first = false
+                            lastLevelAt = now
+                            val rms = sqrt(energy / count).toFloat()
+                            // 只排队通知 UI，采集线程立即继续读取，避免蒙层首绘阻塞音频输入。
+                            scope.launch(Dispatchers.Main.immediate) {
+                                level(rms)
+                            }
+                        }
                     }
                 }
-                if (!current.discard) {
-                    val encoded = Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP)
-                    withContext(Dispatchers.Main.immediate) { finished(encoded) }
-                }
+                if (!current.discard) encoded = Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP)
             } catch (_: Exception) {
-                if (!current.discard) withContext(Dispatchers.Main.immediate) { failure() }
+                failed = !current.discard
             } finally {
-                current.audio = null
                 runCatching { audio?.stop() }
-                audio?.release()
+                val retained =
+                    synchronized(hardwareLock) {
+                        if (audio != null && generation == current.generation && prepared == null && !failed) {
+                            prepared = audio
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                if (!retained) audio?.release()
+                if (capture === current) capture = null
+            }
+            if (!current.discard) {
+                scope.launch(Dispatchers.Main.immediate) {
+                    if (failed) failure() else encoded?.let(finished)
+                }
             }
         }
     }
 
-    fun stop(
+    override fun stop(
         id: String,
         discard: Boolean,
     ) {
         val current = capture?.takeIf { it.id == id } ?: return
-        capture = null
         current.discard = discard
         current.stopped = true
-        runCatching { current.audio?.stop() }
+        // 20ms 读取窗口自行收尾，不在 UI 线程同步等待 AudioRecord.stop。
     }
 }
 

@@ -29,6 +29,7 @@ struct DeepSeekHarnessMobileApp: App {
                 .id(ObjectIdentifier(hosts.activeStore))
                 .environmentObject(hosts.activeStore)
                 .environmentObject(hosts)
+                .modifier(AppFontScope())
                 .task {
                     await AgentUserNotificationManager.shared.requestAuthorizationIfNeeded()
                 }

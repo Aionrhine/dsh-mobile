@@ -41,7 +41,7 @@ struct TrajectoryView: View {
                             HStack(spacing: 9) {
                                 ProgressView().tint(DSHColor.ocean)
                                 Text(nodes.isEmpty ? String(localized: "trajectory.generating", defaultValue: "正在生成轨迹…") : String(localized: "trajectory.backfilling", defaultValue: "正在补齐较早的轨迹记录…"))
-                                    .font(.caption)
+                                    .appFont(.caption)
                                     .foregroundStyle(.secondary)
                                 Spacer()
                             }
@@ -85,7 +85,7 @@ struct TrajectoryView: View {
                 Spacer()
                 Text(timeline.presentation.durationText).monospacedDigit()
             }
-            .font(.caption)
+            .appFont(.caption)
             .foregroundStyle(.primary)
 
             HStack(spacing: 8) {
@@ -94,13 +94,13 @@ struct TrajectoryView: View {
                     Text("Model")
                     Text("Tools")
                 }
-                .font(.caption2).foregroundStyle(.secondary).frame(width: 34, alignment: .leading)
+                .appFont(.caption2).foregroundStyle(.secondary).frame(width: 34, alignment: .leading)
 
                 TimelineOverviewCanvas(nodes: timeline.presentation.visibleNodes, onSelect: onSelect)
                 .frame(height: 52)
             }
             HStack { Text("0s"); Spacer(); Text(timeline.presentation.durationText) }
-                .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                .appFont(.caption2.monospacedDigit()).foregroundStyle(.secondary)
         }
         .padding(.horizontal, 20).padding(.vertical, 12)
         .background(Color(uiColor: .secondarySystemBackground))
@@ -386,7 +386,7 @@ private struct TrajectoryRow: View {
             }
             HStack(spacing: 8) {
                 Text(node.kind.label)
-                    .font(.caption2.weight(.semibold))
+                    .appFont(.caption2.weight(.semibold))
                     .foregroundStyle(node.kind.color)
                     .padding(.horizontal, 6).padding(.vertical, 3)
                     .background(tagFill, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
@@ -396,19 +396,19 @@ private struct TrajectoryRow: View {
                     }
                 if node.kind != .input && node.kind != .assistant {
                     Text(node.title)
-                        .font(.subheadline.weight(.medium))
+                        .appFont(.subheadline.weight(.medium))
                         .lineLimit(1)
                         .layoutPriority(1)
                 }
                 if !node.subtitle.isEmpty {
                     Text(node.subtitle)
-                        .font(.caption)
+                        .appFont(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
                 Spacer()
-                Text("#\(node.startSeq)").font(.caption2.monospaced()).foregroundStyle(.secondary)
-                Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+                Text("#\(node.startSeq)").appFont(.caption2.monospaced()).foregroundStyle(.secondary)
+                Image(systemName: "chevron.right").appFont(.caption2).foregroundStyle(.tertiary)
             }
             .frame(height: 20)
             .contentShape(Rectangle())
@@ -464,7 +464,7 @@ private struct TrajectoryTurnHeader: View {
     var body: some View {
         HStack(spacing: 8) {
             Text("Turn \(turn)")
-                .font(.caption2.monospaced())
+                .appFont(.caption2.monospaced())
                 .foregroundStyle(.secondary)
             Rectangle()
                 .fill(turnDividerColor)
@@ -628,7 +628,7 @@ private struct EventDetailSheet: View {
         Button(action: action) {
             VStack(spacing: 8) {
                 Text(title)
-                    .font(.subheadline.weight(selected ? .semibold : .regular))
+                    .appFont(.subheadline.weight(selected ? .semibold : .regular))
                     .foregroundStyle(selected ? DSHColor.ocean : .secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
@@ -650,7 +650,7 @@ private struct EventDetailSheet: View {
                 } label: {
                     VStack(spacing: 8) {
                         Text(item.title)
-                            .font(.subheadline.weight(tab == item ? .semibold : .regular))
+                            .appFont(.subheadline.weight(tab == item ? .semibold : .regular))
                             .foregroundStyle(tab == item ? DSHColor.ocean : .secondary)
                         ZStack {
                             Color.clear.frame(height: 2)
@@ -740,7 +740,7 @@ private struct EventDetailSheet: View {
     @ViewBuilder private var toolResultView: some View {
         if !toolResult.isEmpty {
             Text(toolResult)
-                .font(.callout.monospaced())
+                .appFont(.callout.monospaced())
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -753,13 +753,13 @@ private struct EventDetailSheet: View {
         if let schema = node.tool?.schema {
             VStack(alignment: .leading, spacing: 12) {
                 Text(schema["name"]?.stringValue ?? node.title)
-                    .font(.headline)
+                    .appFont(.headline)
                 if let description = schema["description"]?.stringValue, !description.isEmpty {
                     MarkdownContent(description, compact: true)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if let parameters = schema["parameters"] {
-                    Text("Parameters").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                    Text("Parameters").appFont(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
                     jsonCode(parameters)
                 }
             }
@@ -780,7 +780,7 @@ private struct EventDetailSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             Label(title, systemImage: "chevron.right")
                 .labelStyle(TrailingIconLabelStyle())
-                .font(.headline)
+                .appFont(.headline)
                 .foregroundStyle(.secondary)
             content()
         }
@@ -788,7 +788,7 @@ private struct EventDetailSheet: View {
 
     private func tokenUsageSection(_ title: String, usage: RequestTokenUsage?) -> some View {
         VStack(alignment: .leading, spacing: 9) {
-            Text(title).font(.headline).foregroundStyle(.secondary)
+            Text(title).appFont(.headline).foregroundStyle(.secondary)
             detailRow("Input", "\(usage?.totalInput ?? 0) tok")
             detailRow("Cached", "\(usage?.cachedInput ?? 0) tok", indented: true)
             detailRow("Other", "\(usage?.uncachedInput ?? 0) tok", indented: true)
@@ -805,7 +805,7 @@ private struct EventDetailSheet: View {
     }
 
     private func unavailable(_ text: String) -> some View {
-        Text(text).font(.subheadline).foregroundStyle(.secondary)
+        Text(text).appFont(.subheadline).foregroundStyle(.secondary)
     }
 
     private var summaryView: some View {
@@ -823,7 +823,7 @@ private struct EventDetailSheet: View {
             VStack(alignment: .leading, spacing: 10) {
                 Label("Request Timing", systemImage: "chevron.right")
                     .labelStyle(TrailingIconLabelStyle())
-                    .font(.headline)
+                    .appFont(.headline)
                     .foregroundStyle(.secondary)
                 detailRow("Started", startedText)
                 detailRow("Total duration", durationText)
@@ -838,7 +838,7 @@ private struct EventDetailSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Preview", systemImage: "chevron.right")
                 .labelStyle(TrailingIconLabelStyle())
-                .font(.headline)
+                .appFont(.headline)
                 .foregroundStyle(.secondary)
             if node.kind == .assistant && !reasoningPreview.isEmpty {
                 Button {
@@ -850,13 +850,13 @@ private struct EventDetailSheet: View {
                         Text("Thinking")
                         Spacer()
                         Image(systemName: "chevron.right")
-                            .font(.caption)
+                            .appFont(.caption)
                             .rotationEffect(.degrees(summaryThinkingExpanded ? 90 : 0))
                     }
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .font(.subheadline.weight(.semibold))
+                .appFont(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
 
                 if summaryThinkingExpanded {
@@ -936,10 +936,10 @@ private struct EventDetailSheet: View {
     private func rawBlock(index: Int, type: String, text: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Block #\(index) \(type)")
-                .font(.subheadline.monospaced())
+                .appFont(.subheadline.monospaced())
                 .foregroundStyle(.secondary)
             Text(text)
-                .font(.body.monospaced())
+                .appFont(.body.monospaced())
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -947,7 +947,7 @@ private struct EventDetailSheet: View {
 
     private func previewSection(_ title: String, text: String, compact: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.headline).foregroundStyle(.secondary)
+            Text(title).appFont(.headline).foregroundStyle(.secondary)
             MarkdownContent(text, compact: compact)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -1041,7 +1041,7 @@ private struct EventDetailSheet: View {
                 .textSelection(.enabled)
             Spacer(minLength: 0)
         }
-        .font(.subheadline)
+        .appFont(.subheadline)
     }
 }
 
@@ -1056,7 +1056,7 @@ private struct TrailingIconLabelStyle: LabelStyle {
     func makeBody(configuration: Configuration) -> some View {
         HStack(spacing: 5) {
             configuration.title
-            configuration.icon.font(.caption2)
+            configuration.icon.appFont(.caption2)
         }
     }
 }

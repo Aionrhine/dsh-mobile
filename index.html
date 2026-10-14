@@ -27,6 +27,7 @@
       </a>
       <button class="menu-toggle" type="button" aria-controls="navigation" aria-expanded="false">菜单</button>
       <nav id="navigation" class="navigation" aria-label="主导航">
+        <button class="support-link" type="button" data-support-dialog aria-haspopup="dialog" aria-controls="support-dialog">加群获取支持</button>
         <a href="#experience">功能体验</a>
         <a href="#connect">连接指南</a>
         <a href="https://github.com/Clarklevis1995/dsh-mobile" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">↗</span></a>
@@ -218,8 +219,18 @@
 
   <footer class="footer wrap">
     <div><a class="brand" href="#"><img class="brand-mark" src="website/assets/mark-dark.svg" width="28" height="28" alt=""><span>whaleness</span></a><p>DeepSeek Harness 的第三方移动端应用。</p></div>
-    <div class="footer-links"><a href="privacy/index.html">隐私政策</a><a href="https://github.com/Clarklevis1995/dsh-mobile" target="_blank" rel="noopener noreferrer">源代码 ↗</a><a href="mailto:clarklevis1995@gmail.com">联系与反馈</a><button id="theme-toggle" type="button">切换外观</button></div>
+    <div class="footer-links"><button class="support-link" type="button" data-support-dialog aria-haspopup="dialog" aria-controls="support-dialog">加群获取支持</button><a href="privacy/index.html">隐私政策</a><a href="https://github.com/Clarklevis1995/dsh-mobile" target="_blank" rel="noopener noreferrer">源代码 ↗</a><a href="mailto:clarklevis1995@gmail.com">联系与反馈</a><button id="theme-toggle" type="button">切换外观</button></div>
   </footer>
+
+  <dialog id="support-dialog" class="support-dialog" aria-labelledby="support-title" aria-describedby="support-description">
+    <form method="dialog" class="support-dialog-header">
+      <h2 id="support-title">加群获取支持</h2>
+      <button class="dialog-close" type="submit" aria-label="关闭加群二维码">关闭 <span aria-hidden="true">×</span></button>
+    </form>
+    <img src="website/assets/support-wechat-2026-10-14.png" width="720" height="1094" loading="lazy" alt="Whaleness 公测用户群微信二维码，原图注明 2026 年 10 月 21 日前有效">
+    <p id="support-description">使用微信扫码入群，或保存图片后在微信中识别。</p>
+    <a class="support-save" href="website/assets/support-wechat-2026-10-14.png" download="Whaleness-公测用户群二维码.png">保存二维码图片</a>
+  </dialog>
 
   <dialog id="screenshot-dialog" class="screenshot-dialog" aria-label="截图大图">
     <form method="dialog"><a id="dialog-original" href="website/assets/conversation.webp" target="_blank" rel="noopener noreferrer">打开原图 ↗</a><button class="dialog-close" aria-label="关闭截图">关闭 <span aria-hidden="true">×</span></button></form>

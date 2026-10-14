@@ -10,13 +10,13 @@ struct PluginsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
                 Text("安装、启用和配置插件")
-                    .font(.subheadline).foregroundStyle(.secondary)
+                    .appFont(.subheadline).foregroundStyle(.secondary)
                 if !store.gateway.state.isConnected {
                     Text("网关已断开，插件状态待重新连接确认")
-                        .font(.subheadline).foregroundStyle(.orange)
+                        .appFont(.subheadline).foregroundStyle(.orange)
                 }
                 if let notice = store.pluginNotice {
-                    Text(notice).font(.subheadline).foregroundStyle(.orange)
+                    Text(notice).appFont(.subheadline).foregroundStyle(.orange)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 if let error = store.pluginsError {
@@ -51,7 +51,7 @@ struct PluginsView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { store.refreshPlugins() } label: {
                     Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.system(size: 17, weight: .medium))
+                        .appFont(.system(size: 17, weight: .medium))
                 }
                     .disabled(store.pluginsLoading)
                     .accessibilityLabel("刷新插件")
@@ -77,7 +77,7 @@ struct PluginsView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Text(title).font(.headline)
+                Text(title).appFont(.headline)
                 Text("\(count)").foregroundStyle(.secondary)
             }.padding(.bottom, 4)
             content()
@@ -145,21 +145,21 @@ private struct PluginDetailView: View {
                         .allowsHitTesting(store.pluginPendingName == nil)
                     }
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Text(bundle.title).font(.title2.bold())
+                        Text(bundle.title).appFont(.title2.bold())
                         if let version = bundle.version {
-                            Text("v\(version)").font(.caption).foregroundStyle(.secondary)
+                            Text("v\(version)").appFont(.caption).foregroundStyle(.secondary)
                                 .padding(.horizontal, 8).padding(.vertical, 4)
                                 .background(.quaternary, in: Capsule())
                         }
                     }
-                    Text(bundle.name).font(.subheadline.monospaced()).foregroundStyle(.secondary)
+                    Text(bundle.name).appFont(.subheadline.monospaced()).foregroundStyle(.secondary)
                     if !bundle.description.isEmpty { Text(bundle.description).foregroundStyle(.secondary) }
-                    if let reason = bundle.readOnlyReason { Text(reason).font(.footnote).foregroundStyle(.orange) }
-                    if let error = bundle.error { Text(error).font(.footnote).foregroundStyle(.red) }
-                    if let notice = store.pluginNotice { Text(notice).font(.footnote).foregroundStyle(.orange) }
+                    if let reason = bundle.readOnlyReason { Text(reason).appFont(.footnote).foregroundStyle(.orange) }
+                    if let error = bundle.error { Text(error).appFont(.footnote).foregroundStyle(.red) }
+                    if let notice = store.pluginNotice { Text(notice).appFont(.footnote).foregroundStyle(.orange) }
                     if !store.gateway.state.isConnected {
                         Text("网关已断开，插件状态待重新连接确认")
-                            .font(.footnote).foregroundStyle(.orange)
+                            .appFont(.footnote).foregroundStyle(.orange)
                     }
                     let entries = bundle.rows.map { row -> MobilePluginRow in
                         let entryID = row["entryId"]?.stringValue
@@ -167,9 +167,9 @@ private struct PluginDetailView: View {
                         return MobilePluginRow(raw: row, live: live)
                     }
                     HStack(spacing: 8) {
-                        Text("包含的组件").font(.headline)
+                        Text("包含的组件").appFont(.headline)
                         Text("共 \(entries.count) 个 · \(entries.filter { $0.enabled && $0.phase == "active" }.count) 运行中")
-                            .font(.subheadline).foregroundStyle(.secondary)
+                            .appFont(.subheadline).foregroundStyle(.secondary)
                     }.padding(.top, 14)
                     ForEach(entries) { entry in
                         HStack(spacing: 10) {
@@ -179,13 +179,13 @@ private struct PluginDetailView: View {
                                         .frame(width: 44, height: 44)
                                     VStack(alignment: .leading, spacing: 5) {
                                         Text(entry.name)
-                                            .font(.subheadline.bold())
+                                            .appFont(.subheadline.bold())
                                             .lineLimit(1)
                                             .truncationMode(.middle)
                                         HStack(spacing: 5) {
                                             Circle().fill(entry.enabled && entry.phase == "active" ? .green : entry.enabled && entry.phase == "failed" ? .red : .gray)
                                                 .frame(width: 7, height: 7)
-                                            Text(entry.statusText).font(.caption).foregroundStyle(.secondary)
+                                            Text(entry.statusText).appFont(.caption).foregroundStyle(.secondary)
                                         }
                                     }
                                 }
@@ -205,7 +205,7 @@ private struct PluginDetailView: View {
                             }
                             Button { selectedEntry = entry } label: {
                                 Image(systemName: "chevron.right")
-                                    .font(.subheadline.weight(.semibold))
+                                    .appFont(.subheadline.weight(.semibold))
                                     .foregroundStyle(.secondary)
                                     .frame(width: 30, height: 44)
                             }
@@ -239,7 +239,7 @@ private struct PluginComponentSheet: View {
                     HStack(spacing: 14) {
                         PluginIcon(dataURL: entry.icon, fallback: "subagent")
                             .frame(width: 56, height: 56)
-                        Text(entry.name).font(.title3.bold())
+                        Text(entry.name).appFont(.title3.bold())
                     }
                     HStack(spacing: 7) {
                         Circle().fill(entry.enabled && entry.phase == "active" ? .green : entry.enabled && entry.phase == "failed" ? .red : .gray)
@@ -270,8 +270,8 @@ private struct PluginComponentSheet: View {
 
     private func componentField(_ title: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(.caption).foregroundStyle(.secondary)
-            Text(value).font(.subheadline.monospaced()).textSelection(.enabled)
+            Text(title).appFont(.caption).foregroundStyle(.secondary)
+            Text(value).appFont(.subheadline.monospaced()).textSelection(.enabled)
         }
     }
 }
@@ -288,11 +288,11 @@ private struct OfficialPluginDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 PluginIcon(dataURL: nil, fallback: item.id).frame(width: 60, height: 60)
-                Text(item.title).font(.title2.bold())
+                Text(item.title).appFont(.title2.bold())
                 Text(item.description).foregroundStyle(.secondary)
-                Text("配置项").font(.headline).padding(.top, 16)
+                Text("配置项").appFont(.headline).padding(.top, 16)
                 ForEach(item.namespaces, id: \.self) { namespace in
-                    Text(namespace).font(.subheadline.monospaced()).foregroundStyle(.secondary)
+                    Text(namespace).appFont(.subheadline.monospaced()).foregroundStyle(.secondary)
                 }
             }.padding(22).frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -312,12 +312,12 @@ private struct PluginLine: View {
             PluginIcon(dataURL: icon, fallback: fallback).frame(width: 48, height: 48)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(title).font(.body.bold()).foregroundStyle(.primary)
+                    Text(title).appFont(.body.bold()).foregroundStyle(.primary)
                         .lineLimit(1).truncationMode(.tail)
                     if experimental { ExperimentalPluginBadge() }
                 }
                 if !subtitle.isEmpty {
-                    Text(subtitle).font(.footnote).foregroundStyle(.secondary).lineLimit(2)
+                    Text(subtitle).appFont(.footnote).foregroundStyle(.secondary).lineLimit(2)
                 }
             }
             Spacer(minLength: 0)
@@ -332,7 +332,7 @@ private struct ExperimentalPluginBadge: View {
 
     var body: some View {
         Text("实验性")
-            .font(.caption.weight(.medium))
+            .appFont(.caption.weight(.medium))
             .foregroundStyle(colorScheme == .dark ? Color(red: 0.55, green: 0.68, blue: 1) : .blue)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)

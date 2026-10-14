@@ -13,9 +13,9 @@ struct GatewaySwitcherBar: View {
                 Circle()
                     .fill(hosts.activeID.map { hosts.onlineIDs.contains($0) } == true ? Color.green : Color.gray)
                     .frame(width: 6, height: 6)
-                Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
+                Image(systemName: "chevron.down").appFont(.system(size: 9, weight: .semibold))
             }
-            .font(.system(size: 12, weight: .medium))
+            .appFont(.system(size: 12, weight: .medium))
             .padding(.horizontal, 11).padding(.vertical, 7)
             .background(.white.opacity(0.09), in: Capsule())
             .overlay(Capsule().stroke(.white.opacity(0.14), lineWidth: 0.5))
@@ -54,7 +54,7 @@ private struct GatewaySwitcherSheet: View {
                             if editMode.isEditing {
                                 Button { toggleSelection(profile.id) } label: {
                                     Image(systemName: selectedIDs.contains(profile.id) ? "circle.inset.filled" : "circle")
-                                        .font(.system(size: 20, weight: .medium))
+                                        .appFont(.system(size: 20, weight: .medium))
                                         .frame(width: 28, height: 44)
                                 }
                                 .buttonStyle(.borderless)
@@ -64,7 +64,7 @@ private struct GatewaySwitcherSheet: View {
                                 .transition(.move(edge: .leading).combined(with: .opacity))
                             }
                             Image(systemName: profile.deviceKind)
-                                .font(.title3).frame(width: 26)
+                                .appFont(.title3).frame(width: 26)
                             Button {
                                 if editMode.isEditing {
                                     toggleSelection(profile.id)
@@ -76,7 +76,7 @@ private struct GatewaySwitcherSheet: View {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(profile.displayName).foregroundStyle(Color(uiColor: .label)).lineLimit(1)
                                     Text(hosts.activeID == profile.id ? String(localized: "当前主机") : String(localized: "点击连接"))
-                                        .font(.caption)
+                                        .appFont(.caption)
                                         .foregroundStyle(
                                             hosts.activeID == profile.id
                                                 ? Color.accentColor
@@ -97,7 +97,7 @@ private struct GatewaySwitcherSheet: View {
                                     editing = profile
                                 } label: {
                                     Image(systemName: "pencil")
-                                        .font(.system(size: 18, weight: .medium))
+                                        .appFont(.system(size: 18, weight: .medium))
                                         .frame(width: 44, height: 44)
                                         .contentShape(Rectangle())
                                 }
@@ -170,12 +170,12 @@ private struct GatewaySwitcherSheet: View {
                                 } label: {
                                     HStack(alignment: .center, spacing: 4) {
                                         Image(systemName: kind)
-                                            .font(.system(size: 15))
+                                            .appFont(.system(size: 15))
                                             .frame(width: 20, height: 20)
                                         Text(kind == "server.rack" ? String(localized: "服务器") : String(localized: "电脑"))
-                                            .font(.body)
+                                            .appFont(.body)
                                         Image(systemName: "chevron.up.chevron.down")
-                                            .font(.system(size: 11, weight: .medium))
+                                            .appFont(.system(size: 11, weight: .medium))
                                     }
                                 }
                                 .accessibilityLabel("主机类型")
@@ -183,7 +183,7 @@ private struct GatewaySwitcherSheet: View {
                             }
                         } header: {
                             Text("留空使用网关提供的名称：\(profile.gatewayName)")
-                                .font(.caption)
+                                .appFont(.caption)
                                 .foregroundStyle(Color(uiColor: .secondaryLabel))
                                 .textCase(nil)
                         }

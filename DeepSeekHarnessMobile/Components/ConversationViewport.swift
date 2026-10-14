@@ -115,6 +115,7 @@ private struct TopPinnedConversationContent: View {
 
     var body: some View {
         content
+            .modifier(AppFontScope())
             .id("\(id)#\(revision)")
             .frame(maxWidth: .infinity, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
@@ -146,6 +147,8 @@ private struct TopPinnedConversationContent: View {
 
 /// UIKit-backed viewport for streaming conversation timelines.
 struct ConversationViewport: UIViewControllerRepresentable {
+    @AppStorage(AppFontScale.key) private var fontScale = 1.0
+    @AppStorage(AppFontScale.followsSystemKey) private var fontFollowsSystem = false
     let proxy: ConversationViewportProxy
     let sessionID: String?
     let timeline: ConversationTimeline
@@ -241,6 +244,7 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
     private lazy var collectionView = UICollectionView(frame: .zero, collectionViewLayout: chatLayout)
     private var dataSource: UICollectionViewDiffableDataSource<Int, String>!
     private var entriesByID: [String: ConversationViewportEntry] = [:]
+    private var configuredBodyFontSize: CGFloat?
     private var previousRevisions: [String: Int] = [:]
     private var sessionID: String?
     private var hasPlacedInitialPosition = false
@@ -319,6 +323,14 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
     ) {
         loadViewIfNeeded()
         setSessionID(sessionID)
+        if configuredBodyFontSize != UIFont.appPreferredFont(forTextStyle: .body).pointSize {
+            configuredBodyFontSize = UIFont.appPreferredFont(forTextStyle: .body).pointSize
+            cellHeightCache.removeAll()
+            streamingHeightMeasurers.removeAll()
+            previousRevisions = [:]
+            lastAppliedRevision = -1
+            collectionView.collectionViewLayout.invalidateLayout()
+        }
         self.supplementalEntries = supplementalEntries
         self.makeEntries = makeEntries
         self.bottomInset = bottomInset
@@ -1381,7 +1393,7 @@ private final class StreamingTextHeightMeasurer {
     )
     private var measuredText = ""
     private var measuredWidthInPixels = 0
-    private var measuredFont = UIFont.preferredFont(forTextStyle: .body)
+    private var measuredFont = UIFont.appPreferredFont(forTextStyle: .body)
     private var lastHeight: CGFloat?
 
     init() {
@@ -1403,7 +1415,7 @@ private final class StreamingTextHeightMeasurer {
             )
         }
 
-        let currentFont = UIFont.preferredFont(forTextStyle: .body)
+        let currentFont = UIFont.appPreferredFont(forTextStyle: .body)
         if !currentFont.isEqual(measuredFont) {
             measuredFont = currentFont
             if textStorage.length > 0 {
@@ -1680,7 +1692,7 @@ private final class UserMessageCell: StableSelfSizingCollectionViewCell {
             }
 
             countLabel.text = "\(images.count)张"
-            countLabel.font = .preferredFont(forTextStyle: .caption1).withWeight(.semibold)
+            countLabel.font = .appPreferredFont(forTextStyle: .caption1).withWeight(.semibold)
             countLabel.textColor = .white
             countLabel.textAlignment = .center
             countLabel.backgroundColor = UIColor.black.withAlphaComponent(0.58)
@@ -1724,11 +1736,14 @@ private final class UserMessageCell: StableSelfSizingCollectionViewCell {
                 imageViewsByID[id]?.frame = CGRect(x: x, y: y, width: cardSide, height: cardSide)
             }
             if let frontFrame = imageViewsByID[visibleIDs[0]]?.frame {
+                countLabel.font = .appPreferredFont(forTextStyle: .caption1).withWeight(.semibold)
+                let width = max(45, ceil(countLabel.intrinsicContentSize.width) + 12)
+                let height = max(26, ceil(countLabel.font.lineHeight) + 6)
                 countLabel.frame = CGRect(
-                    x: frontFrame.maxX - 51,
-                    y: frontFrame.maxY - 32,
-                    width: 45,
-                    height: 26
+                    x: frontFrame.maxX - width - 6,
+                    y: frontFrame.maxY - height - 6,
+                    width: width,
+                    height: height
                 )
                 bringSubviewToFront(imageViewsByID[visibleIDs[0]]!)
                 bringSubviewToFront(countLabel)
@@ -1759,7 +1774,7 @@ private final class UserMessageCell: StableSelfSizingCollectionViewCell {
         let textBounds = (payload.text as NSString).boundingRect(
             with: CGSize(width: maximumTextWidth, height: .greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
-            attributes: [.font: UIFont.preferredFont(forTextStyle: .body)],
+            attributes: [.font: UIFont.appPreferredFont(forTextStyle: .body)],
             context: nil
         )
         let imageHeight = previewSize(
@@ -1795,8 +1810,8 @@ private final class UserMessageCell: StableSelfSizingCollectionViewCell {
         bubbleView.layer.borderWidth = 0.7
         bubbleView.translatesAutoresizingMaskIntoConstraints = false
 
-        messageLabel.font = .preferredFont(forTextStyle: .body)
-        messageLabel.adjustsFontForContentSizeCategory = true
+        messageLabel.font = .appPreferredFont(forTextStyle: .body)
+        messageLabel.adjustsFontForContentSizeCategory = false
         messageLabel.textColor = .label
         messageLabel.numberOfLines = 0
         messageLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -1866,6 +1881,7 @@ private final class UserMessageCell: StableSelfSizingCollectionViewCell {
     }
 
     func apply(_ payload: ConversationViewportEntry.UserMessage, containerWidth: CGFloat) {
+        messageLabel.font = .appPreferredFont(forTextStyle: .body)
         if messageLabel.text != payload.text {
             messageLabel.text = payload.text
         }
@@ -2072,7 +2088,7 @@ private final class ConversationImagePreviewController: UIViewController,
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(closeButton)
 
-        countLabel.font = .preferredFont(forTextStyle: .subheadline).withWeight(.semibold)
+        countLabel.font = .appPreferredFont(forTextStyle: .subheadline).withWeight(.semibold)
         countLabel.textColor = .white
         countLabel.textAlignment = .center
         countLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -2259,9 +2275,9 @@ final class StreamingAssistantCell: StableSelfSizingCollectionViewCell {
         view.isScrollEnabled = false
         view.textContainerInset = .zero
         view.textContainer.lineFragmentPadding = 0
-        view.font = .preferredFont(forTextStyle: .body)
+        view.font = .appPreferredFont(forTextStyle: .body)
         view.textColor = .label
-        view.adjustsFontForContentSizeCategory = true
+        view.adjustsFontForContentSizeCategory = false
         view.translatesAutoresizingMaskIntoConstraints = false
         view.setContentCompressionResistancePriority(.required, for: .vertical)
         return view
@@ -2274,7 +2290,7 @@ final class StreamingAssistantCell: StableSelfSizingCollectionViewCell {
         for payload: ConversationViewportEntry.StreamingAssistant,
         width: CGFloat
     ) -> CGFloat {
-        let font = UIFont.preferredFont(forTextStyle: .body)
+        let font = UIFont.appPreferredFont(forTextStyle: .body)
         let availableWidth = max(1, width - 4)
         let textHeight: CGFloat
         if payload.text.isEmpty {
@@ -2315,9 +2331,12 @@ final class StreamingAssistantCell: StableSelfSizingCollectionViewCell {
 
     @discardableResult
     func apply(_ payload: ConversationViewportEntry.StreamingAssistant) -> Bool {
-        guard payload.text != renderedText else { return false }
+        let font = UIFont.appPreferredFont(forTextStyle: .body)
+        let fontChanged = textView.font?.isEqual(font) != true
+        guard payload.text != renderedText || fontChanged else { return false }
+        textView.font = font
 
-        if payload.text.hasPrefix(renderedText) {
+        if !fontChanged && payload.text.hasPrefix(renderedText) {
             let suffix = String(payload.text.dropFirst(renderedText.count))
             textView.textStorage.append(attributed(suffix))
         } else {
@@ -2334,7 +2353,7 @@ final class StreamingAssistantCell: StableSelfSizingCollectionViewCell {
         NSAttributedString(
             string: text,
             attributes: [
-                .font: UIFont.preferredFont(forTextStyle: .body),
+                .font: UIFont.appPreferredFont(forTextStyle: .body),
                 .foregroundColor: UIColor.label
             ]
         )

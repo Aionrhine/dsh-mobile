@@ -90,6 +90,10 @@ internal fun WorkspaceDrawer(
             derivedStateOf { progress.value > 0.5f && !dark }
         }
         val view = LocalView.current
+        val haptics = remember(view) { DrawerHapticFeedback(view) }
+        val dragFeedback = remember(haptics) {
+            DrawerDragFeedback { haptics.perform() }
+        }
         LaunchedEffect(view, lightSystemBars) {
             val window = (view.context as? Activity)?.window ?: return@LaunchedEffect
             WindowCompat.getInsetsController(window, view).apply {
@@ -98,7 +102,12 @@ internal fun WorkspaceDrawer(
             }
         }
 
-        fun settle(open: Boolean, velocity: Float = 0f) {
+        fun updateOffset(value: Float) {
+            offsetPx = value.coerceIn(0f, drawerWidthPx)
+        }
+
+        fun settle(open: Boolean, velocity: Float = 0f, feedback: Boolean = true) {
+            if (feedback) haptics.perform()
             animationJob?.cancel()
             animationJob = scope.launch {
                 val targetOffset = if (open) drawerWidthPx else 0f
@@ -107,11 +116,11 @@ internal fun WorkspaceDrawer(
                     targetValue = targetOffset,
                     initialVelocity = velocity,
                     animationSpec = spring(stiffness = 450f, dampingRatio = Spring.DampingRatioNoBouncy)
-                ) { value, _ -> offsetPx = value.coerceIn(0f, drawerWidthPx) }
-                offsetPx = targetOffset
+                ) { value, _ -> updateOffset(value) }
+                updateOffset(targetOffset)
             }
         }
-        val openDrawer = remember(drawerWidthPx, scope) { { settle(open = true) } }
+        val openDrawer = remember(drawerWidthPx, scope, haptics) { { settle(open = true) } }
         BackHandler(enabled = drawerVisible) { settle(open = false) }
 
         Box(Modifier.fillMaxSize().background(if (dark) Color(0xFF242426) else Color.White)) {
@@ -168,9 +177,10 @@ internal fun WorkspaceDrawer(
                     }
                     .draggable(
                         orientation = Orientation.Horizontal,
+                        interactionSource = dragFeedback,
                         state = rememberDraggableState { delta ->
                             animationJob?.cancel()
-                            offsetPx = (offsetPx + delta).coerceIn(0f, drawerWidthPx)
+                            updateOffset(offsetPx + delta)
                         },
                         onDragStarted = {
                             animationJob?.cancel()
@@ -183,7 +193,7 @@ internal fun WorkspaceDrawer(
                                 velocity < -flingThresholdPx -> false
                                 else -> offsetPx >= drawerWidthPx * 0.5f
                             }
-                            settle(open, velocity)
+                            settle(open, velocity, feedback = false)
                         }
                     )
                     .background(MaterialTheme.colorScheme.background)

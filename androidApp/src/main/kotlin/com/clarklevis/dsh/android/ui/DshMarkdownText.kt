@@ -259,13 +259,14 @@ private fun DshRenderedMarkdownText(
     modifier: Modifier
 ) {
     val context = LocalContext.current.applicationContext
+    val textSizePx = with(LocalDensity.current) { textSizeSp.sp.toPx() }
     val markwon = remember(context, palette) {
         DshMarkdownTextApplier.get(context, palette)
     }
     AndroidView(
         factory = { viewContext ->
             DshMarkdownTextView(viewContext).apply {
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp)
+                setTextSize(TypedValue.COMPLEX_UNIT_PX, textSizePx)
                 includeFontPadding = false
                 setPadding(0, 0, 0, 0)
                 setLineSpacing(lineSpacingExtra, 1f)
@@ -277,7 +278,7 @@ private fun DshRenderedMarkdownText(
             textView.tag = null
         },
         update = { textView ->
-            textView.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp)
+            textView.setTextSize(TypedValue.COMPLEX_UNIT_PX, textSizePx)
             textView.setLineSpacing(lineSpacingExtra, 1f)
             textView.setTextColor(palette.textColor)
             textView.setLinkTextColor(palette.linkColor)

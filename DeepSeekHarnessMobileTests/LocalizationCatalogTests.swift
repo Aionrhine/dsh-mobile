@@ -1,10 +1,65 @@
 import XCTest
+import UIKit
+import SwiftUI
 @testable import DeepSeekHarnessMobile
 
 /// Guards the localization catalogs shipped in the app bundle: compiled
 /// tables must exist, stay populated, and keep placeholder arguments intact,
 /// so the UI never exposes localization identifiers to users.
 final class LocalizationCatalogTests: XCTestCase {
+    func testFontScaleNormalizesInvalidValues() {
+        XCTAssertEqual(AppFontScale.normalized(.nan), 1)
+        XCTAssertEqual(AppFontScale.normalized(.infinity), 1)
+        XCTAssertEqual(AppFontScale.normalized(0), 0.8)
+        XCTAssertEqual(AppFontScale.normalized(4), 1.5)
+    }
+
+    @MainActor
+    func testNativeFontScaleAppliesToBodyAndCodeFonts() {
+        let previous = UserDefaults.standard.object(forKey: AppFontScale.key)
+        let previousFollowsSystem = UserDefaults.standard.object(forKey: AppFontScale.followsSystemKey)
+        UserDefaults.standard.set(false, forKey: AppFontScale.followsSystemKey)
+        defer {
+            if let previous { UserDefaults.standard.set(previous, forKey: AppFontScale.key) }
+            else { UserDefaults.standard.removeObject(forKey: AppFontScale.key) }
+            if let previousFollowsSystem { UserDefaults.standard.set(previousFollowsSystem, forKey: AppFontScale.followsSystemKey) }
+            else { UserDefaults.standard.removeObject(forKey: AppFontScale.followsSystemKey) }
+        }
+        UserDefaults.standard.set(1.0, forKey: AppFontScale.key)
+        let body = UIFont.appPreferredFont(forTextStyle: .body).pointSize
+        let code = UIFont.appMonospacedFont(ofSize: 13, weight: .regular).pointSize
+        UserDefaults.standard.set(1.5, forKey: AppFontScale.key)
+        XCTAssertEqual(UIFont.appPreferredFont(forTextStyle: .body).pointSize, body * 1.5, accuracy: 0.01)
+        XCTAssertEqual(UIFont.appMonospacedFont(ofSize: 13, weight: .regular).pointSize, code * 1.5, accuracy: 0.01)
+        UserDefaults.standard.set(true, forKey: AppFontScale.followsSystemKey)
+        XCTAssertEqual(UIFont.appPreferredFont(forTextStyle: .body).pointSize, body, accuracy: 0.01)
+        XCTAssertEqual(UIFont.appMonospacedFont(ofSize: 13, weight: .regular).pointSize, code, accuracy: 0.01)
+        XCTAssertEqual(UserDefaults.standard.double(forKey: AppFontScale.key), 1.5)
+    }
+
+    @MainActor
+    func testMarkdownAppliesFontScaleOnlyOnce() {
+        let defaults = UserDefaults.standard
+        let previous = defaults.object(forKey: AppFontScale.key)
+        let previousFollowsSystem = defaults.object(forKey: AppFontScale.followsSystemKey)
+        defer {
+            if let previous { defaults.set(previous, forKey: AppFontScale.key) }
+            else { defaults.removeObject(forKey: AppFontScale.key) }
+            if let previousFollowsSystem { defaults.set(previousFollowsSystem, forKey: AppFontScale.followsSystemKey) }
+            else { defaults.removeObject(forKey: AppFontScale.followsSystemKey) }
+        }
+        defaults.set(false, forKey: AppFontScale.followsSystemKey)
+        func height(scale: Double) -> CGFloat {
+            defaults.set(scale, forKey: AppFontScale.key)
+            let host = UIHostingController(rootView: MarkdownContent("字号预览").modifier(AppFontScope()))
+            return host.sizeThatFits(in: CGSize(width: 400, height: CGFloat.greatestFiniteMagnitude)).height
+        }
+        let standard = height(scale: 1)
+        let larger = height(scale: 1.5)
+        XCTAssertGreaterThan(standard, 0)
+        XCTAssertGreaterThan(larger / standard, 1.3)
+        XCTAssertLessThan(larger / standard, 1.7)
+    }
 
     private func localizedTable(_ name: String, localization: String) throws -> [String: String] {
         guard let path = Bundle.main.path(forResource: name,

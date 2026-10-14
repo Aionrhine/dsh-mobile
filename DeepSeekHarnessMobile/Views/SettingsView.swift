@@ -9,6 +9,8 @@ struct SettingsView: View {
     @State private var observedGatewayState: ConnectionState?
     @State private var showsPrivacyPolicy = false
     @State private var showsReleaseNotes = false
+    @AppStorage(AppFontScale.key) private var fontScale = 1.0
+    @AppStorage(AppFontScale.followsSystemKey) private var fontFollowsSystem = false
     private let releaseInfo = BundledAppReleaseInfo.load()
 
     private var appVersion: String {
@@ -41,7 +43,7 @@ struct SettingsView: View {
                 Text(LocalizedStringKey(title))
                 Spacer()
                 Text(verbatim: value).foregroundStyle(.secondary)
-                Image(systemName: "chevron.right").font(.footnote).foregroundStyle(.tertiary)
+                Image(systemName: "chevron.right").appFont(.footnote).foregroundStyle(.tertiary)
             }
             .frame(maxWidth: .infinity, minHeight: 32)
             .contentShape(Rectangle())
@@ -184,7 +186,7 @@ struct SettingsView: View {
                     if let cwd = host.cwd {
                         LabeledContent {
                             Text(cwd)
-                                .font(.caption.monospaced())
+                                .appFont(.caption.monospaced())
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
@@ -209,6 +211,18 @@ struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.navigationLink)
+                NavigationLink {
+                    FontSizeSettingsView()
+                } label: {
+                    HStack {
+                        Text("字体大小")
+                        Spacer()
+                        Text(verbatim: fontFollowsSystem ? String(localized: "跟随系统")
+                            : "\(Int((AppFontScale.normalized(fontScale) * 100).rounded()))%")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .accessibilityIdentifier("font-size-settings-row")
             } header: {
                 Text("外观")
             } footer: {
@@ -273,6 +287,106 @@ struct SettingsView: View {
     }
 }
 
+struct FontSizeSettingsView: View {
+    @AppStorage(AppFontScale.key) private var fontScale = 1.0
+    @AppStorage(AppFontScale.followsSystemKey) private var fontFollowsSystem = false
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var bubbleColor: Color {
+        colorScheme == .dark ? Color(red: 0.11, green: 0.18, blue: 0.29)
+            : Color(red: 0.93, green: 0.95, blue: 1)
+    }
+
+    var body: some View {
+        VStack(spacing: 24) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    HStack {
+                        Spacer(minLength: 0)
+                        Text("预览文字大小")
+                            .appFont(.system(size: 17))
+                            .accessibilityIdentifier("font-size-preview-title")
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 14)
+                            .background(bubbleColor, in: UnevenRoundedRectangle(
+                                topLeadingRadius: 24, bottomLeadingRadius: 24,
+                                bottomTrailingRadius: 6, topTrailingRadius: 24
+                            ))
+                    }
+                    Text("你可以拖动滑块来调整字体大小。")
+                        .appFont(.system(size: 17))
+                        .lineSpacing(6)
+                    MarkdownContent(String(localized: "调整后的字体大小会应用到所有页面，包括对话、按钮和 `代码`。"))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 32)
+            }
+            .frame(maxHeight: .infinity)
+            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20))
+
+            VStack(spacing: 16) {
+                Toggle("跟随系统", isOn: $fontFollowsSystem)
+                    .tint(DSHColor.ocean)
+                    .appFont(.system(size: 16))
+                    .accessibilityIdentifier("font-size-follow-system")
+                Divider()
+                VStack(spacing: 8) {
+                    HStack {
+                        Text(verbatim: "A").appFont(.system(size: 14, weight: .medium))
+                        Spacer()
+                        Text(verbatim: fontFollowsSystem ? String(localized: "跟随系统")
+                            : fontScale == 1 ? String(localized: "标准")
+                            : "\(Int((AppFontScale.normalized(fontScale) * 100).rounded()))%")
+                            .appFont(.system(size: 14))
+                        Spacer()
+                        Text(verbatim: "A").appFont(.system(size: 22, weight: .medium))
+                    }
+                    .foregroundStyle(.secondary)
+                    Slider(value: $fontScale, in: 0.8...1.5, step: 0.05)
+                        .disabled(fontFollowsSystem)
+                        .tint(Color(uiColor: .systemGray3))
+                        .accessibilityIdentifier("font-size-slider")
+                        .accessibilityLabel("字体大小")
+                        .accessibilityValue("\(Int((AppFontScale.normalized(fontScale) * 100).rounded()))%")
+                        .background {
+                            GeometryReader { geometry in
+                                Canvas { context, size in
+                                    var ticks = Path()
+                                    let width = max(0, geometry.size.width - 28)
+                                    for index in 0...14 {
+                                        let x = 14 + width * CGFloat(index) / 14
+                                        ticks.move(to: CGPoint(x: x, y: size.height / 2 - 4))
+                                        ticks.addLine(to: CGPoint(x: x, y: size.height / 2 + 4))
+                                    }
+                                    context.stroke(ticks, with: .color(Color(uiColor: .systemGray3)), lineWidth: 1.5)
+                                }
+                            }
+                        }
+                    Button("恢复默认") { fontScale = 1 }
+                        .appFont(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("font-size-reset")
+                        .padding(.vertical, 6)
+                }
+                .padding(.top, 12)
+                .disabled(fontFollowsSystem)
+                .opacity(fontFollowsSystem ? 0.45 : 1)
+            }
+            .padding(.horizontal, 12)
+        }
+        .frame(maxWidth: 720)
+        .padding(.horizontal, 20)
+        .padding(.top, 16)
+        .padding(.bottom, 20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(uiColor: .systemGroupedBackground))
+        .navigationTitle("字体大小")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear { fontScale = AppFontScale.normalized(fontScale) }
+    }
+}
+
 private struct PrivacyPolicySheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var isLoading = true
@@ -318,6 +432,8 @@ private struct PrivacyPolicySheet: View {
 }
 
 private struct PrivacyPolicyWebView: UIViewRepresentable {
+    @AppStorage(AppFontScale.key) private var fontScale = 1.0
+    @AppStorage(AppFontScale.followsSystemKey) private var fontFollowsSystem = false
     let url: URL
     @Binding var isLoading: Bool
     @Binding var loadFailed: Bool
@@ -331,11 +447,14 @@ private struct PrivacyPolicyWebView: UIViewRepresentable {
         configuration.defaultWebpagePreferences.allowsContentJavaScript = false
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
+        webView.pageZoom = CGFloat(AppFontScale.effective(fontScale, followsSystem: fontFollowsSystem))
         webView.load(URLRequest(url: url))
         return webView
     }
 
-    func updateUIView(_ webView: WKWebView, context: Context) {}
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        webView.pageZoom = CGFloat(AppFontScale.effective(fontScale, followsSystem: fontFollowsSystem))
+    }
 
     final class Coordinator: NSObject, WKNavigationDelegate {
         @Binding var isLoading: Bool
@@ -415,7 +534,7 @@ private struct DefaultConfigurationRow: View {
                     .controlSize(.small)
             } else {
                 Text(value)
-                    .font(.subheadline)
+                    .appFont(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -448,9 +567,9 @@ private struct AgentPresetSelectionView: View {
             LazyVStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 7) {
                     Text("Agent 预设")
-                        .font(.title2.bold())
+                        .appFont(.title2.bold())
                     Text("预设决定 Agent 使用的工具、提示词与能力。选择后只对新建会话生效。")
-                        .font(.subheadline)
+                        .appFont(.subheadline)
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -495,7 +614,7 @@ private struct AgentPresetSelectionView: View {
 
                 if store.agentPresetsAuthorable || store.agentPresetsHasDocument {
                     Label(presetCapabilityText, systemImage: "info.circle")
-                        .font(.footnote)
+                        .appFont(.footnote)
                         .foregroundStyle(.secondary)
                         .padding(.top, 4)
                 }
@@ -546,10 +665,10 @@ private struct AgentPresetCard: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(preset.displayName)
-                        .font(.headline)
+                        .appFont(.headline)
                         .foregroundStyle(.primary)
                     Text(preset.id)
-                        .font(.caption.monospaced())
+                        .appFont(.caption.monospaced())
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 3)
@@ -557,7 +676,7 @@ private struct AgentPresetCard: View {
                     Spacer()
                     if isSelected {
                         Text("当前使用")
-                            .font(.caption.weight(.semibold))
+                            .appFont(.caption.weight(.semibold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
@@ -566,13 +685,13 @@ private struct AgentPresetCard: View {
                 }
 
                 Text(preset.displayDescription)
-                    .font(.subheadline)
+                    .appFont(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
                 if preset.broken == true {
                     Label("该预设存在配置错误，暂时不能设为默认值", systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption)
+                        .appFont(.caption)
                         .foregroundStyle(.orange)
                 }
             }
@@ -610,9 +729,9 @@ private struct DefaultModelSelectionView: View {
             LazyVStack(alignment: .leading, spacing: 20) {
                 VStack(alignment: .leading, spacing: 7) {
                     Text("默认模型")
-                        .font(.title2.bold())
+                        .appFont(.title2.bold())
                     Text("为之后新建的会话设置默认模型与思考等级。这会更新部署级设置，同步影响 WebUI，运行中的会话保持启动时的配置。")
-                        .font(.subheadline)
+                        .appFont(.subheadline)
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -637,7 +756,7 @@ private struct DefaultModelSelectionView: View {
                     ForEach(modelGroups) { group in
                         VStack(alignment: .leading, spacing: 10) {
                             Text(group.name)
-                                .font(.subheadline.weight(.semibold))
+                                .appFont(.subheadline.weight(.semibold))
                                 .foregroundStyle(.secondary)
                             ForEach(group.models) { model in
                                 DefaultModelCard(
@@ -740,12 +859,12 @@ private struct DefaultModelCard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(model.name)
-                    .font(.headline)
+                    .appFont(.headline)
                     .foregroundStyle(.primary)
                 Spacer()
                 if isSelected {
                     Text("当前使用")
-                        .font(.caption.weight(.semibold))
+                        .appFont(.caption.weight(.semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
@@ -758,7 +877,7 @@ private struct DefaultModelCard: View {
             if !efforts.isEmpty {
                 HStack(spacing: 8) {
                     Text("思考等级")
-                        .font(.caption)
+                        .appFont(.caption)
                         .foregroundStyle(.secondary)
                     ForEach(efforts) { effort in
                         let isCurrentEffort = isSelected && effort.id == currentEffort
@@ -766,7 +885,7 @@ private struct DefaultModelCard: View {
                             onSelectEffort(effort)
                         } label: {
                             Text(effort.name)
-                                .font(.caption.weight(.medium))
+                                .appFont(.caption.weight(.medium))
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 5)
                                 .background(isCurrentEffort ? Color.primary : Color.secondary.opacity(0.12), in: Capsule())

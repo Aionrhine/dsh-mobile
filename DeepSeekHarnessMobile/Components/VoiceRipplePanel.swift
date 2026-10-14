@@ -14,7 +14,6 @@ func voiceOverlayAnimation(active: Bool, reduceMotion: Bool = false) -> Animatio
 /// 底部录音遮罩：静音时粒子漂移，讲话时收束成真实音量的柱状波形。
 struct VoiceRipplePanel: View {
     let state: SharedVoiceInputSnapshot
-    let stop: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
 
@@ -46,17 +45,15 @@ struct VoiceRipplePanel: View {
                 }
                 .accessibilityHidden(true)
                 Text(LocalizedStringKey(state.status))
-                    .font(.system(size: 17, weight: .medium)).foregroundStyle(ink.opacity(0.9))
+                    .appFont(.system(size: 17, weight: .medium)).foregroundStyle(ink.opacity(0.9))
                     .position(x: geometry.size.width / 2, y: contentHeight * 0.4)
-                if state.phase == "transcribing" {
-                    Button("取消", action: stop)
-                        .font(.caption.weight(.medium)).foregroundStyle(ink.opacity(0.85))
-                        .padding(.horizontal, 14).padding(.vertical, 8)
-                        .background(ink.opacity(0.10), in: Capsule())
-                        .position(x: geometry.size.width / 2, y: contentHeight * 0.86)
-                }
+
             }
             .mask(VoiceEllipticalMask())
+            .background {
+                VoiceOuterHalo(color: colorScheme == .dark ? Color(uiColor: .systemBackground) : .white)
+                    .allowsHitTesting(false)
+            }
             .contentShape(Rectangle())
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: cancelling)
         }
@@ -86,6 +83,28 @@ private struct VoiceOverlayPalette {
         base = color(colors.0)
         glow = color(colors.1)
         ink = color(colors.2)
+    }
+}
+
+/// 更宽的背景色椭圆衬在彩色蒙层后方，柔化外缘并淡化边缘下方的会话内容。
+private struct VoiceOuterHalo: View {
+    let color: Color
+
+    var body: some View {
+        Canvas { context, size in
+            let fadeHeight = size.height * 0.6
+            let radiusX = size.width * 0.98
+            let gradient = Gradient(stops: (0...32).map { index in
+                let radius = Double(index) / 32
+                let progress = min(1, max(0, (radius - 0.78) / 0.22))
+                let opacity = 1 - progress * progress * (3 - 2 * progress)
+                return .init(color: color.opacity(opacity), location: radius)
+            })
+            context.translateBy(x: size.width / 2, y: fadeHeight)
+            context.scaleBy(x: radiusX, y: fadeHeight)
+            let topRegion = CGRect(x: -size.width / (2 * radiusX), y: -1, width: size.width / radiusX, height: 1)
+            context.fill(Path(topRegion), with: .radialGradient(gradient, center: .zero, startRadius: 0, endRadius: 1))
+        }
     }
 }
 
