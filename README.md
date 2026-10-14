@@ -8,7 +8,13 @@
 
 通过 Mobile Gateway 在手机上访问 DeepSeek Harness 的工作区、会话、实时对话、Agent 轨迹与文件。
 
-[产品主页](https://clarklevis1995.github.io/dsh-mobile/) · [加入 iOS TestFlight 公测](https://testflight.apple.com/join/1Euwby6r) · [Android 下载](https://github.com/Clarklevis1995/dsh-mobile/releases)
+Official website: [Whaleness](https://clarklevis1995.github.io/dsh-mobile/)
+
+<p>
+  <a href="https://testflight.apple.com/join/1Euwby6r"><img src="Docs/images/badges/testflight.svg" alt="加入 iOS TestFlight 公测" width="180" height="60"></a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/Clarklevis1995/dsh-mobile/releases"><img src="Docs/images/badges/android-github.svg" alt="从 GitHub Releases 下载 Android APK" width="180" height="60"></a>
+</p>
 
 ![Kotlin Multiplatform](https://img.shields.io/badge/Kotlin-Multiplatform-7F52FF?logo=kotlin&logoColor=white)
 ![Android 7.0+](https://img.shields.io/badge/Android-7.0%2B-3DDC84?logo=android&logoColor=white)
