@@ -291,6 +291,23 @@ struct FontSizeSettingsView: View {
     @AppStorage(AppFontScale.key) private var fontScale = 1.0
     @AppStorage(AppFontScale.followsSystemKey) private var fontFollowsSystem = false
     @Environment(\.colorScheme) private var colorScheme
+    @State private var fontFeedback = UIImpactFeedbackGenerator(style: .medium)
+
+    private var sliderFontScale: Binding<Double> {
+        Binding(
+            get: { fontScale },
+            set: { value in
+                guard !fontFollowsSystem else { return }
+                let oldTick = Int((fontScale * 20).rounded())
+                let newTick = Int((value * 20).rounded())
+                fontScale = value
+                if oldTick != newTick {
+                    fontFeedback.impactOccurred()
+                    fontFeedback.prepare()
+                }
+            }
+        )
+    }
 
     private var bubbleColor: Color {
         colorScheme == .dark ? Color(red: 0.11, green: 0.18, blue: 0.29)
@@ -343,7 +360,9 @@ struct FontSizeSettingsView: View {
                         Text(verbatim: "A").appFont(.system(size: 22, weight: .medium))
                     }
                     .foregroundStyle(.secondary)
-                    Slider(value: $fontScale, in: 0.8...1.5, step: 0.05)
+                    Slider(value: sliderFontScale, in: 0.8...1.5, step: 0.05) { editing in
+                        if editing { fontFeedback.prepare() }
+                    }
                         .disabled(fontFollowsSystem)
                         .tint(Color(uiColor: .systemGray3))
                         .accessibilityIdentifier("font-size-slider")

@@ -15,6 +15,8 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.sp
 import org.junit.Assert.assertTrue
@@ -33,6 +35,46 @@ import java.util.Locale
 
 class AppearanceSettingsDeviceTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test fun fontSliderKeepsDraggingAcrossLiveFontScaleChanges() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val preferences = context.getSharedPreferences("font-drag-test", Context.MODE_PRIVATE)
+        preferences.edit().clear().commit()
+        val appearance = AppearanceSettings(preferences)
+        appearance.selectFontScale(0.8f)
+        try {
+            compose.setContent { DshTheme(appearance) { FontSizeSettingsScreen {} } }
+            val slider = compose.onNodeWithContentDescription("字体大小")
+            val fingerY = slider.fetchSemanticsNode().boundsInRoot.center.y
+            slider.performTouchInput { down(Offset(width * 0.05f, center.y)) }
+            // 每次移动后等待重组，验证字号实时变化不会取消仍按下的手指。
+            for (fraction in listOf(0.2f, 0.4f, 0.6f, 0.8f, 0.99f)) {
+                val localY = fingerY - slider.fetchSemanticsNode().boundsInRoot.top
+                slider.performTouchInput {
+                    advanceEventTime(80)
+                    moveTo(Offset(width * fraction, localY))
+                }
+                compose.waitForIdle()
+            }
+            compose.runOnIdle { assertEquals(1.5f, appearance.fontScale, 0.001f) }
+            // 同一次按下继续反向拖动，不应需要松手后重新抓取滑块。
+            for (fraction in listOf(0.8f, 0.6f, 0.4f, 0.2f, 0.01f)) {
+                val localY = fingerY - slider.fetchSemanticsNode().boundsInRoot.top
+                slider.performTouchInput {
+                    advanceEventTime(80)
+                    moveTo(Offset(width * fraction, localY))
+                }
+                compose.waitForIdle()
+            }
+            slider.performTouchInput { up() }
+            compose.runOnIdle {
+                assertEquals(0.8f, appearance.fontScale, 0.001f)
+                assertEquals(0.8f, AppearanceSettings(preferences).fontScale, 0.001f)
+            }
+        } finally {
+            preferences.edit().clear().commit()
+        }
+    }
 
     @Test fun fontSizeEntryOpensSeparatePageAndReturnsWithSavedSelection() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext

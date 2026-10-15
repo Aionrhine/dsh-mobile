@@ -16,6 +16,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.graphics.Color
@@ -90,7 +91,8 @@ internal fun DshTheme(
 ) {
     val view = LocalView.current
     val systemDensity = LocalDensity.current
-    val appDensity = AppFontDensity(systemDensity, appearance.effectiveFontScale)
+    val fontScale = appearance.effectiveFontScale
+    val appDensity = remember(systemDensity, fontScale) { AppFontDensity(systemDensity, fontScale) }
     val dark = appearance.interfaceStyle.isDark(isSystemInDarkTheme())
     val configuration = Configuration(LocalConfiguration.current).apply {
         uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or

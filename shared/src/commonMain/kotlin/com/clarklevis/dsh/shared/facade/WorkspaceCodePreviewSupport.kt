@@ -102,24 +102,8 @@ object WorkspaceCodePreviewSupport {
             }
         }
 
-        BASE_TOKEN_PATTERN.findAll(text).forEach { match ->
-            val token = match.value
-            val kind = when {
-                token.startsWith("//") || token.startsWith("/*") || token.startsWith("<!--") ->
-                    WorkspaceCodeTokenKind.COMMENT
-                token.startsWith("#") && language in HASH_COMMENT_LANGUAGES -> WorkspaceCodeTokenKind.COMMENT
-                token.startsWith("--") && language == "sql" -> WorkspaceCodeTokenKind.COMMENT
-                language == "json" && token.startsWith('"') &&
-                    nextNonWhitespaceCharacter(text, match.range.last + 1) == ':' ->
-                    WorkspaceCodeTokenKind.ATTRIBUTE
-                else -> WorkspaceCodeTokenKind.STRING
-            }
-            val isAllowed = when {
-                token.startsWith("#") -> language in HASH_COMMENT_LANGUAGES
-                token.startsWith("--") -> language == "sql"
-                else -> true
-            }
-            if (isAllowed) addRange(match.range.first, match.range.last + 1, kind)
+        tokenizeStringsAndComments(text, language).forEach { token ->
+            addRange(token.start, token.endExclusive, token.kind)
         }
 
         if (language == "css") {
@@ -138,9 +122,106 @@ object WorkspaceCodePreviewSupport {
             )
         }
         addMatches(TYPE_PATTERN, WorkspaceCodeTokenKind.TYPE)
-        addMatches(NUMBER_PATTERN, WorkspaceCodeTokenKind.NUMBER)
+
+        // Kotlin/Native 的正则后向断言也会在长文本上退化，直接检查数字两侧边界。
+        var index = 0
+        while (index < text.length) {
+            if (!occupied[index] && text[index].isDigit() &&
+                (index == 0 || !text[index - 1].isIdentifierPart())
+            ) {
+                val end = numberTokenEnd(text, index)
+                if (end == text.length || !text[end].isIdentifierPart()) {
+                    addRange(index, end, WorkspaceCodeTokenKind.NUMBER)
+                }
+                index = end
+            } else {
+                index++
+            }
+        }
 
         return tokens.sortedBy(WorkspaceCodeToken::start)
+    }
+
+    /**
+     * 重复分组的字符串正则会在 Kotlin/Native 中逐字符递归，长字符串可耗尽线程栈。
+     * 使用只前进的扫描器，未闭合的字符串和块注释高亮至文件末尾，避免反复回溯。
+     */
+    private fun tokenizeStringsAndComments(text: String, language: String): List<WorkspaceCodeToken> {
+        val tokens = mutableListOf<WorkspaceCodeToken>()
+        var index = 0
+        while (index < text.length) {
+            val start = index
+            val kind: WorkspaceCodeTokenKind
+            when {
+                text.startsWith("<!--", index) || text.startsWith("/*", index) -> {
+                    val isHtmlComment = text.startsWith("<!--", index)
+                    val delimiter = if (isHtmlComment) "-->" else "*/"
+                    val close = text.indexOf(delimiter, index + if (isHtmlComment) 4 else 2)
+                    index = if (close < 0) text.length else close + delimiter.length
+                    kind = WorkspaceCodeTokenKind.COMMENT
+                }
+                text.startsWith("//", index) ||
+                    (text[index] == '#' && language in HASH_COMMENT_LANGUAGES) ||
+                    (text.startsWith("--", index) && language == "sql") -> {
+                    val close = text.indexOf('\n', index)
+                    index = if (close < 0) text.length else close
+                    kind = WorkspaceCodeTokenKind.COMMENT
+                }
+                text[index] == '"' || text[index] == '\'' || text[index] == '`' -> {
+                    val quote = text[index]
+                    val delimiter = if (quote != '`' &&
+                        index + 2 < text.length && text[index + 1] == quote && text[index + 2] == quote
+                    ) {
+                        quote.toString().repeat(3)
+                    } else {
+                        quote.toString()
+                    }
+                    index = quotedTokenEnd(text, index, delimiter)
+                    kind = if (language == "json" && quote == '"' &&
+                        nextNonWhitespaceCharacter(text, index) == ':'
+                    ) {
+                        WorkspaceCodeTokenKind.ATTRIBUTE
+                    } else {
+                        WorkspaceCodeTokenKind.STRING
+                    }
+                }
+                else -> {
+                    index++
+                    continue
+                }
+            }
+            tokens += WorkspaceCodeToken(start, index, kind)
+        }
+        return tokens
+    }
+
+    private fun quotedTokenEnd(text: String, start: Int, delimiter: String): Int {
+        var index = start + delimiter.length
+        while (index < text.length) {
+            when {
+                text[index] == '\\' -> index += if (index + 1 < text.length) 2 else 1
+                text.startsWith(delimiter, index) -> return index + delimiter.length
+                else -> index++
+            }
+        }
+        return text.length
+    }
+
+    private fun numberTokenEnd(text: String, start: Int): Int {
+        var index = start
+        if (index + 2 < text.length && text[index] == '0' &&
+            (text[index + 1] == 'x' || text[index + 1] == 'X') && text[index + 2].isHexDigit()
+        ) {
+            index += 2
+            while (index < text.length && text[index].isHexDigit()) index++
+            return index
+        }
+        while (index < text.length && text[index].isDigit()) index++
+        if (index + 1 < text.length && text[index] == '.' && text[index + 1].isDigit()) {
+            index++
+            while (index < text.length && text[index].isDigit()) index++
+        }
+        return index
     }
 
     /**
@@ -168,23 +249,6 @@ object WorkspaceCodePreviewSupport {
                 cursor++
             }
             return text.length
-        }
-
-        fun numberEnd(start: Int): Int {
-            var cursor = start
-            if (cursor + 1 < text.length && text[cursor] == '0' &&
-                (text[cursor + 1] == 'x' || text[cursor + 1] == 'X')
-            ) {
-                cursor += 2
-                while (cursor < text.length && text[cursor].isHexDigit()) cursor++
-                return cursor
-            }
-            while (cursor < text.length && text[cursor].isDigit()) cursor++
-            if (cursor < text.length && text[cursor] == '.') {
-                cursor++
-                while (cursor < text.length && text[cursor].isDigit()) cursor++
-            }
-            return cursor
         }
 
         while (index < text.length) {
@@ -216,7 +280,7 @@ object WorkspaceCodePreviewSupport {
                     index = end
                 }
                 text[index].isDigit() && (index == 0 || !text[index - 1].isIdentifierPart()) -> {
-                    val end = numberEnd(index)
+                    val end = numberTokenEnd(text, index)
                     if (end == text.length || !text[end].isIdentifierPart()) {
                         add(index, end, WorkspaceCodeTokenKind.NUMBER)
                     }
@@ -367,14 +431,9 @@ object WorkspaceCodePreviewSupport {
     )
     private val MARKUP_LANGUAGES = setOf("html", "xml")
 
-    private val BASE_TOKEN_PATTERN = Regex(
-        pattern = """<!--.*?-->|/\*.*?\*/|//[^\n]*|--[^\n]*|\#[^\n]*|\"\"\".*?\"\"\"|'''.*?'''|\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`""",
-        options = setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.MULTILINE)
-    )
     private val CSS_PROPERTY_PATTERN = Regex("(?m)^[ \\t]*([A-Za-z-]+)(?=\\s*:)")
     private val CSS_SELECTOR_PATTERN = Regex("(?m)(?:^|[},])\\s*([.#]?[A-Za-z][A-Za-z0-9_-]*)(?=\\s*[{,])")
     private val TYPE_PATTERN = Regex("\\b[A-Z][A-Za-z0-9_]*\\b")
-    private val NUMBER_PATTERN = Regex("(?<![A-Za-z_])(?:0[xX][0-9A-Fa-f]+|\\d+(?:\\.\\d+)?)(?![A-Za-z_])")
 
     private val LANGUAGE_KEYWORDS = mapOf(
         "python" to setOf(

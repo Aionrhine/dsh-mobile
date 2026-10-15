@@ -29,6 +29,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,10 +38,13 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.sp
 import com.clarklevis.dsh.android.R
 import kotlin.math.roundToInt
@@ -102,6 +107,11 @@ internal fun FontSizeSettingsScreen(onBack: () -> Unit) {
 @Composable
 internal fun FontSizeControls(modifier: Modifier = Modifier) {
     val appearance = LocalAppearanceSettings.current
+    val view = LocalView.current
+    val haptics = remember(view) { ClickHapticFeedback(view) }
+    val density = LocalDensity.current
+    // 滑块没有文字，只保留物理密度，避免实时字号变化重置其 pointer input 手势。
+    val sliderDensity = remember(density.density) { Density(density.density, fontScale = 1f) }
     val foreground = MaterialTheme.colorScheme.onSurfaceVariant
     val trackColor = foreground.copy(alpha = 0.22f)
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -133,30 +143,37 @@ internal fun FontSizeControls(modifier: Modifier = Modifier) {
                 Spacer(Modifier.weight(1f))
                 Text("A", fontSize = 22.sp, fontWeight = FontWeight.Medium, color = foreground)
             }
-            Slider(
-                value = appearance.fontScale,
-                onValueChange = appearance::selectFontScale,
-                valueRange = 0.8f..1.5f,
-                steps = 13,
-                enabled = !appearance.fontFollowsSystem,
-                modifier = Modifier.fillMaxWidth().semantics { contentDescription = "字体大小" },
-                thumb = {
-                    Box(
-                        Modifier.size(28.dp).shadow(4.dp, CircleShape)
-                            .background(MaterialTheme.colorScheme.surface, CircleShape)
-                    )
-                },
-                track = {
-                    Canvas(Modifier.fillMaxWidth().height(24.dp)) {
-                        val y = size.height / 2
-                        drawLine(trackColor, Offset(0f, y), Offset(size.width, y), 2.dp.toPx())
-                        for (index in 0..14) {
-                            val x = size.width * index / 14
-                            drawLine(trackColor, Offset(x, y - 4.dp.toPx()), Offset(x, y + 4.dp.toPx()), 2.dp.toPx())
+            CompositionLocalProvider(LocalDensity provides sliderDensity) {
+                Slider(
+                    value = appearance.fontScale,
+                    onValueChange = { value ->
+                        val oldTick = (appearance.fontScale * 20).roundToInt()
+                        val newTick = (value * 20).roundToInt()
+                        if (oldTick != newTick) haptics.perform()
+                        appearance.selectFontScale(value)
+                    },
+                    valueRange = 0.8f..1.5f,
+                    steps = 13,
+                    enabled = !appearance.fontFollowsSystem,
+                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = "字体大小" },
+                    thumb = {
+                        Box(
+                            Modifier.size(28.dp).shadow(4.dp, CircleShape)
+                                .background(MaterialTheme.colorScheme.surface, CircleShape)
+                        )
+                    },
+                    track = {
+                        Canvas(Modifier.fillMaxWidth().height(24.dp)) {
+                            val y = size.height / 2
+                            drawLine(trackColor, Offset(0f, y), Offset(size.width, y), 2.dp.toPx())
+                            for (index in 0..14) {
+                                val x = size.width * index / 14
+                                drawLine(trackColor, Offset(x, y - 4.dp.toPx()), Offset(x, y + 4.dp.toPx()), 2.dp.toPx())
+                            }
                         }
                     }
-                }
-            )
+                )
+            }
             TextButton(
                 onClick = { appearance.selectFontScale(1f) },
                 enabled = !appearance.fontFollowsSystem,

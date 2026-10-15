@@ -9,8 +9,8 @@ import android.provider.Settings
 import android.view.HapticFeedbackConstants
 import android.view.View
 
-/** 普通点击作为中等触感，预先创建效果，松手时直接播放并尊重系统触感设置。 */
-internal class DrawerHapticFeedback(private val view: View) {
+/** 短促的中等点击触感，预先创建效果，并尊重系统触感设置。 */
+internal class ClickHapticFeedback(private val view: View) {
     private val vibrator = view.context.getSystemService(Vibrator::class.java)?.takeIf { it.hasVibrator() }
     private val click = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK)

@@ -90,7 +90,7 @@ internal fun WorkspaceDrawer(
             derivedStateOf { progress.value > 0.5f && !dark }
         }
         val view = LocalView.current
-        val haptics = remember(view) { DrawerHapticFeedback(view) }
+        val haptics = remember(view) { ClickHapticFeedback(view) }
         val dragFeedback = remember(haptics) {
             DrawerDragFeedback { haptics.perform() }
         }
