@@ -1787,6 +1787,182 @@ class GatewayRuntimeIntegrationTest {
         )
     }
 
+    @Test
+    fun foregroundReplacesStalledHandshakeWithPreviouslyConnectedEndpoint() = runTest {
+        val transport = FakeTransport()
+        val endpoints = listOf("wss://public.example/ws/mobile", "ws://192.0.2.10:3081/ws/mobile")
+        val runtime = newRuntime(transport, clock = RecordingDelayClock(), trustedEndpoints = endpoints)
+        backgroundScope.launch { runtime.events.collect { } }
+        runCurrent()
+        runtime.connect(endpoints.first())
+        transport.opened()
+        transport.receive("""{"kind":"hello","authenticated":true}""")
+        runCurrent()
+        transport.fail(GatewayTransportState.Failed(transport.connectionSpecs.last().generation,
+            reason = "websocket-failure", recoverable = true))
+        runCurrent()
+        advanceTimeBy(2_000)
+        runCurrent()
+        assertEquals(2, transport.connectionSpecs.size)
+        assertEquals(endpoints.last(), transport.connectionSpecs.last().endpoint)
+        val stalledGeneration = transport.connectionSpecs.last().generation
+        runtime.applicationDidEnterBackground()
+        advanceTimeBy(1_000)
+        runtime.applicationDidBecomeActive()
+        runCurrent()
+        val returnedAt = testScheduler.currentTime
+        assertEquals(3, transport.connectionSpecs.size, "Foreground must replace a stalled pre-background attempt")
+        assertEquals(endpoints.first(), transport.connectionSpecs.last().endpoint)
+        transport.receiveAt(stalledGeneration, """{"kind":"hello","authenticated":true}""")
+        runCurrent()
+        assertEquals(GatewayConnectionState.CONNECTING, runtime.state.value.connection,
+            "A stale handshake must not authenticate the replacement connection")
+        transport.opened()
+        transport.receive("""{"kind":"hello","authenticated":true}""")
+        runCurrent()
+        assertEquals(GatewayConnectionState.CONNECTED, runtime.state.value.connection)
+        assertEquals(0L, testScheduler.currentTime - returnedAt)
+    }
+
+    @Test
+    fun foregroundLateFailureRetriesPreviouslyConnectedEndpointOnceBeforeLanFallback() = runTest {
+        val transport = FakeTransport()
+        val endpoints = listOf("wss://public.example/ws/mobile", "ws://192.0.2.10:3081/ws/mobile")
+        val runtime = newRuntime(transport, clock = RecordingDelayClock(), trustedEndpoints = endpoints)
+        backgroundScope.launch { runtime.events.collect { } }
+        runCurrent()
+        runtime.connect(endpoints.first())
+        transport.opened()
+        transport.receive("""{"kind":"hello","authenticated":true}""")
+        runCurrent()
+        runtime.applicationDidEnterBackground()
+        runtime.applicationDidBecomeActive()
+        runCurrent()
+        transport.receive("""{"kind":"pong"}""")
+        runCurrent()
+        advanceTimeBy(3_000)
+        runCurrent()
+        transport.fail(GatewayTransportState.Failed(transport.connectionSpecs.last().generation,
+            reason = "websocket-failure", recoverable = true))
+        runCurrent()
+        assertEquals(2, transport.connectionSpecs.size)
+        assertEquals(endpoints.first(), transport.connectionSpecs.last().endpoint)
+        transport.opened()
+        transport.receive("""{"kind":"hello","authenticated":true}""")
+        runCurrent()
+        assertEquals(GatewayConnectionState.CONNECTED, runtime.state.value.connection)
+        assertEquals(3_000L, testScheduler.currentTime, "A usable public endpoint must recover without the LAN timeout")
+        // The foreground retry is bounded and does not disable ordinary failover.
+        advanceTimeBy(6_000)
+        runCurrent()
+        transport.fail(GatewayTransportState.Failed(transport.connectionSpecs.last().generation,
+            reason = "websocket-failure", recoverable = true))
+        runCurrent()
+        assertEquals(2, transport.connectionSpecs.size)
+        advanceTimeBy(2_000)
+        runCurrent()
+        assertEquals(3, transport.connectionSpecs.size)
+        assertEquals(endpoints.last(), transport.connectionSpecs.last().endpoint)
+    }
+
+    @Test
+    fun foregroundResumeRetryDoesNotBypassAuthenticationFailureOrManualDisconnect() = runTest {
+        val transport = FakeTransport()
+        val runtime = newRuntime(transport, clock = RecordingDelayClock(),
+            trustedEndpoints = listOf("wss://public.example/ws/mobile", "ws://192.0.2.10:3081/ws/mobile"))
+        backgroundScope.launch { runtime.events.collect { } }
+        runCurrent()
+        runtime.connect("wss://public.example/ws/mobile")
+        transport.opened()
+        transport.receive("""{"kind":"hello","authenticated":true}""")
+        runCurrent()
+        runtime.applicationDidEnterBackground()
+        runtime.applicationDidBecomeActive()
+        runCurrent()
+        transport.receive("""{"kind":"pong"}""")
+        runCurrent()
+        transport.fail(GatewayTransportState.Failed(transport.connectionSpecs.last().generation,
+            httpStatus = 401, recoverable = false))
+        runCurrent()
+        assertEquals(GatewayConnectionState.FAILED, runtime.state.value.connection)
+        advanceTimeBy(5_001)
+        runCurrent()
+        runtime.applicationDidEnterBackground()
+        runtime.applicationDidBecomeActive()
+        runCurrent()
+        assertEquals(1, transport.connectionSpecs.size, "Authentication failure stays blocked across foreground transitions")
+        runtime.disconnect()
+        runtime.applicationDidEnterBackground()
+        runtime.applicationDidBecomeActive()
+        runCurrent()
+        assertEquals(1, transport.connectionSpecs.size, "Explicit disconnection stays disconnected")
+        assertEquals(GatewayConnectionState.DISCONNECTED, runtime.state.value.connection)
+    }
+
+    @Test
+    fun foregroundResumeRetryCanBeConsumedOnlyOnceWithinTheWindow() = runTest {
+        val transport = FakeTransport()
+        val endpoints = listOf("wss://public.example/ws/mobile", "ws://192.0.2.10:3081/ws/mobile")
+        val runtime = newRuntime(transport, clock = RecordingDelayClock(), trustedEndpoints = endpoints)
+        backgroundScope.launch { runtime.events.collect { } }
+        runCurrent()
+        runtime.connect(endpoints.first())
+        transport.opened()
+        transport.receive("""{"kind":"hello","authenticated":true}""")
+        runCurrent()
+        runtime.applicationDidEnterBackground()
+        runtime.applicationDidBecomeActive()
+        runCurrent()
+        transport.receive("""{"kind":"pong"}""")
+        runCurrent()
+        advanceTimeBy(3_000)
+        runCurrent()
+        transport.fail(GatewayTransportState.Failed(transport.connectionSpecs.last().generation,
+            reason = "websocket-failure", recoverable = true))
+        runCurrent()
+        assertEquals(2, transport.connectionSpecs.size)
+        assertEquals(endpoints.first(), transport.connectionSpecs.last().endpoint)
+        transport.opened()
+        transport.receive("""{"kind":"hello","authenticated":true}""")
+        runCurrent()
+        transport.fail(GatewayTransportState.Failed(transport.connectionSpecs.last().generation,
+            reason = "websocket-failure", recoverable = true))
+        runCurrent()
+        assertEquals(2, transport.connectionSpecs.size, "A second failure must use ordinary bounded backoff")
+        advanceTimeBy(2_000)
+        runCurrent()
+        assertEquals(3, transport.connectionSpecs.size)
+        assertEquals(endpoints.last(), transport.connectionSpecs.last().endpoint)
+    }
+
+    @Test
+    fun foregroundReturnsToPreviouslyConnectedEndpointAfterBackgroundFallbackTimeout() = runTest {
+        val transport = FakeTransport()
+        val endpoints = listOf("wss://public.example/ws/mobile", "ws://192.0.2.10:3081/ws/mobile")
+        val runtime = newRuntime(transport, clock = RecordingDelayClock(), trustedEndpoints = endpoints)
+        backgroundScope.launch { runtime.events.collect { } }
+        runCurrent()
+        runtime.connect(endpoints.first())
+        transport.opened()
+        transport.receive("""{"kind":"hello","authenticated":true}""")
+        runCurrent()
+        transport.fail(GatewayTransportState.Failed(transport.connectionSpecs.last().generation,
+            reason = "websocket-failure", recoverable = true))
+        runCurrent()
+        advanceTimeBy(2_000)
+        runCurrent()
+        assertEquals(endpoints.last(), transport.connectionSpecs.last().endpoint)
+        runtime.applicationDidEnterBackground()
+        advanceTimeBy(15_001)
+        runCurrent()
+        assertEquals(GatewayConnectionState.FAILED, runtime.state.value.connection)
+        runtime.applicationDidBecomeActive()
+        runCurrent()
+        assertEquals(3, transport.connectionSpecs.size)
+        assertEquals(endpoints.first(), transport.connectionSpecs.last().endpoint,
+            "Foreground must not retry a failed LAN endpoint ahead of the authenticated public endpoint")
+    }
+
     private fun kotlinx.coroutines.test.TestScope.newRuntime(
         transport: FakeTransport,
         network: FakeNetworkMonitor = FakeNetworkMonitor(),
