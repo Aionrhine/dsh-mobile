@@ -26,6 +26,9 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.clarklevis.dsh.android.AndroidWorkspaceLocalFile
 import org.junit.Assert.assertTrue
 import kotlin.math.abs
+import java.util.Locale
+import org.junit.Before
+import org.junit.After
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -34,6 +37,15 @@ import java.io.File
 @RunWith(AndroidJUnit4::class)
 class WorkspacePdfPreviewDeviceTest {
     @get:Rule val compose = createComposeRule()
+    private lateinit var originalTestLocale: Locale
+
+    @Before fun useChineseLabels() {
+        originalTestLocale = Locale.getDefault()
+        Locale.setDefault(Locale.SIMPLIFIED_CHINESE)
+    }
+
+    @After fun restoreTestLocale() { Locale.setDefault(originalTestLocale) }
+
 
     @Test
     fun pdfScrollsAcrossPagesInBottomSheetAndCloses() {
@@ -104,7 +116,7 @@ class WorkspacePdfPreviewDeviceTest {
     @Test
     fun multilineTitleIsCenteredAndSaveMenuKeepsPreviewOpen() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val name = "2026年国庆海南三亚旅游攻略与详细行程安排.pdf"
+        val name = "2026年国庆海南三亚旅游攻略与详细行程安排（含每日行程、交通住宿及餐饮预算、景点预约和亲子出行注意事项）.pdf"
         val file = AndroidWorkspaceLocalFile(File(context.cacheDir, name), "s1", name, name, "application/pdf", "preview")
         var saveCount = 0
         compose.setContent {

@@ -158,6 +158,7 @@ struct ConversationViewport: UIViewControllerRepresentable {
     let scrollToBottomToken: Int
     let onContentAvailabilityChanged: (String?, Bool) -> Void
     let onPinnedToBottomChanged: (Bool) -> Void
+    let onScrolledFromTopChanged: (Bool) -> Void
     let onBottomAlignmentCompleted: () -> Void
     let onApproachingTop: () -> Void
 
@@ -168,6 +169,7 @@ struct ConversationViewport: UIViewControllerRepresentable {
             onBottomAlignmentCompleted: onBottomAlignmentCompleted,
             onApproachingTop: onApproachingTop
         )
+        controller.onScrolledFromTopChanged = onScrolledFromTopChanged
         proxy.controller = controller
         return controller
     }
@@ -175,6 +177,7 @@ struct ConversationViewport: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: ConversationViewportController, context: Context) {
         controller.onContentAvailabilityChanged = onContentAvailabilityChanged
         controller.onPinnedToBottomChanged = onPinnedToBottomChanged
+        controller.onScrolledFromTopChanged = onScrolledFromTopChanged
         controller.onBottomAlignmentCompleted = onBottomAlignmentCompleted
         controller.onApproachingTop = onApproachingTop
         controller.configure(
@@ -230,6 +233,7 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
     weak var proxyOwner: ConversationViewportProxy?
     var onContentAvailabilityChanged: (String?, Bool) -> Void
     var onPinnedToBottomChanged: (Bool) -> Void
+    var onScrolledFromTopChanged: (Bool) -> Void = { _ in }
     var onBottomAlignmentCompleted: () -> Void
     var onApproachingTop: () -> Void
 
@@ -250,6 +254,7 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
     private var hasPlacedInitialPosition = false
     private var hasAppliedSnapshot = false
     private var isPinnedToBottom = true
+    private var hasScrolledFromTop = false
     private var isProgrammaticScroll = false
     private var isApplyingSnapshot = false
     private var needsInitialBottomPlacement = false
@@ -378,6 +383,7 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
         lastReportedContentAvailability = nil
         reportContentAvailability(false)
         hasPlacedInitialPosition = false
+        updateTopEdgeVisibility()
         hasAppliedSnapshot = false
         isPinnedToBottom = false
         setPinned(true)
@@ -577,6 +583,7 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
         super.viewDidAppear(animated)
         placeInitialPositionIfNeeded()
         alignBottomIfNeeded()
+        updateTopEdgeVisibility()
     }
 
     override func viewDidLayoutSubviews() {
@@ -594,6 +601,7 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
         }
         placeInitialPositionIfNeeded()
         alignBottomIfNeeded()
+        updateTopEdgeVisibility()
     }
 
     func apply(
@@ -750,6 +758,7 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
             self.flushLiveHeightCorrectionsIfNeeded()
             self.hasAppliedSnapshot = true
             self.collectionView.isHidden = false
+            self.updateTopEdgeVisibility()
             // 只有 diffable snapshot 已经真正提交、cell 可以显示以后，才允许
             // SwiftUI 撤下冷加载遮罩。
             self.reportContentAvailability(hasConversationContent)
@@ -1234,6 +1243,7 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        updateTopEdgeVisibility()
         // A drag is not the same thing as leaving the tail. In particular,
         // dragging upward again while already at the bottom only produces the
         // rubber-band overscroll (`contentOffset.y > maximumOffsetY`). Keep the
@@ -1365,6 +1375,20 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
         isPinnedToBottom = value
         DispatchQueue.main.async { [weak self] in
             self?.onPinnedToBottomChanged(value)
+        }
+    }
+
+    private func updateTopEdgeVisibility() {
+        let halfPixel = 0.5 / max(traitCollection.displayScale, 1)
+        let scrolled = hasPlacedInitialPosition && !collectionView.isHidden
+            && !dataSource.snapshot().itemIdentifiers.isEmpty
+            && collectionView.contentOffset.y + collectionView.adjustedContentInset.top > halfPixel
+        guard scrolled != hasScrolledFromTop else { return }
+        hasScrolledFromTop = scrolled
+        // 只在离开或回到顶端时通知 SwiftUI，避免逐帧重组与布局期间修改状态。
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            onScrolledFromTopChanged(hasScrolledFromTop)
         }
     }
 

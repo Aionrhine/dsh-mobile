@@ -29,12 +29,23 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import org.junit.Assert.assertEquals
+import org.junit.Before
+import org.junit.After
 import org.junit.Rule
 import org.junit.Test
 import java.util.Locale
 
 class AppearanceSettingsDeviceTest {
     @get:Rule val compose = createComposeRule()
+    private lateinit var originalTestLocale: Locale
+
+    @Before fun useChineseLabels() {
+        originalTestLocale = Locale.getDefault()
+        Locale.setDefault(Locale.SIMPLIFIED_CHINESE)
+    }
+
+    @After fun restoreTestLocale() { Locale.setDefault(originalTestLocale) }
+
 
     @Test fun fontSliderKeepsDraggingAcrossLiveFontScaleChanges() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext

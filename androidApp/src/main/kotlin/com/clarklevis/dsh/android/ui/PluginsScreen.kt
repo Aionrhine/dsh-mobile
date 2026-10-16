@@ -25,6 +25,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -46,6 +52,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -156,7 +163,7 @@ private fun PluginPage(
                 Spacer(Modifier.size(46.dp))
             }
         }
-        content()
+        Box(Modifier.weight(1f).adaptiveContentWidth().testTag("plugin-content")) { content() }
     }
 }
 
@@ -192,36 +199,40 @@ private fun PluginCatalogContent(
     onGatewayDisable: () -> Unit
 ) {
     val catalog = stateHolder.pluginCatalog
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(
-        start = 20.dp, end = 20.dp, top = 12.dp, bottom = 32.dp
-    ), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item { Text(appText("安装、启用和配置插件"), color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        if (stateHolder.gatewayState.connection != GatewayConnectionState.CONNECTED) {
-            item { Text(appText("网关已断开，插件状态待重新连接确认"), color = MaterialTheme.colorScheme.tertiary) }
-        }
-        stateHolder.pluginNotice?.let { notice ->
-            item { Text(notice, color = MaterialTheme.colorScheme.tertiary) }
-        }
-        stateHolder.pluginsError?.let { error ->
-            item { Text(error, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        }
-        if (stateHolder.pluginsLoading && catalog == null) {
-            item { Box(Modifier.fillMaxWidth().padding(top = 90.dp), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            } }
-        }
-        if (catalog?.managementAvailable == true) {
-            item { PluginSectionHeader(appText("官方"), catalog.officialBundles.size + catalog.officialItems.size) }
-            items(catalog.officialBundles, key = { "bundle:${it.name}" }) { bundle ->
-                PluginBundleRow(stateHolder, bundle, onBundle, onGatewayDisable)
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val columns = AdaptiveLayout.pluginColumnCount(maxWidth.value, LocalDensity.current.fontScale)
+        LazyVerticalGrid(columns = GridCells.Fixed(columns), modifier = Modifier.fillMaxSize().testTag("plugin-grid"), contentPadding = androidx.compose.foundation.layout.PaddingValues(
+            start = 20.dp, end = 20.dp, top = 12.dp, bottom = 32.dp
+        ), horizontalArrangement = Arrangement.spacedBy(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            item(span = { GridItemSpan(maxLineSpan) }) { Text(appText("安装、启用和配置插件"), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            if (stateHolder.gatewayState.connection != GatewayConnectionState.CONNECTED) {
+                item(span = { GridItemSpan(maxLineSpan) }) { Text(appText("网关已断开，插件状态待重新连接确认"), color = MaterialTheme.colorScheme.tertiary) }
             }
-            items(catalog.officialItems, key = { "official:${it.id}" }) { item ->
-                PluginLine(null, item.id, item.title, item.description,
-                    Modifier.fillMaxWidth().clickable { onOfficial(item.id) }, experimental = false)
+            stateHolder.pluginNotice?.let { notice ->
+                item(span = { GridItemSpan(maxLineSpan) }) { Text(notice, color = MaterialTheme.colorScheme.tertiary) }
             }
-            item { Spacer(Modifier.height(10.dp)); PluginSectionHeader(appText("已安装"), catalog.installedBundles.size) }
-            items(catalog.installedBundles, key = { "bundle:${it.name}" }) { bundle ->
-                PluginBundleRow(stateHolder, bundle, onBundle, onGatewayDisable)
+            stateHolder.pluginsError?.let { error ->
+                item(span = { GridItemSpan(maxLineSpan) }) { Text(error, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+            if (stateHolder.pluginsLoading && catalog == null) {
+                item(span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.fillMaxWidth().padding(top = 90.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                } }
+            }
+            if (catalog?.managementAvailable == true) {
+                item(span = { GridItemSpan(maxLineSpan) }) { PluginSectionHeader(appText("官方"), catalog.officialBundles.size + catalog.officialItems.size) }
+                items(catalog.officialBundles, key = { "bundle:${it.name}" }) { bundle ->
+                    PluginBundleRow(stateHolder, bundle, onBundle, onGatewayDisable)
+                }
+                items(catalog.officialItems, key = { "official:${it.id}" }) { item ->
+                    PluginLine(null, item.id, item.title, item.description,
+                        Modifier.fillMaxWidth().clickable { onOfficial(item.id) }, experimental = false)
+                }
+                item(span = { GridItemSpan(maxLineSpan) }) { Spacer(Modifier.height(10.dp)); PluginSectionHeader(appText("已安装"), catalog.installedBundles.size) }
+                items(catalog.installedBundles, key = { "bundle:${it.name}" }) { bundle ->
+                    PluginBundleRow(stateHolder, bundle, onBundle, onGatewayDisable)
+                }
             }
         }
     }
@@ -341,6 +352,8 @@ private fun PluginBundleDetail(
 @Composable
 private fun PluginComponentSheet(entry: MobilePluginRow, onDismiss: () -> Unit) {
     ModalBottomSheet(
+        modifier = Modifier.adaptiveSheetBounds(),
+        sheetMaxWidth = adaptiveSheetWidth(),
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false),
         containerColor = MaterialTheme.colorScheme.surface
@@ -380,7 +393,7 @@ private fun ComponentField(title: String, value: String) {
 
 @Composable
 private fun OfficialPluginDetail(item: MobileOfficialPlugin) {
-    Column(Modifier.fillMaxSize().padding(22.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(22.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         PluginIcon(null, item.id, Modifier.size(60.dp))
         Text(item.title, fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Text(item.description, color = MaterialTheme.colorScheme.onSurfaceVariant)

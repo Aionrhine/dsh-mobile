@@ -148,6 +148,8 @@ internal fun WorkspaceFilePreviewSheet(
     var headerHeight by remember { mutableStateOf(76.dp) }
     var showsMenu by remember(file.file) { mutableStateOf(false) }
     ModalBottomSheet(
+        modifier = Modifier.adaptiveSheetBounds(),
+        sheetMaxWidth = adaptiveSheetWidth(),
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         sheetGesturesEnabled = true,

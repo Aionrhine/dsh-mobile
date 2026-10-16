@@ -17,6 +17,8 @@ import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -60,6 +62,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -146,17 +149,19 @@ internal fun ScheduledTasksScreen(
     Column(
         Modifier.fillMaxSize()
             .background(if (dark) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.surface)
-            .statusBarsPadding().navigationBarsPadding()
+            .statusBarsPadding().navigationBarsPadding().testTag("scheduled-tasks-screen")
     ) {
-        Box(Modifier.fillMaxWidth().height(66.dp).padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 12.dp)) {
+        BoxWithConstraints(Modifier.fillMaxWidth().height(66.dp).padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 12.dp)) {
             TopBarCircleButton(R.drawable.ic_back_chevron, appText("返回"), onBack,
-                modifier = Modifier.align(Alignment.CenterStart))
+                modifier = Modifier.align(Alignment.CenterStart).testTag("scheduled-back"))
             if (!isSearching) {
                 Text(appText("定时任务"), fontSize = 20.sp, fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.align(Alignment.Center))
+                    modifier = Modifier.align(Alignment.Center).padding(horizontal = 104.dp),
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             ScheduledTaskSearchAndFilter(
+                maximumWidth = (maxWidth - 58.dp).coerceAtLeast(92.dp),
                 query = searchQuery,
                 onQueryChange = { searchQuery = it; revealedTaskId = null },
                 isSearching = isSearching,
@@ -197,6 +202,7 @@ internal fun ScheduledTasksScreen(
                 }
             }
             else -> LazyColumn(
+                modifier = Modifier.adaptiveContentWidth().fillMaxSize().testTag("scheduled-tasks-content"),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(
                     start = 20.dp, end = 20.dp, top = 18.dp, bottom = 28.dp
                 ),
@@ -262,6 +268,7 @@ internal fun ScheduledTasksScreen(
 
 @Composable
 private fun ScheduledTaskSearchAndFilter(
+    maximumWidth: Dp,
     query: String,
     onQueryChange: (String) -> Unit,
     isSearching: Boolean,
@@ -275,13 +282,13 @@ private fun ScheduledTaskSearchAndFilter(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     var filterExpanded by remember { mutableStateOf(false) }
-    val width by animateDpAsState(if (isSearching) 238.dp else 92.dp, label = "schedule-search-width")
+    val width by animateDpAsState(if (isSearching) minOf(238.dp, maximumWidth) else 92.dp, label = "schedule-search-width")
     LaunchedEffect(isSearching) {
         if (isSearching) focusRequester.requestFocus()
     }
 
     Row(
-        modifier.width(width).height(46.dp)
+        modifier.width(width).height(46.dp).testTag("scheduled-search-controls")
             .dropShadow(RoundedCornerShape(23.dp), Shadow(
                 radius = 12.dp,
                 color = Color.Black.copy(alpha = if (dark) 0.24f else 0.075f),

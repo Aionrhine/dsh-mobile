@@ -324,6 +324,7 @@ struct ConversationView: View {
     @Environment(\.dismiss) private var dismissConversation
     @EnvironmentObject private var store: AppStore
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.displayScale) private var displayScale
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var activeView = 0
     @State private var draft = ""
@@ -341,6 +342,7 @@ struct ConversationView: View {
     @State private var goalObjectiveDraft = ""
     @State private var confirmsGoalClear = false
     @State private var isPinnedToBottom = true
+    @State private var hasScrolledFromTop = false
     @State private var queueExpanded = false
     @State private var submittedQueueDraft: String?
     @State private var submittedQueueImages: [GatewayOutgoingImage] = []
@@ -395,9 +397,12 @@ struct ConversationView: View {
         .onChange(of: activeView) { _, view in
             if view != 0 { composerIsFocused = false }
             showsSessionStatsPopover = false
+            showsAgentPresetMenu = false
         }
         .onChange(of: store.selectedSessionId) { _, _ in
             showsSessionStatsPopover = false
+            showsAgentPresetMenu = false
+            hasScrolledFromTop = false
         }
         .onDisappear {
             if store.conversationFileIsOpening { store.cancelWorkspaceFileDownload() }
@@ -467,6 +472,10 @@ struct ConversationView: View {
                 onPinnedToBottomChanged: { pinned in
                     isPinnedToBottom = pinned
                 },
+                onScrolledFromTopChanged: { scrolled in
+                    guard sessionID == store.selectedSessionId else { return }
+                    hasScrolledFromTop = scrolled
+                },
                 onBottomAlignmentCompleted: {
                     guard isPreparingHistoryPresentation,
                           historyPresentationSessionID == store.selectedSessionId,
@@ -487,6 +496,16 @@ struct ConversationView: View {
             .padding(.top, 8)
             .opacity(shouldShowHistoryPresentationMask ? 0 : 1)
             .readableContentWidth()
+            // 线条不受正文限宽和左右留白约束，高度仍对齐视口的裁切上缘。
+            .overlay(alignment: .top) {
+                Rectangle()
+                    .fill(Color.gray.opacity(0.35))
+                    .frame(height: 1 / max(displayScale, 1))
+                    .padding(.top, 8)
+                    .opacity(hasScrolledFromTop ? 1 : 0)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
 
             if !hasVisibleConversationContent, let error = selectedHistoryError {
                 historyFailureState(error)
@@ -647,17 +666,34 @@ struct ConversationView: View {
             if let anchor,
                let snapshot = store.selectedSessionStatsSnapshot {
                 GeometryReader { geometry in
-                    SessionStatsPopoverOverlay(
+                    ComposerPopoverOverlay(
                         sourceFrame: geometry[anchor],
                         availableSize: geometry.size,
-                        snapshot: snapshot,
                         isPresented: showsSessionStatsPopover,
-                        onDismiss: { showsSessionStatsPopover = false },
-                        onViewFullStats: {
+                        onDismiss: { showsSessionStatsPopover = false }
+                    ) {
+                        SessionStatsPopover(snapshot: snapshot) {
                             showsSessionStatsPopover = false
                             showsSessionStats = true
                         }
-                    )
+                    }
+                }
+            }
+        }
+        .overlayPreferenceValue(SessionAgentPresetPopoverAnchorKey.self) { anchor in
+            if let anchor {
+                GeometryReader { geometry in
+                    ComposerPopoverOverlay(
+                        sourceFrame: geometry[anchor],
+                        availableSize: geometry.size,
+                        isPresented: showsAgentPresetMenu,
+                        onDismiss: { showsAgentPresetMenu = false },
+                        preferredWidth: 292,
+                        alignsToTrailing: false,
+                        maximumContentHeight: 380
+                    ) {
+                        sessionAgentPresetMenuContent
+                    }
                 }
             }
         }
@@ -1496,6 +1532,7 @@ struct ConversationView: View {
                 if retry { store.refreshSessionAgentPreset() }
                 else {
                     viewportProxy.prepareForOverlayPresentation()
+                    showsSessionStatsPopover = false
                     showsAgentPresetMenu = true
                 }
             } label: {
@@ -1529,49 +1566,48 @@ struct ConversationView: View {
             .disabled(!store.gateway.state.isConnected || !(state.canSelect || retry))
             .accessibilityLabel("选择会话模式")
             .accessibilityIdentifier("session-agent-preset-capsule")
-            .popover(isPresented: $showsAgentPresetMenu, arrowEdge: .bottom) {
-                ScrollView {
-                    VStack(spacing: 0) {
-                        ForEach(state.presets, id: \.id) { preset in
-                            Button {
-                                showsAgentPresetMenu = false
-                                store.selectSessionAgentPreset(preset.id)
-                            } label: {
-                                HStack(spacing: 10) {
-                                    VStack(alignment: .leading, spacing: 5) {
-                                        Text(preset.name ?? agentPresetTitle(preset.id))
-                                            .appFont(.body.weight(.medium))
-                                        Text(preset.broken?.boolValue == true
-                                             ? preset.brokenReason ?? "模式不可用"
-                                             : agentPresetCompactDescription(preset.id, description: preset.description_))
-                                            .appFont(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    .lineLimit(1)
-                                    .truncationMode(.tail)
-                                    Spacer(minLength: 0)
-                                    if preset.id == state.agentPreset {
-                                        Image(systemName: "checkmark").appFont(.body.weight(.medium))
-                                    }
-                                }
-                                .foregroundStyle(.primary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 12)
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(preset.broken?.boolValue == true)
-                            .opacity(preset.broken?.boolValue == true ? 0.45 : 1)
-                            .accessibilityIdentifier("session-agent-preset-\(preset.id)")
+            .anchorPreference(key: SessionAgentPresetPopoverAnchorKey.self, value: .bounds) { $0 }
+        }
+    }
+
+    private var sessionAgentPresetMenuContent: some View {
+        let state = store.sessionAgentPreset
+        return VStack(spacing: 0) {
+            ForEach(state.presets, id: \.id) { preset in
+                Button {
+                    showsAgentPresetMenu = false
+                    store.selectSessionAgentPreset(preset.id)
+                } label: {
+                    HStack(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(preset.name ?? agentPresetTitle(preset.id))
+                                .appFont(.body.weight(.medium))
+                            Text(preset.broken?.boolValue == true
+                                 ? preset.brokenReason ?? "模式不可用"
+                                 : agentPresetCompactDescription(preset.id, description: preset.description_))
+                                .appFont(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        Spacer(minLength: 0)
+                        if preset.id == state.agentPreset {
+                            Image(systemName: "checkmark").appFont(.body.weight(.medium))
                         }
                     }
-                    .padding(.vertical, 6)
+                    .foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .contentShape(Rectangle())
                 }
-                .frame(width: 292, height: min(CGFloat(state.presets.count) * 68 + 12, 380))
-                .presentationCompactAdaptation(.popover)
+                .buttonStyle(.plain)
+                .disabled(preset.broken?.boolValue == true)
+                .opacity(preset.broken?.boolValue == true ? 0.45 : 1)
+                .accessibilityIdentifier("session-agent-preset-\(preset.id)")
             }
         }
+        .padding(.vertical, 6)
     }
 
     private func agentPresetCompactDescription(_ id: String, description: String?) -> String {
@@ -1589,6 +1625,7 @@ struct ConversationView: View {
             Spacer(minLength: 0)
             Button {
                 viewportProxy.prepareForOverlayPresentation()
+                showsAgentPresetMenu = false
                 showsSessionStatsPopover.toggle()
             } label: {
                 HStack(spacing: 7) {
@@ -2867,14 +2904,45 @@ private struct SessionStatsPopoverAnchorKey: PreferenceKey {
     }
 }
 
-/// 使用页面内浮层控制投影范围，避免系统 popover 的大面积阴影。
-private struct SessionStatsPopoverOverlay: View {
+private struct SessionAgentPresetPopoverAnchorKey: PreferenceKey {
+    static var defaultValue: Anchor<CGRect>? { nil }
+
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = nextValue() ?? value
+    }
+}
+
+/// 模式与统计共用液态玻璃和箭头，原生玻璃自行处理高光与投影。
+private struct ComposerPopoverOverlay<Content: View>: View {
     let sourceFrame: CGRect
     let availableSize: CGSize
-    let snapshot: GatewaySessionStatsSnapshot
     let isPresented: Bool
     let onDismiss: () -> Void
-    let onViewFullStats: () -> Void
+    let preferredWidth: CGFloat
+    let alignsToTrailing: Bool
+    let maximumContentHeight: CGFloat
+    let content: Content
+
+    init(
+        sourceFrame: CGRect,
+        availableSize: CGSize,
+        isPresented: Bool,
+        onDismiss: @escaping () -> Void,
+        preferredWidth: CGFloat = 300,
+        alignsToTrailing: Bool = true,
+        maximumContentHeight: CGFloat = .infinity,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.sourceFrame = sourceFrame
+        self.availableSize = availableSize
+        self.isPresented = isPresented
+        self.onDismiss = onDismiss
+        self.preferredWidth = preferredWidth
+        self.alignsToTrailing = alignsToTrailing
+        self.maximumContentHeight = maximumContentHeight
+        self.content = content()
+    }
+
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var contentHeight: CGFloat = 240
@@ -2890,16 +2958,18 @@ private struct SessionStatsPopoverOverlay: View {
         let margin: CGFloat = 14
         let gap: CGFloat = 6
         let arrowHeight: CGFloat = 8
-        let width = min(300, max(1, availableSize.width - margin * 2))
+        let width = min(preferredWidth, max(1, availableSize.width - margin * 2))
         let above = max(0, sourceFrame.minY - margin - gap)
         let below = max(0, availableSize.height - sourceFrame.maxY - margin - gap)
-        let displaysAbove = above >= contentHeight + arrowHeight || above >= below
-        let height = min(contentHeight + arrowHeight, max(arrowHeight + 1, displaysAbove ? above : below))
-        let centerX = min(max(sourceFrame.maxX - width / 2, margin + width / 2), availableSize.width - margin - width / 2)
+        let bodyHeight = min(contentHeight, maximumContentHeight)
+        let displaysAbove = above >= bodyHeight + arrowHeight || above >= below
+        let height = min(bodyHeight + arrowHeight, max(arrowHeight + 1, displaysAbove ? above : below))
+        let preferredCenterX = alignsToTrailing ? sourceFrame.maxX - width / 2 : sourceFrame.minX + width / 2
+        let centerX = min(max(preferredCenterX, margin + width / 2), availableSize.width - margin - width / 2)
         let centerY = displaysAbove
             ? sourceFrame.minY - gap - height / 2
             : sourceFrame.maxY + gap + height / 2
-        let shape = SessionStatsPopoverShape(
+        let shape = ComposerPopoverShape(
             arrowX: sourceFrame.midX - (centerX - width / 2),
             pointsUp: !displaysAbove
         )
@@ -2914,11 +2984,11 @@ private struct SessionStatsPopoverOverlay: View {
                 Color.clear
                     .contentShape(Rectangle())
                     .onTapGesture(perform: onDismiss)
-                    .accessibilityLabel("关闭会话统计")
+                    .accessibilityLabel("关闭")
                     .accessibilityAddTraits(.isButton)
 
                 ScrollView {
-                    SessionStatsPopover(snapshot: snapshot, onViewFullStats: onViewFullStats)
+                    content
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
                 }
                 .scrollBounceBehavior(.basedOnSize)
@@ -2926,11 +2996,15 @@ private struct SessionStatsPopoverOverlay: View {
                 .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                 .padding(displaysAbove ? .bottom : .top, arrowHeight)
                 .background {
-                    shape.fill(.regularMaterial)
-                        .overlay {
-                            shape.stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
-                        }
-                        .shadow(color: .black.opacity(colorScheme == .dark ? 0.24 : 0.12), radius: 10, x: 0, y: 3)
+                    if #available(iOS 26.0, *) {
+                        Color.clear.glassEffect(.regular, in: shape)
+                    } else {
+                        shape.fill(.ultraThinMaterial)
+                            .overlay {
+                                shape.stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+                            }
+                            .shadow(color: .black.opacity(colorScheme == .dark ? 0.24 : 0.12), radius: 10, x: 0, y: 3)
+                    }
                 }
                 .accessibilityElement(children: .contain)
                 .accessibilityAddTraits(.isModal)
@@ -2945,7 +3019,7 @@ private struct SessionStatsPopoverOverlay: View {
 }
 
 /// 箭头与卡片共用一条轮廓，材质、描边和紧凑阴影不会在连接处叠加。
-private struct SessionStatsPopoverShape: Shape {
+private struct ComposerPopoverShape: Shape {
     let arrowX: CGFloat
     let pointsUp: Bool
 

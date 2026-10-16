@@ -119,6 +119,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.dropShadow
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
@@ -135,7 +136,6 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -247,85 +247,88 @@ internal fun ConversationScreen(
         }
     }
 
-    Scaffold(
-        // 背景与录音蒙层延伸到导航栏下面；底部安全区由 Composer 自己处理。
-        contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal),
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        title,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                },
-                navigationIcon = {
-                    TopBarCircleButton(
-                        iconRes = R.drawable.ic_back_chevron,
-                        description = appText("返回"),
-                        onClick = {
-                            dismissInput()
-                            onBack()
-                        },
-                        modifier = Modifier.padding(start = 8.dp, end = 14.dp)
-                    )
-                },
-                actions = {
-                    Row(
-                        modifier = Modifier.padding(start = 12.dp, end = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        SmallConnectionDot(stateHolder.gatewayState.connection)
+    ComposerPopupGlassHost { backdropModifier ->
+        Scaffold(
+            modifier = backdropModifier,
+            // 背景与录音蒙层延伸到导航栏下面；底部安全区由 Composer 自己处理。
+            contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal),
+            containerColor = MaterialTheme.colorScheme.background,
+            topBar = {
+                TopAppBar(
+                    title = {
                         Text(
-                            agentPresetDisplayName(agentPresetId, agentPresetName),
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                            fontSize = 12.sp
+                            title,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold
                         )
-                        ConversationMoreMenu(
-                            canBrowseFiles = stateHolder.snapshot.selectedSessionId != null &&
-                                stateHolder.gatewayState.connection == GatewayConnectionState.CONNECTED &&
-                                "file-downloads" in stateHolder.gatewayState.capabilities,
-                            onBrowseFiles = { showWorkspaceFiles = true }
+                    },
+                    navigationIcon = {
+                        TopBarCircleButton(
+                            iconRes = R.drawable.ic_back_chevron,
+                            description = appText("返回"),
+                            onClick = {
+                                dismissInput()
+                                onBack()
+                            },
+                            modifier = Modifier.padding(start = 8.dp, end = 14.dp)
+                        )
+                    },
+                    actions = {
+                        Row(
+                            modifier = Modifier.padding(start = 12.dp, end = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            SmallConnectionDot(stateHolder.gatewayState.connection)
+                            Text(
+                                agentPresetDisplayName(agentPresetId, agentPresetName),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                fontSize = 12.sp
+                            )
+                            ConversationMoreMenu(
+                                canBrowseFiles = stateHolder.snapshot.selectedSessionId != null &&
+                                    stateHolder.gatewayState.connection == GatewayConnectionState.CONNECTED &&
+                                    "file-downloads" in stateHolder.gatewayState.capabilities,
+                                onBrowseFiles = { showWorkspaceFiles = true }
+                            )
+                        }
+                    },
+                    expandedHeight = 80.dp,
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                )
+            }
+        ) { padding ->
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .consumeWindowInsets(padding)
+            ) {
+                SegmentedControl(pagerState.currentPage) { target ->
+                    dismissInput()
+                    scope.launch { pagerState.animateScrollToPage(target) }
+                }
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize(),
+                    beyondViewportPageCount = 1
+                ) { page ->
+                    if (page == 0) {
+                        ConversationPage(
+                            stateHolder = stateHolder,
+                            onPickImage = onPickImage,
+                            onShowFullStats = { showStats = true },
+                            onDismissInput = dismissInput
                         )
                     }
-                },
-                expandedHeight = 80.dp,
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-            )
-        }
-    ) { padding ->
-        Column(
-            Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .consumeWindowInsets(padding)
-        ) {
-            SegmentedControl(pagerState.currentPage) { target ->
-                dismissInput()
-                scope.launch { pagerState.animateScrollToPage(target) }
-            }
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier.fillMaxSize(),
-                beyondViewportPageCount = 1
-            ) { page ->
-                if (page == 0) {
-                    ConversationPage(
-                        stateHolder = stateHolder,
-                        onPickImage = onPickImage,
-                        onShowFullStats = { showStats = true },
-                        onDismissInput = dismissInput
-                    )
-                }
-                else Box(Modifier.fillMaxSize().navigationBarsPadding()) {
-                    TrajectoryPage(
-                        nodes = stateHolder.trajectoryNodes,
-                        isActive = pagerState.currentPage == 1
-                    )
+                    else Box(Modifier.fillMaxSize().navigationBarsPadding()) {
+                        TrajectoryPage(
+                            nodes = stateHolder.trajectoryNodes,
+                            isActive = pagerState.currentPage == 1
+                        )
+                    }
                 }
             }
         }
@@ -460,8 +463,9 @@ private fun ConversationMoreMenuItem(
 private fun SegmentedControl(selected: Int, onSelect: (Int) -> Unit) {
     val trackShape = RoundedCornerShape(16.dp)
     val segmentShape = RoundedCornerShape(14.dp)
+    val horizontalInset = if (adaptiveWindowSize().width >= 600.dp) 40.dp else 66.dp
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 66.dp, vertical = 6.dp)
+        Modifier.adaptiveContentWidth(440.dp).testTag("conversation-tabs").padding(horizontal = horizontalInset, vertical = 6.dp)
             .height(32.dp)
             .clip(trackShape)
             .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.075f))
@@ -561,6 +565,7 @@ private fun ConversationPage(
         Column(
             Modifier
                 .align(Alignment.BottomCenter)
+                .adaptiveContentWidth().testTag("conversation-composer-column")
                 .graphicsLayer { alpha = if (stateHolder.voiceInput.state.overlayVisible) 0f else 1f }
                 .imePadding()
                 .onSizeChanged { size ->
@@ -643,7 +648,7 @@ private fun ConversationPage(
         AnimatedVisibility(
             visible = stateHolder.voiceInput.state.overlayVisible,
             modifier = Modifier.align(Alignment.BottomCenter)
-                .fillMaxWidth().height(LocalConfiguration.current.screenHeightDp.dp * VoiceInputInteraction.OVERLAY_HEIGHT_FRACTION.toFloat()).zIndex(3f),
+                .fillMaxWidth().height(adaptiveWindowSize().height * VoiceInputInteraction.OVERLAY_HEIGHT_FRACTION.toFloat()).zIndex(3f),
             enter = fadeIn(tween(VoiceInputInteraction.OVERLAY_FADE_IN_MILLISECONDS, easing = LinearOutSlowInEasing)),
             exit = fadeOut(tween(VoiceInputInteraction.OVERLAY_FADE_OUT_MILLISECONDS))
         ) {
@@ -826,11 +831,12 @@ private fun ConversationTimeline(
                 }
             }
     }
-    val windowInfo = LocalWindowInfo.current
+    val window = adaptiveWindowSize()
     val density = LocalDensity.current
+    val thumbnailWidth = with(density) { minOf(window.width, AdaptiveLayout.PageWidth).roundToPx() }
     val targetHeight = with(density) { 240.dp.roundToPx() }
-    LaunchedEffect(windowInfo.containerSize.width, targetHeight) {
-        stateHolder.updateThumbnailTargetSize(windowInfo.containerSize.width, targetHeight)
+    LaunchedEffect(thumbnailWidth, targetHeight) {
+        stateHolder.updateThumbnailTargetSize(thumbnailWidth, targetHeight)
     }
     LaunchedEffect(listState, items) {
         snapshotFlow {
@@ -923,6 +929,13 @@ private fun ConversationTimeline(
         Modifier
             .fillMaxSize()
             .testTag("conversation-timeline")
+            .drawWithContent {
+                drawContent()
+                // 在全宽视口绘制，不受正文限宽和左右留白约束。
+                if (hasInitialContent && initialPositionApplied && listState.canScrollBackward) {
+                    drawRect(Color.Gray.copy(alpha = 0.35f), size = androidx.compose.ui.geometry.Size(size.width, 1f))
+                }
+            }
             .pointerInput(onUserInteraction) {
                 awaitEachGesture {
                     awaitFirstDown(
@@ -961,6 +974,7 @@ private fun ConversationTimeline(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
+                .adaptiveContentWidth().testTag("conversation-message-list")
                 .imePadding()
                 .padding(horizontal = 20.dp)
                 .alpha(if (hasInitialContent && !initialPositionApplied) 0f else 1f),
@@ -1947,10 +1961,15 @@ internal fun SessionAgentPresetControl(
                 )
             }
         }
-        ComposerPopupMenu(
+        ComposerGlassPopover(
             expanded = expanded && state.canSelect,
-            onDismissRequest = { expanded = false },
-            width = 292.dp, alignment = Alignment.BottomStart, horizontalCompensation = (-20).dp
+            onDismiss = { expanded = false },
+            width = 292.dp,
+            alignToEnd = false,
+            maximumContentHeight = 380.dp,
+            contentPadding = PaddingValues(vertical = 6.dp),
+            arrangement = Arrangement.Top,
+            testTag = "session-agent-preset-popover"
         ) {
             state.presets.forEach { preset ->
                 DropdownMenuItem(
@@ -2114,6 +2133,7 @@ private fun ModelControl(
             Text(
                 modelTitle(stateHolder),
                 modifier = Modifier.weight(1f),
+                textAlign = TextAlign.End,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
@@ -2212,7 +2232,7 @@ private fun ComposerPopupMenu(
     if (!visibility.currentState && !visibility.targetState) return
     val density = LocalDensity.current
     val windowHeight = with(density) { LocalWindowInfo.current.containerSize.height.toDp() }
-    val maxSurfaceHeight = (windowHeight - 180.dp).coerceIn(240.dp, 560.dp)
+    val maxSurfaceHeight = (windowHeight - 100.dp).coerceIn(48.dp, 560.dp)
     val horizontalCompensationPx = with(density) { horizontalCompensation.roundToPx() }
     val screenMarginPx = with(density) { 8.dp.roundToPx() }
     val anchorGapPx = with(density) { 4.dp.roundToPx() }

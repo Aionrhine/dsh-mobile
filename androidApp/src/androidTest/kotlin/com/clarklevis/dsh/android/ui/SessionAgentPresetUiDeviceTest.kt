@@ -18,11 +18,23 @@ import androidx.compose.ui.unit.dp
 import com.clarklevis.dsh.shared.facade.SharedSessionAgentPresetStore
 import com.clarklevis.dsh.shared.protocol.GatewayFrame
 import org.junit.Assert.assertEquals
+import java.util.Locale
+import org.junit.Before
+import org.junit.After
 import org.junit.Rule
 import org.junit.Test
 
 class SessionAgentPresetUiDeviceTest {
     @get:Rule val compose = createComposeRule()
+    private lateinit var previousLocale: Locale
+
+    @Before fun useChineseLabels() {
+        previousLocale = Locale.getDefault()
+        Locale.setDefault(Locale.SIMPLIFIED_CHINESE)
+    }
+
+    @After fun restoreLocale() { Locale.setDefault(previousLocale) }
+
 
     @Test fun menuSwitchesRepeatedlyDisablesBrokenModeAndHidesOnFirstSend() {
         val store = SharedSessionAgentPresetStore()

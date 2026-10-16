@@ -192,7 +192,7 @@ internal fun TrajectoryPage(
         if (highlightedId == id) highlightedId = null
     }
 
-    Column(Modifier.fillMaxSize().testTag("trajectory-page")) {
+    Column(Modifier.fillMaxSize().adaptiveContentWidth().testTag("trajectory-page")) {
         TrajectoryOverview(summary) { node ->
             val index = rows.indexOfFirst { it.node.id == node.id }
             if (index >= 0) {

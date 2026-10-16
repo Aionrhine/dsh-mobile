@@ -1,13 +1,5 @@
 package com.clarklevis.dsh.android.ui
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.MutableTransitionState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -48,10 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.shadow.Shadow
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
@@ -63,8 +52,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
 import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.android.R
 import com.clarklevis.dsh.shared.protocol.GatewaySessionStats
@@ -214,101 +201,35 @@ private fun SessionStatsPopover(
     onDismiss: () -> Unit,
     onViewFullStats: () -> Unit
 ) {
-    val visibility = remember { MutableTransitionState(false) }
-    visibility.targetState = expanded
-    // 保留 Popup 到缩回胶囊的动画结束，避免直接销毁浮层。
-    if (!visibility.currentState && !visibility.targetState) return
-    val density = LocalDensity.current
-    val windowSize = LocalWindowInfo.current.containerSize
-    val shadowPadding = with(density) { 16.dp.roundToPx() }
-    val gap = with(density) { 6.dp.roundToPx() }
-    var placement by remember { mutableStateOf<SessionStatsPopoverPlacement?>(null) }
-    val positionProvider = remember(shadowPadding, gap) {
-        SessionStatsPopoverPositionProvider(shadowPadding, gap) { placement = it }
-    }
-    val transformOrigin = placement?.transformOrigin ?: TransformOrigin(0.5f, 1f)
-    val pointsUp = placement?.pointsUp == true
-    val surfaceWidth = with(density) { windowSize.width.toDp() - 32.dp }.coerceIn(1.dp, 300.dp)
-    val maxSurfaceHeight = with(density) {
-        (placement?.surfaceHeightLimit ?: (windowSize.height - shadowPadding * 2)).coerceAtLeast(1).toDp()
-    }
-    val isDark = isSystemInDarkTheme()
-    val glassEdge = dshGlassEdge(isDark)
-    val shadowColor = dshFloatingSurfaceShadow(isDark)
-    Popup(
-        popupPositionProvider = positionProvider,
-        onDismissRequest = onDismiss,
-        properties = PopupProperties(focusable = expanded, clippingEnabled = false)
+    ComposerGlassPopover(
+        expanded = expanded,
+        onDismiss = onDismiss,
+        testTag = "session-stats-popover"
     ) {
-        AnimatedVisibility(
-            visibleState = visibility,
-            enter = fadeIn(tween(220)) + scaleIn(
-                animationSpec = spring(dampingRatio = 0.88f, stiffness = 400f),
-                initialScale = 0.16f,
-                transformOrigin = transformOrigin
-            ),
-            exit = fadeOut(tween(180)) + scaleOut(
-                animationSpec = tween(180),
-                targetScale = 0.16f,
-                transformOrigin = transformOrigin
-            )
-        ) {
-            Box(Modifier.padding(16.dp)) {
-                val shape = SessionStatsPopoverShape(
-                    arrowX = placement?.arrowX ?: with(density) { surfaceWidth.toPx() / 2 },
-                    pointsUp = pointsUp
-                )
-                Surface(
-                    modifier = Modifier.width(surfaceWidth).dropShadow(
-                        shape = shape,
-                        shadow = Shadow(
-                            radius = 10.dp,
-                            spread = 0.dp,
-                            color = shadowColor,
-                            offset = DpOffset(0.dp, 3.dp)
-                        )
-                    ).testTag("session-stats-popover"),
-                    shape = shape,
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-                    border = BorderStroke(0.8.dp, glassEdge),
-                    shadowElevation = 0.dp
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .padding(top = if (pointsUp) 8.dp else 0.dp, bottom = if (pointsUp) 0.dp else 8.dp)
-                            .heightIn(max = (maxSurfaceHeight - 8.dp).coerceAtLeast(40.dp))
-                            .verticalScroll(rememberScrollState())
-                            .padding(horizontal = 22.dp, vertical = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        val stats = snapshot.stats
-                        SessionStatsFormatter.turnsStepsLine(stats)?.let { AgentStatusRow(appText("轮次 · 步骤"), it) }
-                        stats?.llmMs?.let { AgentStatusRow("LLM", SessionStatsFormatter.duration(it)) }
-                        stats?.toolMs?.let { AgentStatusRow(appText("工具调用"), SessionStatsFormatter.duration(it)) }
-                        SessionStatsFormatter.averageTtft(stats)?.let {
-                            AgentStatusRow(appText("首 token 平均"), SessionStatsFormatter.duration(it))
-                        }
-                        SessionStatsFormatter.throughput(stats)?.let {
-                            AgentStatusRow(appText("解码吞吐"), "${SessionStatsFormatter.compactDecimal(it)} tok/s")
-                        }
-                        SessionStatsFormatter.cacheHitRate(snapshot.tokenUsage?.totals)?.let {
-                            AgentStatusRow(appText("缓存命中"), "${(it * 100).roundToInt()}%")
-                        }
-                        snapshot.tokenUsage?.totals?.inputTokens?.let {
-                            AgentStatusRow(appText("输入"), "${SessionStatsFormatter.compact(it)} tok")
-                        }
-                        HorizontalDivider(color = Color.Black.copy(alpha = 0.08f))
-                        Text(
-                            appText("查看完整统计"),
-                            modifier = Modifier.fillMaxWidth().clickable(onClick = onViewFullStats)
-                                .padding(vertical = 2.dp).testTag("view-full-session-stats"),
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
-            }
+        val stats = snapshot.stats
+        SessionStatsFormatter.turnsStepsLine(stats)?.let { AgentStatusRow(appText("轮次 · 步骤"), it) }
+        stats?.llmMs?.let { AgentStatusRow("LLM", SessionStatsFormatter.duration(it)) }
+        stats?.toolMs?.let { AgentStatusRow(appText("工具调用"), SessionStatsFormatter.duration(it)) }
+        SessionStatsFormatter.averageTtft(stats)?.let {
+            AgentStatusRow(appText("首 token 平均"), SessionStatsFormatter.duration(it))
         }
+        SessionStatsFormatter.throughput(stats)?.let {
+            AgentStatusRow(appText("解码吞吐"), "${SessionStatsFormatter.compactDecimal(it)} tok/s")
+        }
+        SessionStatsFormatter.cacheHitRate(snapshot.tokenUsage?.totals)?.let {
+            AgentStatusRow(appText("缓存命中"), "${(it * 100).roundToInt()}%")
+        }
+        snapshot.tokenUsage?.totals?.inputTokens?.let {
+            AgentStatusRow(appText("输入"), "${SessionStatsFormatter.compact(it)} tok")
+        }
+        HorizontalDivider(color = Color.Black.copy(alpha = 0.08f))
+        Text(
+            appText("查看完整统计"),
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onViewFullStats)
+                .padding(vertical = 2.dp).testTag("view-full-session-stats"),
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium
+        )
     }
 }
 
@@ -334,8 +255,7 @@ internal fun SessionStatsSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val coroutineScope = rememberCoroutineScope()
-    val windowHeight = LocalWindowInfo.current.containerSize.height
-    val expandedTopInset = with(LocalDensity.current) { windowHeight.toDp() * 0.12f }
+    val expandedTopInset = adaptiveWindowSize().height * 0.12f
     val dismissWithAnimation = {
         coroutineScope.launch {
             sheetState.hide()
@@ -344,11 +264,12 @@ internal fun SessionStatsSheet(
         Unit
     }
     ModalBottomSheet(
+        sheetMaxWidth = adaptiveSheetWidth(),
         onDismissRequest = dismissWithAnimation,
         // Keep the modal root full-height so Material can calculate drag anchors
         // against the whole window. The inner top padding limits the visible sheet
         // to 88% while keeping its lower edge pinned to the navigation bar.
-        modifier = Modifier.fillMaxHeight().padding(top = expandedTopInset),
+        modifier = Modifier.adaptiveSheetBounds().fillMaxHeight().padding(top = expandedTopInset),
         sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
         containerColor = Color(0xFFF2F2F7),

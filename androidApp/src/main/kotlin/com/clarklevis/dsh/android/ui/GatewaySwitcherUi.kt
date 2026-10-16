@@ -139,6 +139,8 @@ internal fun GatewaySwitcherBar() {
         }
         HostPanelTheme {
             ModalBottomSheet(
+                modifier = Modifier.adaptiveSheetBounds(),
+                sheetMaxWidth = adaptiveSheetWidth(),
                 onDismissRequest = {
                     expanded = false
                     managing = false
@@ -367,6 +369,8 @@ private fun GatewayEditor(hosts: AndroidMultiGatewayStore, profile: GatewayProfi
     }
     if (profile != null) {
         ModalBottomSheet(
+            modifier = Modifier.adaptiveSheetBounds(),
+            sheetMaxWidth = adaptiveSheetWidth(),
             onDismissRequest = onDismiss,
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),

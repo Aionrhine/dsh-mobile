@@ -300,6 +300,7 @@ private fun WorkspaceScreen(
     onPlugins: () -> Unit,
     onScheduledTasks: () -> Unit
 ) {
+    val window = adaptiveWindowSize()
     val workspaceListState = rememberLazyListState()
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var showManualPairing by rememberSaveable { mutableStateOf(false) }
@@ -356,74 +357,78 @@ private fun WorkspaceScreen(
                 state = workspaceListState
             ) {
                 item {
-                    Column(
-                        Modifier.widthIn(max = 680.dp).fillMaxWidth().padding(horizontal = 22.dp, vertical = 18.dp),
-                        verticalArrangement = Arrangement.spacedBy(18.dp)
-                    ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            WorkspaceHeader(
-                                state = stateHolder.gatewayState,
-                                onScan = {
-                                    stateHolder.clearPlatformError()
-                                    showQrScanner = true
-                                },
-                                onManualEntry = {
-                                    stateHolder.clearPlatformError()
-                                    showManualPairing = true
-                                },
-                                onSettings = onSettings,
-                                onOpenDrawer = openDrawer
-                            )
-                            GatewaySwitcherBar()
-                        }
-                        Spacer(Modifier.height(44.dp))
-                        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                            Text(
-                                stringResource(R.string.workspace_hero_title),
-                                color = Color.White,
-                                fontSize = 32.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.semantics { heading() }.testTag("workspace-hero-title")
-                            )
-                            if (stateHolder.gatewayState.connection == GatewayConnectionState.CONNECTED) {
-                                Text(appText("已连接Deepseek Harness预览版"), color = Color.White.copy(alpha = 0.65f), fontSize = 14.sp)
+                    AdaptiveWorkspaceContent(
+                        window = window,
+                        header = {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                WorkspaceHeader(
+                                    state = stateHolder.gatewayState,
+                                    onScan = {
+                                        stateHolder.clearPlatformError()
+                                        showQrScanner = true
+                                    },
+                                    onManualEntry = {
+                                        stateHolder.clearPlatformError()
+                                        showManualPairing = true
+                                    },
+                                    onSettings = onSettings,
+                                    onOpenDrawer = openDrawer
+                                )
+                                GatewaySwitcherBar()
                             }
+                        },
+                        actions = {
+                            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                Text(
+                                    stringResource(R.string.workspace_hero_title),
+                                    color = Color.White,
+                                    fontSize = 32.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.semantics { heading() }.testTag("workspace-hero-title")
+                                )
+                                if (stateHolder.gatewayState.connection == GatewayConnectionState.CONNECTED) {
+                                    Text(appText("已连接Deepseek Harness预览版"), color = Color.White.copy(alpha = 0.65f), fontSize = 14.sp)
+                                }
+                            }
+                            Box(Modifier.fillMaxWidth()) {
+                                WorkspaceCard(
+                                    workspace = selectedWorkspace,
+                                    ungrouped = ungroupedSelected,
+                                    ungroupedCount = stateHolder.snapshot.sessions.count { session ->
+                                        session.isVisibleInHistory && workspaces.none { session.id in it.sessionIds }
+                                    },
+                                    state = stateHolder.gatewayState,
+                                    onClick = { showWorkspaceMenu = true }
+                                )
+                                WorkspaceSelectionMenu(
+                                    expanded = showWorkspaceMenu,
+                                    workspaces = workspaces,
+                                    selectedWorkspaceId = stateHolder.selectedWorkspaceId,
+                                    onSelect = { workspaceId ->
+                                        stateHolder.selectWorkspace(workspaceId)
+                                        showWorkspaceMenu = false
+                                    },
+                                    onAddWorkspace = {
+                                        showWorkspaceMenu = false
+                                        showDirectoryBrowser = true
+                                    },
+                                    onDismiss = { showWorkspaceMenu = false }
+                                )
+                            }
+                            GlassActionButton("＋", appText("新建会话"), onNewSession)
+                        },
+                        recentSessions = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(appText("最近会话"), color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                                Spacer(Modifier.weight(1f))
+                                ConnectionStatusText(stateHolder.gatewayState)
+                            }
+                            SessionSearch(searchQuery) { searchQuery = it }
+                            if (sessions.isEmpty()) EmptySessions()
+                            else SessionList(sessions, onOpenSession, stateHolder::renameSession, stateHolder::archiveSession)
+                            Spacer(Modifier.height(24.dp))
                         }
-                        Box(Modifier.fillMaxWidth()) {
-                            WorkspaceCard(
-                                workspace = selectedWorkspace,
-                                ungrouped = ungroupedSelected,
-                                ungroupedCount = stateHolder.snapshot.sessions.count { session ->
-                                    session.isVisibleInHistory && workspaces.none { session.id in it.sessionIds }
-                                },
-                                state = stateHolder.gatewayState,
-                                onClick = { showWorkspaceMenu = true }
-                            )
-                            WorkspaceSelectionMenu(
-                                expanded = showWorkspaceMenu,
-                                workspaces = workspaces,
-                                selectedWorkspaceId = stateHolder.selectedWorkspaceId,
-                                onSelect = { workspaceId ->
-                                    stateHolder.selectWorkspace(workspaceId)
-                                    showWorkspaceMenu = false
-                                },
-                                onAddWorkspace = {
-                                    showWorkspaceMenu = false
-                                    showDirectoryBrowser = true
-                                },
-                                onDismiss = { showWorkspaceMenu = false }
-                            )
-                        }
-                        GlassActionButton("＋", appText("新建会话"), onNewSession)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(appText("最近会话"), color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
-                            Spacer(Modifier.weight(1f))
-                            ConnectionStatusText(stateHolder.gatewayState)
-                        }
-                        SessionSearch(searchQuery) { searchQuery = it }
-                        if (sessions.isEmpty()) EmptySessions() else SessionList(sessions, onOpenSession, stateHolder::renameSession, stateHolder::archiveSession)
-                        Spacer(Modifier.height(24.dp))
-                    }
+                    )
                 }
             }
         }

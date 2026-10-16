@@ -1,5 +1,6 @@
 package com.clarklevis.dsh.android
 
+import com.clarklevis.dsh.android.ui.AdaptiveWindowHost
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -90,13 +91,15 @@ fun DeepSeekHarnessAndroidApp() {
     }
     DshTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
-            androidx.compose.runtime.key(stateHolder) {
-            DshProductApp(
-                stateHolder = stateHolder,
-                onPickImage = { imageOwner.value = stateHolder; imagePicker.launch("image/*") },
-                notificationRoute = notificationRoute?.takeIf { it.gatewayId == hosts.activeId },
-                onNotificationRouteOpened = application::clearNotificationSession
-            )
+            AdaptiveWindowHost {
+                androidx.compose.runtime.key(stateHolder) {
+                    DshProductApp(
+                        stateHolder = stateHolder,
+                        onPickImage = { imageOwner.value = stateHolder; imagePicker.launch("image/*") },
+                        notificationRoute = notificationRoute?.takeIf { it.gatewayId == hosts.activeId },
+                        onNotificationRouteOpened = application::clearNotificationSession
+                    )
+                }
             }
             hosts.error?.let { message ->
                 androidx.compose.material3.AlertDialog(

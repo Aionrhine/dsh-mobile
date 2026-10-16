@@ -10,6 +10,10 @@ import android.provider.Settings
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -78,19 +82,21 @@ internal fun HarnessAnimatedBackground(modifier: Modifier = Modifier, animationE
         }
     }
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
+            .clipToBounds()
             .background(DshColors.Navy)
             .semantics { hideFromAccessibility() }
     ) {
+        val largeWindow = maxWidth >= 600.dp
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            FluidField(currentTime)
+            FluidField(currentTime, largeWindow)
         } else {
-            FluidFallback(currentTime)
+            FluidFallback(currentTime, largeWindow)
         }
-        TechnicalGrid()
-        WhaleParticleField(currentTime, !motionEnabled)
+        TechnicalGrid(largeWindow)
+        WhaleParticleField(currentTime, !motionEnabled, largeWindow)
         Canvas(Modifier.fillMaxSize()) {
             drawRect(
                 Brush.verticalGradient(
@@ -121,8 +127,8 @@ private fun rememberBackgroundActive(): Boolean {
 
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @Composable
-private fun FluidField(time: () -> Float) {
-    val brush = remember { HarnessFluidBrush() }
+private fun FluidField(time: () -> Float, largeWindow: Boolean) {
+    val brush = remember(largeWindow) { HarnessFluidBrush(largeWindow) }
     Canvas(Modifier.fillMaxSize()) {
         brush.updateTime(time())
         drawRect(brush)
@@ -130,7 +136,7 @@ private fun FluidField(time: () -> Float) {
 }
 
 @Composable
-private fun FluidFallback(time: () -> Float) {
+private fun FluidFallback(time: () -> Float, largeWindow: Boolean) {
     Canvas(Modifier.fillMaxSize()) {
         val x = size.width * (0.46f + sin(time() * 0.075f) * 0.08f)
         drawRect(
@@ -140,12 +146,32 @@ private fun FluidFallback(time: () -> Float) {
                 radius = max(size.width, size.height) * 0.82f
             )
         )
+        if (largeWindow) {
+            // 旧版系统没有 RuntimeShader，以多层低透明度描边保留两段柔和光弧。
+            val upper = Path().apply {
+                moveTo(size.width * 0.04f, -size.height * 0.10f)
+                cubicTo(size.width * 0.10f, size.height * 0.43f,
+                    size.width * 0.60f, size.height * 0.58f, size.width * 1.10f, size.height * 0.56f)
+            }
+            val lower = Path().apply {
+                moveTo(-size.width * 0.10f, size.height * 1.06f)
+                cubicTo(size.width * 0.34f, size.height * 1.02f,
+                    size.width * 0.90f, size.height * 0.96f, size.width * 1.12f, size.height * 0.76f)
+            }
+            for (layer in 12 downTo 1) {
+                val width = size.minDimension * (0.07f + layer * 0.018f)
+                drawPath(upper, Color(0xFFEEE0BD).copy(alpha = 0.018f), style = Stroke(width))
+                drawPath(lower, Color(0xFFEEE0BD).copy(alpha = 0.021f), style = Stroke(width * 1.2f))
+            }
+        }
     }
 }
 
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-private class HarnessFluidBrush : ShaderBrush() {
-    private val runtime = RuntimeShader(HARNESS_FLUID_SHADER)
+private class HarnessFluidBrush(largeWindow: Boolean) : ShaderBrush() {
+    private val runtime = RuntimeShader(HARNESS_FLUID_SHADER).apply {
+        setFloatUniform("tabletStyle", if (largeWindow) 1f else 0f)
+    }
     fun updateTime(time: Float) {
         runtime.setFloatUniform("time", time)
     }
@@ -157,9 +183,9 @@ private class HarnessFluidBrush : ShaderBrush() {
 }
 
 @Composable
-private fun TechnicalGrid() {
+private fun TechnicalGrid(largeWindow: Boolean) {
     Canvas(Modifier.fillMaxSize()) {
-        val spacing = 42.dp.toPx()
+        val spacing = if (largeWindow) (size.minDimension / 16f).coerceIn(42.dp.toPx(), 64.dp.toPx()) else 42.dp.toPx()
         var x = -spacing
         while (x <= size.width + spacing) {
             drawLine(Color.White.copy(alpha = 0.043f), Offset(x, 0f), Offset(x, size.height), 0.55.dp.toPx())
@@ -195,20 +221,25 @@ private fun TechnicalGrid() {
 }
 
 @Composable
-private fun WhaleParticleField(time: () -> Float, isStatic: Boolean) {
-    val particles = remember { makeWhaleParticles() }
+private fun WhaleParticleField(time: () -> Float, isStatic: Boolean, largeWindow: Boolean) {
+    val sampleSize = if (largeWindow) 100 else WHALE_SAMPLE_SIZE
+    val particles = remember(sampleSize) { makeWhaleParticles(sampleSize) }
     Canvas(Modifier.fillMaxSize()) {
         if (particles.isEmpty()) return@Canvas
-        val square = max(size.width * 1.15f, size.height * 0.48f)
-        val center = Offset(size.width * 0.55f, size.height * 0.34f)
+        val wideProgress = ((size.width / size.height - 0.65f) / 0.75f).coerceIn(0f, 1f)
+        val square = if (largeWindow) minOf(max(size.width * 1.15f, size.height * 0.48f), size.height * 1.12f) * 0.82f
+            else max(size.width * 1.15f, size.height * 0.48f)
+        val center = if (largeWindow) Offset(size.width * (0.55f + 0.05f * wideProgress), size.height * (0.34f + 0.12f * wideProgress))
+            else Offset(size.width * 0.55f, size.height * 0.34f)
         // 加密采样后同步缩小点，维持原有留白和整体亮度。
-        val baseDot = max(1.45.dp.toPx(), square / 220f) * (60f / WHALE_SAMPLE_SIZE)
+        val baseDot = if (largeWindow) (square / 360f).coerceIn(0.8.dp.toPx(), 2.4.dp.toPx())
+            else max(1.45.dp.toPx(), square / 220f) * (60f / WHALE_SAMPLE_SIZE)
         val t = if (isStatic) 0f else time()
         // 动态位移按 dp 计算，避免高密度屏幕上的几像素波动几乎不可见。
         val driftAmplitudeX = if (isStatic) 2.8f else 4.dp.toPx()
         val driftAmplitudeY = if (isStatic) 2.6f else 4.dp.toPx()
         val tailAmplitude = if (isStatic) 7f else 10.dp.toPx()
-        val staggerAmplitude = square / WHALE_SAMPLE_SIZE * 0.14f
+        val staggerAmplitude = square / sampleSize * 0.14f
         particles.forEach { particle ->
             val tail = smoothstep(0.54f, 0.94f, particle.x)
             val edgeDrift = 0.35f + 0.65f * particle.edge
@@ -218,8 +249,8 @@ private fun WhaleParticleField(time: () -> Float, isStatic: Boolean) {
             val driftX = sin(t * 0.50f + phaseX) * driftAmplitudeX * edgeDrift
             val driftY = cos(t * 0.42f + phaseY) * driftAmplitudeY * edgeDrift
             // 以网格行列生成短周期相位差，让间隙轻微交错；位移限制在点距内。
-            val column = particle.x * WHALE_SAMPLE_SIZE
-            val row = particle.y * WHALE_SAMPLE_SIZE
+            val column = particle.x * sampleSize
+            val row = particle.y * sampleSize
             val staggerX = sin(row * 1.05f + column * 0.35f + t * 0.50f) * staggerAmplitude
             // 相邻行错开四分之一个周期，让波峰和波谷形成清晰的逐行交错。
             val rowPhase = row * (kotlin.math.PI.toFloat() / 2f)
@@ -338,12 +369,63 @@ private const val WHALE_PATH = "M22.9168 1.43018C22.6713 1.31018 22.5658 1.53918
 private const val HARNESS_FLUID_SHADER = """
 uniform float2 size;
 uniform float time;
+uniform float tabletStyle;
 float hash(float2 p){p=fract(p*float2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}
 float noise(float2 p){float2 i=floor(p);float2 f=fract(p);float2 u=f*f*(3.0-2.0*f);return mix(mix(hash(i),hash(i+float2(1,0)),u.x),mix(hash(i+float2(0,1)),hash(i+1.0),u.x),u.y);}
 float fbm(float2 p){float v=0.0;float a=.56;for(int o=0;o<4;o++){v+=a*noise(p);p=float2(.80*p.x-.60*p.y,.60*p.x+.80*p.y)*2.03+17.17;a*=.46;}return v;}
+float padRibbons(float2 uv, float2 safeSize, float t, float2 distortion) {
+    // 截取圆环左下侧：从左上进入画面，向下弯曲后从右侧离开。
+    // 按入场、出场位置计算屏幕外的圆心，横竖屏均保留这一段圆弧。
+    float2 waveExtent = safeSize / min(safeSize.x, safeSize.y);
+    float2 warpedUV = uv * waveExtent + distortion;
+    float2 arcEntry = float2(waveExtent.x * 0.04, 0.0);
+    float2 arcExit = waveExtent * float2(1.0, 0.56);
+    float centerX = max(waveExtent.x * 1.10,
+        waveExtent.x * 0.52 + 0.14 * waveExtent.y * waveExtent.y / waveExtent.x);
+    float entryDX = centerX - arcEntry.x;
+    float exitDX = centerX - arcExit.x;
+    float centerY = (arcExit.y * arcExit.y - entryDX * entryDX + exitDX * exitDX)
+        / (2.0 * arcExit.y);
+    float2 waveCenter = float2(centerX, centerY);
+    float waveRadius = length(waveCenter - arcEntry) + 0.020 * sin(t * 1.5);
+    float radius = length(warpedUV - waveCenter);
+    float arcMask = 1.0 - smoothstep(0.65, 0.90, uv.y);
+    // 保留约 25% 的渐粗变化，叠加宽幅漫射，让光晕边缘柔和、轮廓更淡。
+    float upperWidth = mix(0.070, 0.0875, smoothstep(0.02, 0.56, uv.y));
+    float upperDistance = radius - waveRadius;
+    float upperCore = exp(-pow(upperDistance / upperWidth, 2.0));
+    float upperBloom = exp(-pow(upperDistance / (upperWidth * 2.0), 2.0));
+    float ribbonA = (upperCore * 0.55 + upperBloom * 0.45) * arcMask;
+
+    // 下方保留另一层更宽、更淡的光晕，从左下方延伸至右侧。
+    // 圆心置于左侧窗口外，并仅显示下半弧，避免额外露出上半圆。
+    float2 outerEntry = waveExtent * float2(-0.05, 1.02);
+    float2 outerExit = waveExtent * float2(1.02, 0.80);
+    float outerCenterX = -waveExtent.x * 0.18;
+    float outerEntryDX = outerEntry.x - outerCenterX;
+    float outerExitDX = outerExit.x - outerCenterX;
+    float outerCenterY = (outerExitDX * outerExitDX - outerEntryDX * outerEntryDX
+        + outerExit.y * outerExit.y - outerEntry.y * outerEntry.y)
+        / (2.0 * (outerExit.y - outerEntry.y));
+    float2 outerCenter = float2(outerCenterX, outerCenterY);
+    float outerRadius = length(outerEntry - outerCenter) + 0.018 * cos(t * 1.15);
+    float outerMask = smoothstep(0.38, 0.66, uv.y)
+        * smoothstep(0.0, 0.12, warpedUV.y - outerCenterY);
+    // 除几何错位外，按主光弧的有符号距离保留间隔，流动时也不会交叉。
+    outerMask *= smoothstep(upperWidth * 2.0 + 0.02, upperWidth * 2.0 + 0.10,
+        radius - waveRadius);
+    float outerDistance = length(warpedUV - outerCenter) - outerRadius;
+    float outerCore = exp(-pow(outerDistance / 0.105, 2.0));
+    float outerBloom = exp(-pow(outerDistance / 0.189, 2.0));
+    float ribbonB = (outerCore * 0.55 + outerBloom * 0.45) * outerMask;
+    return saturate(ribbonA * 0.72 + ribbonB * 0.86);
+}
+
 half4 main(float2 position){
  float2 safe=max(size,float2(1));float2 uv=position/safe;float aspect=safe.x/safe.y;float t=time*.075;
- float2 p=float2(uv.x*aspect,uv.y)*2.05+float2(-.30,-.08);
+ float sceneScale=mix(1.0,1.6,smoothstep(.65,1.6,aspect));
+ float2 fieldUV=tabletStyle>.5 ? (uv-.5)*float2(aspect,1)/sceneScale+float2(.30,.5) : float2(uv.x*aspect,uv.y);
+ float2 p=fieldUV*2.05+float2(-.30,-.08);
  float2 q=float2(fbm(p*.62+float2(0,t)),fbm(p*.62+float2(5.2,1.3-t)));
  float2 r=float2(fbm(p*.72+q*.62+float2(1.7,3.1+t*.7)),fbm(p*.72+q*.62+float2(9.2,5.7-t*.65)));
  float fluid=fbm((p+q*.76+r*.52)*.72+t*.25);float swirl=noise(p*1.25+r*2.1-t*.42);
@@ -352,7 +434,7 @@ half4 main(float2 position){
  float2 warped=float2(uv.x*aspect,uv.y)+(q-.5)*.085+(r-.5)*.045;
  float ra=length(warped-float2(aspect*.58,.16));float rb=length(warped-float2(aspect*-.20,.13));
  float ribbonA=exp(-pow((ra-(.35+.025*sin(t*1.5)))/.042,2.0));float ribbonB=exp(-pow((rb-(.83+.020*cos(t*1.15)))/.065,2.0));
- float ribbon=saturate(ribbonA*.78+ribbonB*.62);color=mix(color,warm,ribbon*(.48+.24*swirl));
+ float ribbon=tabletStyle>.5 ? padRibbons(uv,safe,t,(q-.5)*.085+(r-.5)*.045) : saturate(ribbonA*.78+ribbonB*.62);color=mix(color,warm,ribbon*(.48+.24*swirl));
  float glow=smoothstep(.90,.18,length((uv-float2(.58,.32))*float2(.82,1)));color+=deep*glow*.22;
  float vignette=smoothstep(.95,.23,length((uv-.5)*float2(.86,1)));color*=.38+.72*vignette;color+=(hash(position+floor(time*12.0))-.5)*.010;
  return half4(half3(max(color,0.0)),1);

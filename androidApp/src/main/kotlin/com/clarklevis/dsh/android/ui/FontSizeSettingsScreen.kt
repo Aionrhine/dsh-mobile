@@ -4,6 +4,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,7 +15,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -73,13 +74,17 @@ internal fun FontSizeSettingsScreen(onBack: () -> Unit) {
             )
         }
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
+        BoxWithConstraints(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
+            val compactHeight = maxHeight < 500.dp
             Column(
-                Modifier.widthIn(max = 720.dp).fillMaxSize().padding(horizontal = 20.dp),
+                Modifier.adaptiveContentWidth().fillMaxSize().testTag("font-size-content")
+                    .then(if (compactHeight) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+                    .padding(horizontal = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
                 Column(
-                    Modifier.weight(1f).fillMaxWidth().padding(top = 16.dp)
+                    Modifier.then(if (compactHeight) Modifier.height(260.dp) else Modifier.weight(1f))
+                        .fillMaxWidth().padding(top = 16.dp)
                         .clip(RoundedCornerShape(20.dp))
                         .background(MaterialTheme.colorScheme.surface)
                         .verticalScroll(rememberScrollState())

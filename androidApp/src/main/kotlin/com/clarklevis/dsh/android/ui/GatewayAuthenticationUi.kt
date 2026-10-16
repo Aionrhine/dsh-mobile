@@ -18,6 +18,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -202,6 +203,8 @@ internal fun ManualGatewayPairingSheet(
     }
 
     ModalBottomSheet(
+        modifier = Modifier.adaptiveSheetBounds(),
+        sheetMaxWidth = adaptiveSheetWidth(),
         onDismissRequest = dismissWithAnimation,
         sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 38.dp, topEnd = 38.dp),
@@ -494,7 +497,8 @@ internal fun GatewayQrScannerScreen(
         if (!hasPermission) permissionLauncher.launch(Manifest.permission.CAMERA)
     }
 
-    Box(Modifier.fillMaxSize().background(Color.Black).testTag("gateway-qr-scanner")) {
+    BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black).testTag("gateway-qr-scanner")) {
+        val scanSize = minOf(360.dp, (maxWidth - 44.dp).coerceAtLeast(0.dp), maxHeight * 0.40f)
         if (hasPermission) {
             GatewayCameraPreview(onCode = onCode, onFailure = onFailure)
         }
@@ -517,7 +521,7 @@ internal fun GatewayQrScannerScreen(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 18.dp),
                 verticalAlignment = Alignment.Top
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(appText("扫描设备配对码"), color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                     Text(
                         appText("请扫描 Harness WebUI 生成的二维码"),
@@ -525,7 +529,7 @@ internal fun GatewayQrScannerScreen(
                         fontSize = 15.sp
                     )
                 }
-                Spacer(Modifier.weight(1f))
+                Spacer(Modifier.width(12.dp))
                 Surface(
                     modifier = Modifier.size(44.dp).clickable(role = Role.Button, onClick = onCancel)
                         .semantics { contentDescription = appText("取消扫描") },
@@ -546,7 +550,7 @@ internal fun GatewayQrScannerScreen(
 
             Spacer(Modifier.weight(1f))
             Box(
-                modifier = Modifier.size(272.dp)
+                modifier = Modifier.size(scanSize).testTag("gateway-scan-frame")
                     .border(3.dp, Color.White, RoundedCornerShape(28.dp)),
                 contentAlignment = Alignment.BottomCenter
             ) {

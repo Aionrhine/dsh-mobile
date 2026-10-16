@@ -80,6 +80,8 @@ internal fun ScheduledTaskEditSheet(
     }
 
     ModalBottomSheet(
+        modifier = Modifier.adaptiveSheetBounds(),
+        sheetMaxWidth = adaptiveSheetWidth(),
         onDismissRequest = { if (pendingRequestId == null) onDismiss() },
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = MaterialTheme.colorScheme.surface

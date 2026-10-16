@@ -51,7 +51,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -80,7 +79,7 @@ internal fun WorkspaceFilesBottomSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     // 使用稳定的窗口高度，避免面板 offset 改变 Insets 后反复重算展开锚点。
-    val sheetHeight = LocalConfiguration.current.screenHeightDp.dp * 0.94f
+    val sheetHeight = adaptiveWindowSize().height * 0.94f
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val downloadRegistry = remember(context) { AndroidWorkspaceDownloadRegistry(context, stateHolder.gatewayLocalId) }
@@ -197,6 +196,8 @@ internal fun WorkspaceFilesBottomSheet(
     val closeWithAnimation = rememberWorkspaceSheetDismiss(sheetState, finishDismiss)
     val headerColor = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color(0xFF1C1C1E) else Color(0xFFF5F5F5)
     ModalBottomSheet(
+        modifier = Modifier.adaptiveSheetBounds(),
+        sheetMaxWidth = adaptiveSheetWidth(),
         onDismissRequest = finishDismiss,
         sheetState = sheetState,
         sheetGesturesEnabled = true,

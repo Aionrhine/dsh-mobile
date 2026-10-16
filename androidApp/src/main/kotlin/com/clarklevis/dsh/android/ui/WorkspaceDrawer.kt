@@ -75,6 +75,11 @@ internal fun WorkspaceDrawer(
         var horizontalDragActive by remember { mutableStateOf(false) }
         var animationJob by remember { mutableStateOf<Job?>(null) }
         val scope = rememberCoroutineScope()
+        LaunchedEffect(drawerWidthPx, maxHeight) {
+            animationJob?.cancel()
+            offsetPx = 0f
+            horizontalDragActive = false
+        }
         // 连续位移只在图层阶段读取；组合阶段只观察跨阈值的交互状态。
         val progress = remember(drawerWidthPx) {
             derivedStateOf { (offsetPx / drawerWidthPx).coerceIn(0f, 1f) }
@@ -142,7 +147,7 @@ internal fun WorkspaceDrawer(
             ) {
                 Row(
                     modifier = Modifier.padding(start = 12.dp, bottom = 16.dp)
-                        .size(width = 216.dp, height = 29.dp)
+                        .size(width = minOf(216.dp, (drawerWidth - 48.dp).coerceAtLeast(0.dp)), height = 29.dp)
                         .semantics { contentDescription = "Whaleness Harness" },
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)

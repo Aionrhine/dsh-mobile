@@ -10,7 +10,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -46,14 +48,15 @@ internal fun DshAlertDialog(
 ) {
     BasicAlertDialog(onDismissRequest = onDismissRequest) {
         Surface(
-            modifier = modifier.fillMaxWidth().widthIn(max = 340.dp),
+            modifier = modifier.adaptiveContentWidth(340.dp),
             shape = RoundedCornerShape(28.dp),
             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
             tonalElevation = 8.dp,
             shadowElevation = 18.dp
         ) {
             Column(
-                modifier = Modifier.padding(22.dp),
+                modifier = Modifier.heightIn(max = (adaptiveWindowSize().height - 48.dp).coerceAtLeast(48.dp))
+                    .verticalScroll(rememberScrollState()).padding(22.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(title, fontSize = 18.sp, fontWeight = FontWeight.Bold)

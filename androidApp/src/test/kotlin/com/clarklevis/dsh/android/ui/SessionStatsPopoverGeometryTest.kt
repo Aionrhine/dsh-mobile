@@ -10,6 +10,21 @@ import org.junit.Test
 
 class SessionStatsPopoverGeometryTest {
     @Test
+    fun `preset menu aligns its leading edge and preserves capsule arrow origin`() {
+        val anchor = IntRect(200, 800, 360, 834)
+        val popup = IntSize(332, 260)
+        for (direction in listOf(LayoutDirection.Ltr, LayoutDirection.Rtl)) {
+            val result = calculateSessionStatsPopoverPlacement(
+                anchor, IntSize(800, 1000), popup, direction, shadowPadding = 16, gap = 6,
+                alignToEnd = false
+            )
+            if (direction == LayoutDirection.Ltr) assertEquals(anchor.left, result.position.x + 16)
+            else assertEquals(anchor.right, result.position.x + popup.width - 16)
+            assertCapsuleIsScaleOrigin(result, anchor, popup)
+        }
+    }
+
+    @Test
     fun `popover above capsule points down and scales from capsule center`() {
         val anchor = IntRect(580, 800, 740, 834)
         val size = IntSize(332, 260)

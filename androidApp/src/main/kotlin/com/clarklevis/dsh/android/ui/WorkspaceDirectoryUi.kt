@@ -245,6 +245,7 @@ internal fun WorkspaceDirectoryBrowserSheet(
     }
 
     ModalBottomSheet(
+        sheetMaxWidth = adaptiveSheetWidth(),
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = sheetBackground,
@@ -256,7 +257,7 @@ internal fun WorkspaceDirectoryBrowserSheet(
                 color = foreground.copy(alpha = 0.30f)
             )
         },
-        modifier = Modifier.testTag("directory-browser-sheet")
+        modifier = Modifier.adaptiveSheetBounds().testTag("directory-browser-sheet")
     ) {
         Column(
             Modifier

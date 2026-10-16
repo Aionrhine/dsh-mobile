@@ -70,6 +70,8 @@ internal fun PrivacyPolicyBottomSheet(onDismiss: () -> Unit) {
     val titleSidePadding = (40.dp + 32.dp * LocalDensity.current.fontScale).coerceAtLeast(80.dp)
 
     ModalBottomSheet(
+        modifier = Modifier.adaptiveSheetBounds(),
+        sheetMaxWidth = adaptiveSheetWidth(),
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         // WebView 不参与 Compose 嵌套滚动，禁用弹窗拖动以避免截获正文滑动。

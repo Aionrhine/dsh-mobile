@@ -74,9 +74,10 @@ internal fun TrajectoryEventDetailSheet(
     onDismiss: () -> Unit
 ) {
     ModalBottomSheet(
+        sheetMaxWidth = adaptiveSheetWidth(),
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false),
-        modifier = Modifier.fillMaxHeight(),
+        modifier = Modifier.adaptiveSheetBounds().fillMaxHeight(),
         containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
         dragHandle = null
     ) {

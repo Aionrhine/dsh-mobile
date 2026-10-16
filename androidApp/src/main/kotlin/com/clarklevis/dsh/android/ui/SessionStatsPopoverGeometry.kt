@@ -24,6 +24,7 @@ internal data class SessionStatsPopoverPlacement(
 internal class SessionStatsPopoverPositionProvider(
     private val shadowPadding: Int,
     private val gap: Int,
+    private val alignToEnd: Boolean = true,
     private val onPositioned: (SessionStatsPopoverPlacement) -> Unit
 ) : PopupPositionProvider {
     override fun calculatePosition(
@@ -33,7 +34,7 @@ internal class SessionStatsPopoverPositionProvider(
         popupContentSize: IntSize
     ): IntOffset {
         val placement = calculateSessionStatsPopoverPlacement(
-            anchorBounds, windowSize, popupContentSize, layoutDirection, shadowPadding, gap
+            anchorBounds, windowSize, popupContentSize, layoutDirection, shadowPadding, gap, alignToEnd
         )
         onPositioned(placement)
         return placement.position
@@ -46,13 +47,14 @@ internal fun calculateSessionStatsPopoverPlacement(
     popupContentSize: IntSize,
     layoutDirection: LayoutDirection,
     shadowPadding: Int,
-    gap: Int
+    gap: Int,
+    alignToEnd: Boolean = true
 ): SessionStatsPopoverPlacement {
     val width = popupContentSize.width.coerceAtLeast(1)
     val height = popupContentSize.height.coerceAtLeast(1)
     val maximumX = (windowSize.width - width).coerceAtLeast(0)
     val maximumY = (windowSize.height - height).coerceAtLeast(0)
-    val preferredX = if (layoutDirection == LayoutDirection.Ltr) {
+    val preferredX = if ((layoutDirection == LayoutDirection.Ltr) == alignToEnd) {
         anchorBounds.right - width + shadowPadding
     } else {
         anchorBounds.left - shadowPadding
