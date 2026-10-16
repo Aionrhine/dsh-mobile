@@ -7232,6 +7232,135 @@ final class InterfaceStylePresentationTests: XCTestCase {
     }
 }
 
+@MainActor
+final class ScheduledTaskCardPresentationTests: XCTestCase {
+    func testRepeatedExpansionKeepsSummaryAtTheSamePosition() async throws {
+        let catalog = try GatewayWireDecoder.decode(Data(
+            #"{"kind":"schedule-catalog","items":[{"id":"task-1","sessionId":"s1","status":"active","kind":"daily","title":"每日新闻汇总（科技/金融/民生/体育）","prompt":"每日新闻汇总任务。请完整执行以下步骤：","time":"08:00:00.000","timeZone":"Asia/Shanghai","scheduledAt":"2099-01-01T00:00:00.000Z"}]}"#.utf8
+        ))
+        let task = try XCTUnwrap(catalog.items?.first.flatMap(ScheduledTask.init))
+        let state = ExpansionState()
+        let controller = UIHostingController(rootView: Harness(task: task, state: state))
+        controller.overrideUserInterfaceStyle = .light
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previousWindow = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+            previousWindow?.makeKeyAndVisible()
+        }
+        try await Task.sleep(for: .milliseconds(400))
+        let initialPosition = try visualPosition(in: window)
+        let collapsedHeight = state.cardHeight
+        XCTAssertGreaterThan(collapsedHeight, 100)
+        var previousBottom = initialPosition.bottom
+
+        for (cycle, expanded) in [true, false, true, false].enumerated() {
+            state.expanded = expanded
+            var bottoms: [CGFloat] = []
+            // 检查行高更新和箭头动画期间的真实画面，而不只检查动画结束后的布局。
+            for sample in 0..<8 {
+                try await Task.sleep(for: .milliseconds(35))
+                controller.view.layoutIfNeeded()
+                if sample == 2 && cycle < 2 {
+                    let attachment = XCTAttachment(image: UIGraphicsImageRenderer(size: window.bounds.size).image { _ in
+                        window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+                    })
+                    attachment.name = expanded ? "schedule-expanded" : "schedule-collapsed"
+                    attachment.lifetime = .keepAlways
+                    add(attachment)
+                }
+                let position = try visualPosition(in: window)
+                bottoms.append(position.bottom)
+                XCTAssertEqual(position.top, initialPosition.top, accuracy: 1,
+                               "展开/收起只能改变详情区域，摘要不能随行高动画上下跳动")
+            }
+            let finalBottom = try XCTUnwrap(bottoms.last)
+            let lower = min(previousBottom, finalBottom)
+            let upper = max(previousBottom, finalBottom)
+            XCTAssertTrue(bottoms.contains { $0 > lower + 3 && $0 < upper - 3 },
+                          "展开和收起必须经过中间高度，不能直接跳到终点：\(bottoms)")
+            previousBottom = finalBottom
+            if expanded {
+                XCTAssertGreaterThan(state.cardHeight, collapsedHeight + 100)
+            } else {
+                XCTAssertEqual(state.cardHeight, collapsedHeight, accuracy: 1)
+            }
+        }
+    }
+
+    private final class ExpansionState: ObservableObject {
+        @Published var expanded = false
+        var cardHeight: CGFloat = 0
+    }
+
+    private struct Harness: View {
+        let task: ScheduledTask
+        @ObservedObject var state: ExpansionState
+
+        var body: some View {
+            List {
+                ScheduledTaskCard(task: task, sessionTitle: "新闻汇总", expanded: state.expanded,
+                                  onOpen: {}, onExpand: { state.expanded.toggle() })
+                    .overlay(alignment: .bottom) {
+                        Color.red.frame(width: 40, height: 2).allowsHitTesting(false)
+                    }
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { state.cardHeight = $0 }
+                    .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+            }
+            .listStyle(.plain)
+            .adaptiveListWidth()
+            .scrollContentBackground(.hidden)
+            .background(Color.white)
+        }
+    }
+
+    private func visualPosition(in window: UIWindow) throws -> (top: CGFloat, bottom: CGFloat) {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let image = UIGraphicsImageRenderer(size: window.bounds.size, format: format).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        let cgImage = try XCTUnwrap(image.cgImage)
+        let width = cgImage.width
+        let height = cgImage.height
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        let position: (Int?, Int?) = pixels.withUnsafeMutableBytes { bytes in
+            guard let context = CGContext(data: bytes.baseAddress, width: width, height: height,
+                                          bitsPerComponent: 8, bytesPerRow: width * 4,
+                                          space: CGColorSpaceCreateDeviceRGB(),
+                                          bitmapInfo: CGBitmapInfo.byteOrder32Big.rawValue |
+                                            CGImageAlphaInfo.premultipliedLast.rawValue) else { return (nil, nil) }
+            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+            let rgba = bytes.bindMemory(to: UInt8.self)
+            var top: Int?
+            var bottom: Int?
+            // 蓝色执行规则追踪摘要位置，测试覆盖层的红线追踪卡片底边的动画。
+            for y in 0..<height {
+                let center = (y * width + width / 2) * 4
+                if rgba[center] > 220, rgba[center + 1] < 80, rgba[center + 2] < 80 { bottom = y }
+                guard top == nil else { continue }
+                for x in 0..<width {
+                    let offset = (y * width + x) * 4
+                    if rgba[offset] < 80, rgba[offset + 1] > 90,
+                       rgba[offset + 1] < 200, rgba[offset + 2] > 220 {
+                        top = y
+                        break
+                    }
+                }
+            }
+            return (top, bottom)
+        }
+        return (CGFloat(try XCTUnwrap(position.0, "截图中应显示任务的蓝色执行规则")),
+                CGFloat(try XCTUnwrap(position.1, "截图中应显示卡片底边的测试标记")))
+    }
+}
+
 final class SessionHistoryVisibilityTests: XCTestCase {
     @MainActor
     func testBlankSessionRemainsAvailableForConfigurationButNotHistory() async throws {

@@ -329,9 +329,7 @@ private struct ScheduledTasksView: View {
                         expanded: expandedTaskIDs.contains(task.id),
                         onOpen: { onOpenSession(task.sessionID) },
                         onExpand: {
-                            withAnimation(.easeInOut(duration: 0.22)) {
-                                if !expandedTaskIDs.insert(task.id).inserted { expandedTaskIDs.remove(task.id) }
-                            }
+                            if !expandedTaskIDs.insert(task.id).inserted { expandedTaskIDs.remove(task.id) }
                         }
                     )
                     .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
@@ -466,19 +464,31 @@ private struct ScheduledTasksView: View {
     }
 }
 
-private struct ScheduledTaskCard: View {
+struct ScheduledTaskCard: View {
     let task: ScheduledTask
     let sessionTitle: String
     let expanded: Bool
     let onOpen: () -> Void
     let onExpand: () -> Void
-    @State private var detailsHeight: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        cardContent
+        ScheduledTaskCardLayout(expansion: expanded ? 1 : 0) {
+            summaryContent
+                .transaction { $0.animation = nil }
+            detailsContent
+                .opacity(expanded ? 1 : 0)
+                .accessibilityHidden(!expanded)
+                .allowsHitTesting(expanded)
+        }
+        .clipped()
+        .glassSurface(radius: 28)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.26), value: expanded)
+        // List 更新行高时可能暂时给出更大的高度，卡片始终从顶部布局。
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 
-    private var cardContent: some View {
+    private var summaryContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
                 onOpen()
@@ -516,9 +526,12 @@ private struct ScheduledTaskCard: View {
                         .appFont(.system(size: 15))
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                    Image(systemName: "chevron.down")
                         .appFont(.system(size: 14, weight: .semibold))
                         .foregroundStyle(.secondary)
+                        .animation(reduceMotion ? nil : .easeInOut(duration: 0.26)) { icon in
+                            icon.rotationEffect(.degrees(expanded ? 180 : 0))
+                        }
                         .frame(width: 36, height: 34)
                 }
                 .frame(maxWidth: .infinity)
@@ -529,27 +542,6 @@ private struct ScheduledTaskCard: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(expanded ? String(localized: "收起任务详情") : String(localized: "展开任务详情"))
-
-            detailsContent
-                .fixedSize(horizontal: false, vertical: true)
-                .background {
-                    GeometryReader { geometry in
-                        Color.clear.preference(key: ScheduledTaskDetailsHeightKey.self, value: geometry.size.height)
-                    }
-                }
-                .frame(height: expanded ? detailsHeight : 0, alignment: .top)
-                .clipped()
-                .accessibilityHidden(!expanded)
-                .allowsHitTesting(expanded)
-        }
-        .glassSurface(radius: 28)
-        .onPreferenceChange(ScheduledTaskDetailsHeightKey.self) { height in
-            guard height > 0, abs(height - detailsHeight) > 0.5 else { return }
-            if expanded {
-                withAnimation(.easeInOut(duration: 0.22)) { detailsHeight = height }
-            } else {
-                detailsHeight = height
-            }
         }
     }
 
@@ -578,11 +570,29 @@ private struct ScheduledTaskCard: View {
     }
 }
 
-private struct ScheduledTaskDetailsHeightKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
+/// 摘要始终从顶部布局，详情保持自然尺寸，仅动画改变其占用高度。
+private struct ScheduledTaskCardLayout: Layout {
+    var expansion: CGFloat
 
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
+    var animatableData: CGFloat {
+        get { expansion }
+        set { expansion = newValue }
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? subviews.map { $0.sizeThatFits(.unspecified).width }.max() ?? 0
+        let contentProposal = ProposedViewSize(width: width, height: nil)
+        let summary = subviews[0].sizeThatFits(contentProposal)
+        let details = subviews[1].sizeThatFits(contentProposal)
+        return CGSize(width: width, height: summary.height + details.height * min(max(expansion, 0), 1))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let contentProposal = ProposedViewSize(width: bounds.width, height: nil)
+        let summary = subviews[0].sizeThatFits(contentProposal)
+        subviews[0].place(at: bounds.origin, anchor: .topLeading, proposal: contentProposal)
+        subviews[1].place(at: CGPoint(x: bounds.minX, y: bounds.minY + summary.height),
+                          anchor: .topLeading, proposal: contentProposal)
     }
 }
 
