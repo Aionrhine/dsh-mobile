@@ -173,6 +173,7 @@ import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
+import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.android.AndroidSharedStateHolder
 import com.clarklevis.dsh.android.AttachmentLoadState
 import com.clarklevis.dsh.android.R
@@ -205,7 +206,7 @@ internal fun ConversationScreen(
     onBack: () -> Unit
 ) {
     val session = stateHolder.snapshot.sessions.firstOrNull { it.id == stateHolder.snapshot.selectedSessionId }
-    val title = session?.title ?: "新建 DeepSeek Harness"
+    val title = session?.title ?: appText("新建 DeepSeek Harness")
     val agentPresetId = stateHolder.sessionAgentPreset.agentPreset
         .takeIf { stateHolder.sessionAgentPreset.sessionId == stateHolder.snapshot.selectedSessionId }
         ?: session?.agentPreset ?: stateHolder.snapshot.agentPresetDefault
@@ -224,6 +225,16 @@ internal fun ConversationScreen(
     }
     var showStats by remember { mutableStateOf(false) }
     var showWorkspaceFiles by remember { mutableStateOf(false) }
+    val pendingApproval = stateHolder.snapshot.pendingApprovals.firstOrNull {
+        it.sessionId == stateHolder.snapshot.selectedSessionId
+    }
+    LaunchedEffect(pendingApproval?.rpcId) {
+        if (pendingApproval != null) {
+            // 审批卡片位于对话页；收到当前会话的请求时立即显现，避免被轨迹页或键盘遮挡。
+            dismissInput()
+            pagerState.scrollToPage(0)
+        }
+    }
     LaunchedEffect(stateHolder.snapshot.selectedSessionId) {
         if (stateHolder.snapshot.selectedSessionId == null) onBack()
         else stateHolder.refreshSessionControls()
@@ -254,7 +265,7 @@ internal fun ConversationScreen(
                 navigationIcon = {
                     TopBarCircleButton(
                         iconRes = R.drawable.ic_back_chevron,
-                        description = "返回",
+                        description = appText("返回"),
                         onClick = {
                             dismissInput()
                             onBack()
@@ -321,9 +332,9 @@ internal fun ConversationScreen(
     }
     stateHolder.voiceInput.state.alertMessage?.let { message ->
         DshAlertDialog(
-            title = "语音输入暂不可用",
-            message = message,
-            confirmLabel = "知道了",
+            title = appText("语音输入暂不可用"),
+            message = appText(message),
+            confirmLabel = appText("知道了"),
             onConfirm = stateHolder.voiceInput::dismissAlert,
             onDismissRequest = stateHolder.voiceInput::dismissAlert
         )
@@ -331,6 +342,8 @@ internal fun ConversationScreen(
     if (showStats) {
         SessionStatsSheet(stateHolder.snapshot.statsSnapshot) { showStats = false }
     }
+    WorkspaceFilePreviewHost(stateHolder)
+
     if (showWorkspaceFiles) {
         WorkspaceFilesBottomSheet(stateHolder) { showWorkspaceFiles = false }
     }
@@ -385,7 +398,7 @@ internal fun ConversationMoreMenu(
     Box {
         TopBarCircleButton(
             iconRes = R.drawable.ic_more_horizontal,
-            description = "更多",
+            description = appText("更多"),
             onClick = { expanded = true }
         )
         DropdownMenu(
@@ -403,7 +416,7 @@ internal fun ConversationMoreMenu(
             )
         ) {
             ConversationMoreMenuItem(
-                title = "工作区文件",
+                title = appText("工作区文件"),
                 iconRes = R.drawable.ic_folder_outline,
                 enabled = canBrowseFiles
             ) {
@@ -454,7 +467,7 @@ private fun SegmentedControl(selected: Int, onSelect: (Int) -> Unit) {
             .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.075f))
             .padding(2.dp)
     ) {
-        listOf("对话", "轨迹").forEachIndexed { index, title ->
+        listOf(appText("对话"), appText("轨迹")).forEachIndexed { index, title ->
             val isSelected = selected == index
             Box(
                 Modifier.weight(1f).fillMaxHeight().clip(segmentShape)
@@ -656,9 +669,9 @@ internal fun shouldShowInitialHistoryOverlay(
 ): Boolean = isLoading && !isLoadingOlder && !hasLocalContent
 
 internal fun historyLoadingProgressText(loadedEventCount: Int, totalEventCount: Int?): String = when {
-    totalEventCount != null -> "正在加载历史记录 · $loadedEventCount/$totalEventCount"
-    loadedEventCount > 0 -> "正在自动加载更早记录 · 已同步 $loadedEventCount 个事件"
-    else -> "正在从 Mobile Gateway 同步会话内容…"
+    totalEventCount != null -> appText("正在加载历史记录 · %1\$s/%2\$s", loadedEventCount, totalEventCount)
+    loadedEventCount > 0 -> appText("正在自动加载更早记录 · 已同步 %1\$s 个事件", loadedEventCount)
+    else -> appText("正在从 Mobile Gateway 同步会话内容…")
 }
 
 @Composable
@@ -685,7 +698,7 @@ internal fun HistoryLoadingOverlay(
                 trackColor = DshColors.Ocean.copy(alpha = 0.20f)
             )
             Text(
-                "正在加载历史记录",
+                appText("正在加载历史记录"),
                 color = MaterialTheme.colorScheme.onBackground,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.SemiBold
@@ -931,16 +944,16 @@ private fun ConversationTimeline(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    Text("历史记录加载失败", style = MaterialTheme.typography.titleLarge)
+                    Text(appText("历史记录加载失败"), style = MaterialTheme.typography.titleLarge)
                     Text(
                         if (error.contains("refuses this format")) {
-                            "Host 无法读取旧格式会话，请修复或升级 Host 后重试。原始记录未修改。"
-                        } else error,
+                            appText("Host 无法读取旧格式会话，请修复或升级 Host 后重试。原始记录未修改。")
+                        } else appText(error),
                         style = MaterialTheme.typography.bodyMedium,
                         textAlign = TextAlign.Center,
                         maxLines = 6
                     )
-                    TextButton(onClick = stateHolder::reloadSelectedHistory) { Text("重新加载历史") }
+                    TextButton(onClick = stateHolder::reloadSelectedHistory) { Text(appText("重新加载历史")) }
                 }
             }
         }
@@ -961,7 +974,7 @@ private fun ConversationTimeline(
                     Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                         Spacer(Modifier.width(9.dp))
-                        Text("正在加载更早记录…", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f))
+                        Text(appText("正在加载更早记录…"), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f))
                     }
                 }
             }
@@ -989,12 +1002,31 @@ private fun ConversationTimeline(
                     )
                     is ConversationTimelineEntry.AssistantMarkdown -> DshLazyMarkdownText(
                         markdown = entry.markdown,
+                        knownFiles = entry.knownFiles,
+                        onOpenFile = { path ->
+                            selectedSessionId?.let { session ->
+                                stateHolder.openConversationFile(stateHolder.gatewayLocalId, session, path)
+                            }
+                        },
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
                     )
-                    is ConversationTimelineEntry.AssistantFooter -> Box(
-                        Modifier.fillMaxWidth().padding(top = 7.dp, bottom = 12.dp)
+                    is ConversationTimelineEntry.AssistantFooter -> Column(
+                        Modifier.fillMaxWidth().padding(top = 7.dp, bottom = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        CopyButton(entry.text)
+                        entry.files.forEach { file ->
+                            FileReferenceCard(
+                                path = file.path,
+                                description = file.description,
+                                modifier = Modifier.align(Alignment.End),
+                                onClick = {
+                                    selectedSessionId?.let { session ->
+                                        stateHolder.openConversationFile(stateHolder.gatewayLocalId, session, file.path)
+                                    }
+                                }
+                            )
+                        }
+                        if (entry.text.isNotEmpty()) CopyButton(entry.text)
                     }
                 }
             }
@@ -1105,7 +1137,7 @@ private fun DeepSearchProgressRow(
                 )
             }
             Text(
-                text = "$phrase，用时 $elapsedSeconds 秒…",
+                text = appText("%1\$s，用时 %2\$s 秒…", appText(phrase), elapsedSeconds),
                 modifier = Modifier.onSizeChanged { textWidth = it.width.coerceAtLeast(1) },
                 style = TextStyle(brush = shimmerBrush, fontSize = 14.sp, fontWeight = FontWeight.Medium),
                 maxLines = 1
@@ -1246,7 +1278,7 @@ internal fun ScrollToBottomButton(isGenerating: Boolean, onClick: () -> Unit) {
                 )
             )
             .semantics {
-                contentDescription = if (isGenerating) "正在生成，滚动到最新消息" else "滚动到最新消息"
+                contentDescription = if (isGenerating) appText("正在生成，滚动到最新消息") else appText("滚动到最新消息")
             }
             .testTag("scroll-to-bottom"),
         shape = shape,
@@ -1279,9 +1311,9 @@ internal fun ScrollToBottomButton(isGenerating: Boolean, onClick: () -> Unit) {
 private fun EmptyConversation(modifier: Modifier = Modifier) {
     Column(modifier.padding(horizontal = 28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
         WhalenessOrcaIcon(Modifier.size(52.dp))
-        Text("操作远端 DSH Agent", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+        Text(appText("操作远端 DSH Agent"), fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
         Text(
-            "发送任务后，工具调用、推理进度和最终回复会通过 Mobile Gateway 实时返回。",
+            appText("发送任务后，工具调用、推理进度和最终回复会通过 Mobile Gateway 实时返回。"),
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
             fontSize = 14.sp,
             textAlign = TextAlign.Center
@@ -1448,7 +1480,7 @@ private fun Composer(
                         Box {
                             if (stateHolder.messageDraft.isEmpty()) {
                                 Text(
-                                    voice.state.hint,
+                                    appText(voice.state.hint),
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.42f)
                                 )
                             } else if (
@@ -1482,9 +1514,9 @@ private fun Composer(
                     Column {
                         Text(transcript, style = MaterialTheme.typography.bodySmall, maxLines = 3)
                         Row {
-                            Text("草稿已更改，请确认插入识别文字", style = MaterialTheme.typography.labelSmall)
-                            TextButton(onClick = voice::insertPending) { Text("插入") }
-                            TextButton(onClick = voice::dismissFeedback) { Text("丢弃") }
+                            Text(appText("草稿已更改，请确认插入识别文字"), style = MaterialTheme.typography.labelSmall)
+                            TextButton(onClick = voice::insertPending) { Text(appText("插入")) }
+                            TextButton(onClick = voice::dismissFeedback) { Text(appText("丢弃")) }
                         }
                     }
                 }
@@ -1493,7 +1525,7 @@ private fun Composer(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(7.dp)
                 ) {
-                    ComposerIconButton(R.drawable.ic_photo_stack, "添加图片", onPickImage)
+                    ComposerIconButton(R.drawable.ic_photo_stack, appText("添加图片"), onPickImage)
                     PermissionControl(stateHolder, Modifier.width(82.dp))
                     Spacer(Modifier.width(2.dp))
                     ModelControl(
@@ -1524,9 +1556,9 @@ private fun Composer(
                             )
                             .semantics {
                                 contentDescription = if (stateHolder.showsSessionStopButton) {
-                                    "停止生成"
+                                    appText("停止生成")
                                 } else {
-                                    "发送"
+                                    appText("发送")
                                 }
                             },
                         contentAlignment = Alignment.Center
@@ -1571,12 +1603,12 @@ private fun PreparedImagePreview(image: AndroidPreparedImage, onRemove: () -> Un
         when (val state = preview) {
             is PreparedImagePreviewState.Ready -> Image(
                 bitmap = state.bitmap,
-                contentDescription = image.outgoing.name ?: "待发送图片",
+                contentDescription = image.outgoing.name ?: appText("待发送图片"),
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Fit
             )
-            PreparedImagePreviewState.Loading -> Text("正在加载图片…", fontSize = 10.sp)
-            PreparedImagePreviewState.Unavailable -> Text("无法预览图片", fontSize = 10.sp)
+            PreparedImagePreviewState.Loading -> Text(appText("正在加载图片…"), fontSize = 10.sp)
+            PreparedImagePreviewState.Unavailable -> Text(appText("无法预览图片"), fontSize = 10.sp)
         }
         Text(
             "×",
@@ -1585,7 +1617,7 @@ private fun PreparedImagePreview(image: AndroidPreparedImage, onRemove: () -> Un
                 .size(20.dp)
                 .background(Color.Black.copy(alpha = 0.65f), CircleShape)
                 .clickable(onClick = onRemove)
-                .semantics { contentDescription = "移除图片" },
+                .semantics { contentDescription = appText("移除图片") },
             color = Color.White,
             textAlign = TextAlign.Center,
             fontWeight = FontWeight.Bold
@@ -1647,9 +1679,9 @@ internal fun QueueDock(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(painterResource(R.drawable.ic_question_bubble), contentDescription = null, modifier = Modifier.padding(end = 6.dp).size(16.dp))
-                Text("排队消息 · ${items.size}", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                Text(appText("排队消息 · %1\$s", items.size), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                 Icon(painterResource(if (expanded) R.drawable.ic_question_chevron_down else R.drawable.ic_chevron_up),
-                    contentDescription = if (expanded) "收起排队消息" else "展开排队消息", modifier = Modifier.size(18.dp))
+                    contentDescription = if (expanded) appText("收起排队消息") else appText("展开排队消息"), modifier = Modifier.size(18.dp))
             }
         }
         if (items.size == 1 || expanded) {
@@ -1662,14 +1694,14 @@ internal fun QueueDock(
                             }
                             Column(Modifier.weight(1f)) {
                                 Text(item.preview, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
-                                if (item.attachmentCount > 0) Text("${item.attachmentCount} 个附件", style = MaterialTheme.typography.labelSmall)
+                                if (item.attachmentCount > 0) Text(appText("%1\$s 个附件", item.attachmentCount), style = MaterialTheme.typography.labelSmall)
                             }
                             if (pendingItemId == item.id) {
                                 CircularProgressIndicator(Modifier.padding(10.dp).size(20.dp), strokeWidth = 2.dp)
                             } else {
-                                QueueAction(R.drawable.ic_pencil_line, "编辑排队消息", actionsEnabled && item.editable) { onAction(item.id, "edit") }
-                                QueueAction(R.drawable.ic_trash, "删除排队消息", actionsEnabled) { onAction(item.id, "remove") }
-                                QueueAction(R.drawable.ic_arrow_up, "立即插话", actionsEnabled && running) { onAction(item.id, "steer") }
+                                QueueAction(R.drawable.ic_pencil_line, appText("编辑排队消息"), actionsEnabled && item.editable) { onAction(item.id, "edit") }
+                                QueueAction(R.drawable.ic_trash, appText("删除排队消息"), actionsEnabled) { onAction(item.id, "remove") }
+                                QueueAction(R.drawable.ic_arrow_up, appText("立即插话"), actionsEnabled && running) { onAction(item.id, "steer") }
                             }
                         }
                         if (index < items.lastIndex) {
@@ -1896,11 +1928,11 @@ internal fun SessionAgentPresetControl(
                 )
                 Text(
                     when {
-                        state.saving -> "切换中…"
+                        state.saving -> appText("切换中…")
                         state.agentPreset != null -> current?.name?.takeIf(String::isNotBlank)
                             ?: agentPresetDisplayName(state.agentPreset)
-                        state.loading -> "读取模式…"
-                        else -> "重试模式"
+                        state.loading -> appText("读取模式…")
+                        else -> appText("重试模式")
                     },
                     modifier = Modifier.widthIn(max = 132.dp),
                     style = MaterialTheme.typography.labelSmall.copy(
@@ -1910,7 +1942,7 @@ internal fun SessionAgentPresetControl(
                     maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
                 Icon(
-                    painterResource(R.drawable.ic_question_chevron_down), contentDescription = "选择会话模式",
+                    painterResource(R.drawable.ic_question_chevron_down), contentDescription = appText("选择会话模式"),
                     modifier = Modifier.size(10.dp), tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
                 )
             }
@@ -1932,7 +1964,7 @@ internal fun SessionAgentPresetControl(
                                 maxLines = 1, overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                if (preset.broken == true) preset.brokenReason ?: "模式不可用"
+                                if (preset.broken == true) preset.brokenReason ?: appText("模式不可用")
                                 else agentPresetCompactDescription(preset.id, preset.description),
                                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
                                 maxLines = 1, overflow = TextOverflow.Ellipsis
@@ -1941,7 +1973,7 @@ internal fun SessionAgentPresetControl(
                     },
                     trailingIcon = {
                         if (preset.id == state.agentPreset) Icon(
-                            painterResource(R.drawable.ic_menu_check), contentDescription = "已选择",
+                            painterResource(R.drawable.ic_menu_check), contentDescription = appText("已选择"),
                             modifier = Modifier.size(18.dp)
                         )
                     },
@@ -2107,7 +2139,7 @@ private fun ModelControl(
         ) {
             val efforts = currentModelEfforts(stateHolder)
             if (efforts.isNotEmpty()) {
-                ComposerMenuSectionTitle("推理等级")
+                ComposerMenuSectionTitle(appText("推理等级"))
                 efforts.forEach { option ->
                     ComposerMenuItem(
                         title = option.name,
@@ -2298,7 +2330,7 @@ private fun ContextUsageRing(stateHolder: AndroidSharedStateHolder) {
                 expanded = true
                 stateHolder.refreshContextUsage()
             }
-            .semantics { contentDescription = "查看上下文用量" }
+            .semantics { contentDescription = appText("查看上下文用量") }
             .testTag("context-usage-ring"),
         contentAlignment = Alignment.Center
     ) {
@@ -2321,7 +2353,7 @@ private fun ContextUsageRing(stateHolder: AndroidSharedStateHolder) {
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("上下文已用", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+                    Text(appText("上下文已用"), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
                     Spacer(Modifier.width(8.dp))
                     Text(
                         if (contextWindow != null && contextWindow > 0 && pressure.pressureTokens != null)
@@ -2339,15 +2371,15 @@ private fun ContextUsageRing(stateHolder: AndroidSharedStateHolder) {
                 val breakdown = snapshot?.breakdown
                 val usage = snapshot?.tokenUsage
                 if (breakdown != null) {
-                    ContextUsageRow("系统提示词", breakdown.systemTokens, Color.Gray)
-                    ContextUsageRow("工具", breakdown.toolsTokens, Color(0xFF8055CF))
-                    ContextUsageRow("对话消息", breakdown.messageTokens, DshColors.Ocean)
+                    ContextUsageRow(appText("系统提示词"), breakdown.systemTokens, Color.Gray)
+                    ContextUsageRow(appText("工具"), breakdown.toolsTokens, Color(0xFF8055CF))
+                    ContextUsageRow(appText("对话消息"), breakdown.messageTokens, DshColors.Ocean)
                 } else if (usage != null) {
-                    ContextUsageRow("未缓存输入", usage.uncachedInputTokens, DshColors.Ocean)
-                    ContextUsageRow("缓存读取", usage.cacheReadTokens, Color(0xFF8055CF))
-                    ContextUsageRow("模型输出", usage.outputTokens, Color(0xFFE18B38))
+                    ContextUsageRow(appText("未缓存输入"), usage.uncachedInputTokens, DshColors.Ocean)
+                    ContextUsageRow(appText("缓存读取"), usage.cacheReadTokens, Color(0xFF8055CF))
+                    ContextUsageRow(appText("模型输出"), usage.outputTokens, Color(0xFFE18B38))
                 } else {
-                    Text("暂无上下文用量明细", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                    Text(appText("暂无上下文用量明细"), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                 }
             }
         }
@@ -2533,8 +2565,8 @@ private fun ProcessToolBundle(
 ) {
     val names = tools.mapNotNull { it.call?.title }.take(2)
     val title = when {
-        names.isEmpty() -> "查看 ${tools.size} 个工具结果"
-        else -> "使用了 ${names.joinToString("、")}${if (tools.size > 2) " 等工具" else ""}"
+        names.isEmpty() -> appText("查看 %1\$s 个工具结果", tools.size)
+        else -> appText("使用了 %1\$s%2\$s", names.joinToString(appText("、")), if (tools.size > 2) appText(" 等工具") else "")
     }
     ProcessDisclosure(
         id = "tools-$groupId",
@@ -2555,15 +2587,15 @@ private fun ProcessToolDisclosure(tool: ConversationProcessTool) {
     val failed = tool.result?.isError == true
     val summary = remember(tool.call?.title, tool.call?.text, tool.result?.title) {
         com.clarklevis.dsh.shared.projection.ToolActivitySummaryFormatter.summarize(
-            tool.call?.title ?: tool.result?.title ?: "工具", tool.call?.text.orEmpty()
-        )
+            tool.call?.title ?: tool.result?.title ?: appText("工具"), tool.call?.text.orEmpty()
+        ).let(::localizedToolActivitySummary)
     }
     ProcessDisclosure(
         id = "tool-${tool.id}",
         title = listOf(summary.label, summary.annotation).filter(String::isNotBlank).joinToString(" · "),
         preview = listOf(
             summary.detail,
-            if (failed) "失败" else if (tool.result == null) "等待结果" else ""
+            if (failed) appText("失败") else if (tool.result == null) appText("等待结果") else ""
         ).filter(String::isNotBlank).joinToString(" · "),
         stackedPreview = true,
         iconRes = processToolIcon(tool.call?.title),
@@ -2572,7 +2604,7 @@ private fun ProcessToolDisclosure(tool: ConversationProcessTool) {
         Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
             tool.call?.text?.takeIf(String::isNotEmpty)?.let { arguments ->
                 Text(
-                    "调用参数",
+                    appText("调用参数"),
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold
@@ -2585,7 +2617,7 @@ private fun ProcessToolDisclosure(tool: ConversationProcessTool) {
             }
             tool.result?.text?.takeIf(String::isNotEmpty)?.let { result ->
                 Text(
-                    if (failed) "错误" else "结果",
+                    if (failed) appText("错误") else appText("结果"),
                     color = if (failed) Color.Red else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold
@@ -2678,7 +2710,7 @@ private fun String.singleLinePreview(): String =
     replace(Regex("\\s+"), " ").trim()
 
 private fun String.toContextDisplayTitle(): String = when {
-    startsWith("Context · ") -> "上下文注入 · ${removePrefix("Context · ")}"
+    startsWith("Context · ") -> appText("上下文注入 · %1\$s", removePrefix("Context · "))
     else -> this
 }
 
@@ -2810,7 +2842,7 @@ private fun UserAttachmentPreview(
                     )
                 }
                 Text(
-                    text = "${attachments.size}张",
+                    text = appText("%1\$s张", attachments.size),
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(6.dp)
@@ -2854,16 +2886,16 @@ private fun UserAttachmentImage(
         if (image != null) {
             Image(
                 bitmap = image,
-                contentDescription = attachment.name ?: "图片附件",
+                contentDescription = attachment.name ?: appText("图片附件"),
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
             )
         } else {
             Text(
                 text = when (state) {
-                    AttachmentLoadState.FAILED -> "加载失败 · 点击重试"
-                    AttachmentLoadState.DEFERRED -> "已释放 · 点击重载"
-                    else -> "正在加载图片…"
+                    AttachmentLoadState.FAILED -> appText("加载失败 · 点击重试")
+                    AttachmentLoadState.DEFERRED -> appText("已释放 · 点击重载")
+                    else -> appText("正在加载图片…")
                 },
                 modifier = Modifier.padding(10.dp),
                 fontSize = 11.sp,
@@ -2912,7 +2944,7 @@ internal fun ConversationImagePreviewDialog(
                 val attachment = request.attachments[page]
                 ZoomablePreviewImage(
                     image = thumbnails[attachment.attachmentId],
-                    contentDescription = attachment.name ?: "图片"
+                    contentDescription = attachment.name ?: appText("图片")
                 )
             }
             Row(
@@ -2926,7 +2958,7 @@ internal fun ConversationImagePreviewDialog(
                     onClick = onDismiss,
                     modifier = Modifier
                         .size(38.dp)
-                        .semantics { contentDescription = "关闭图片预览" },
+                        .semantics { contentDescription = appText("关闭图片预览") },
                     shape = RoundedCornerShape(19.dp),
                     color = Color.White.copy(alpha = 0.16f)
                 ) {
@@ -3111,9 +3143,9 @@ private fun AttachmentGrid(
                         } else {
                             Text(
                                 when (states[attachment.attachmentId]) {
-                                    AttachmentLoadState.FAILED -> "加载失败 · 点击重试"
-                                    AttachmentLoadState.DEFERRED -> "已释放 · 点击重载"
-                                    else -> "正在加载图片…"
+                                    AttachmentLoadState.FAILED -> appText("加载失败 · 点击重试")
+                                    AttachmentLoadState.DEFERRED -> appText("已释放 · 点击重载")
+                                    else -> appText("正在加载图片…")
                                 },
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
@@ -3143,7 +3175,7 @@ private fun CopyButton(text: String) {
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             clipboard.setPrimaryClip(ClipData.newPlainText("DeepSeek", text))
             copied = true
-        }.semantics { contentDescription = if (copied) "已复制" else "复制正文" },
+        }.semantics { contentDescription = if (copied) appText("已复制") else appText("复制正文") },
         contentAlignment = Alignment.Center
     ) {
         Icon(
@@ -3176,10 +3208,10 @@ private fun SmallConnectionDot(state: GatewayConnectionState) {
 }
 
 private fun permissionTitle(value: String?) = when (value) {
-    "read-only" -> "只读"
-    "workspace-write" -> "工作区写入"
-    "danger-full-access" -> "完全访问"
-    else -> "默认权限"
+    "read-only" -> appText("只读")
+    "workspace-write" -> appText("工作区写入")
+    "danger-full-access" -> appText("完全访问")
+    else -> appText("默认权限")
 }
 
 private fun modelTitle(stateHolder: AndroidSharedStateHolder): String {

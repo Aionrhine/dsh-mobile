@@ -1,10 +1,14 @@
 package com.clarklevis.dsh.android.ui
 
+import com.clarklevis.dsh.android.localization.LocaleTestRule
+import org.junit.Rule
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
 class GatewaySwitcherStateTest {
+    @get:Rule val locale = LocaleTestRule()
+
     @Test
     fun deleteActionTracksSelectionCount() {
         assertNull(gatewayDeleteActionLabel(0))

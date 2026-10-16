@@ -315,6 +315,23 @@ struct FontSizeSettingsView: View {
     }
 
     var body: some View {
+        GeometryReader { geometry in
+            ScrollView {
+                fontSizeContent(previewHeight: max(220, geometry.size.height - 290))
+                    .frame(maxWidth: 720)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+                    .padding(.bottom, 20)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .background(Color(uiColor: .systemGroupedBackground))
+        .navigationTitle("字体大小")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear { fontScale = AppFontScale.normalized(fontScale) }
+    }
+
+    private func fontSizeContent(previewHeight: CGFloat) -> some View {
         VStack(spacing: 24) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
@@ -339,7 +356,7 @@ struct FontSizeSettingsView: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 32)
             }
-            .frame(maxHeight: .infinity)
+            .frame(height: previewHeight)
             .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20))
 
             VStack(spacing: 16) {
@@ -394,15 +411,6 @@ struct FontSizeSettingsView: View {
             }
             .padding(.horizontal, 12)
         }
-        .frame(maxWidth: 720)
-        .padding(.horizontal, 20)
-        .padding(.top, 16)
-        .padding(.bottom, 20)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(uiColor: .systemGroupedBackground))
-        .navigationTitle("字体大小")
-        .navigationBarTitleDisplayMode(.inline)
-        .onAppear { fontScale = AppFontScale.normalized(fontScale) }
     }
 }
 
@@ -639,6 +647,7 @@ private struct AgentPresetSelectionView: View {
                 }
             }
             .padding(20)
+            .readableContentWidth()
         }
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle("Agent 预设")
@@ -793,6 +802,7 @@ private struct DefaultModelSelectionView: View {
                 }
             }
             .padding(20)
+            .readableContentWidth()
         }
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle("默认模型")

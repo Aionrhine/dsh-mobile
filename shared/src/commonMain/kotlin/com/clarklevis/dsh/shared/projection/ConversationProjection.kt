@@ -1,5 +1,9 @@
 package com.clarklevis.dsh.shared.projection
 
+import com.clarklevis.dsh.shared.protocol.PresentedFile
+import com.clarklevis.dsh.shared.protocol.FinishInfo
+import com.clarklevis.dsh.shared.protocol.JsonValue
+import com.clarklevis.dsh.shared.protocol.failureText
 import com.clarklevis.dsh.shared.protocol.GatewayEvent
 import com.clarklevis.dsh.shared.protocol.GatewayImageAttachment
 import com.clarklevis.dsh.shared.protocol.SessionEvent
@@ -29,7 +33,13 @@ data class ConversationProjectionLabels(
     val commandCompleted: String = "Completed",
     val commandFailed: String = "Failed",
     val compactedHistory: String = "Compacted {items} history items (~{tokens} tokens)",
-    val interrupted: String = "Generation interrupted"
+    val interrupted: String = "Generation interrupted",
+    val modelAttemptFailed: String = "Model request failed",
+    val modelRetrying: String = "Retrying model request",
+    val modelRetried: String = "Model request retried",
+    val generationFailed: String = "Generation failed",
+    val generationCancelled: String = "Generation cancelled",
+    val outputTruncated: String = "Output truncated; showing the beginning and end"
 )
 
 @Serializable
@@ -40,7 +50,10 @@ data class ConversationItem(
     val text: String,
     val images: List<GatewayImageAttachment> = emptyList(),
     val isError: Boolean = false,
-    val epochSeconds: Double
+    val epochSeconds: Double,
+    val turn: Int? = null,
+    val files: List<PresentedFile> = emptyList(),
+    val knownFiles: List<PresentedFile> = emptyList()
 )
 
 /** 高频 token 流只发送有序操作，不重复发送已经累计的完整消息文本。 */
@@ -57,10 +70,14 @@ class ConversationProjector(
     private val labels: ConversationProjectionLabels = ConversationProjectionLabels()
 ) {
     private val mutableItems = mutableListOf<ConversationItem>()
+    private val filesByTurn = mutableMapOf<Int, LinkedHashMap<String, PresentedFile>>()
+    private val presentedSequences = mutableSetOf<Int>()
     private val streamIndexes = mutableMapOf<String, Int>()
     private val finalizedKeys = mutableSetOf<String>()
     private val commandItemIds = mutableMapOf<String, String>()
     private val compactionCommandIds = mutableMapOf<String, String>()
+    private val attemptKeys = mutableMapOf<String, String>()
+    private val retryKeys = mutableMapOf<Int, String>()
     private val transientKeys = mutableSetOf<String>()
     private val steeringMessages = linkedMapOf<String, SessionEvent>()
     private val committedUserMessageIds = mutableSetOf<String>()
@@ -71,11 +88,15 @@ class ConversationProjector(
 
     fun reset() {
         mutableItems.clear()
+        filesByTurn.clear()
+        presentedSequences.clear()
         streamIndexes.clear()
         finalizedKeys.clear()
         commandItemIds.clear()
         compactionCommandIds.clear()
         transientKeys.clear()
+        attemptKeys.clear()
+        retryKeys.clear()
         steeringMessages.clear()
         committedUserMessageIds.clear()
         lastSequence = -1
@@ -93,7 +114,26 @@ class ConversationProjector(
     fun foldWithOperations(events: List<SessionEvent>): List<ConversationProjectionOperation> {
         val operations = mutableListOf<ConversationProjectionOperation>()
         events.forEach { record ->
+            val start = operations.size
             fold(record, operations)
+            val turn = record.event.turn
+            if (turn != null) {
+                val affectedIds = operations.drop(start).mapNotNull { it.item?.takeIf { item ->
+                    item.kind == ConversationItemKind.ASSISTANT
+                }?.id }.toSet()
+                mutableItems.indices.filter { mutableItems[it].id in affectedIds }.forEach { index ->
+                    val old = mutableItems[index]
+                    if (old.turn != turn) {
+                        val updated = old.copy(turn = turn)
+                        mutableItems[index] = updated
+                        for (operationIndex in start until operations.size) {
+                            val operation = operations[operationIndex]
+                            if (operation.item?.id == updated.id) operations[operationIndex] = operation.copy(item = updated)
+                        }
+                    }
+                }
+                attachFiles(turn, operations)
+            }
             lastSequence = maxOf(lastSequence, record.seq)
         }
         return operations
@@ -216,13 +256,68 @@ class ConversationProjector(
             }
             event.type == "assistant/attempt" -> {
                 val content = (event.stream ?: event.raw?.get("stream"))?.toJsonElement()?.let(::expandAssistantStream).orEmpty()
-                val text = content.mapNotNull { chunk ->
+                val finish = event.finish ?: content.lastOrNull { it.chunk["type"]?.jsonPrimitive?.contentOrNull == "finish" }
+                    ?.chunk?.get("reason")?.let { JsonValue.fromJsonElement(it) }
+                    ?.let { FinishInfo(it["kind"]?.stringValue, it["failure"] ?: it["error"]) }
+                val cancelled = finish?.kind in setOf("aborted", "cancelled", "canceled")
+                val title = if (cancelled) labels.generationCancelled else labels.modelAttemptFailed
+                val partial = content.mapNotNull { chunk ->
                     if (chunk.chunk["type"]?.jsonPrimitive?.contentOrNull in setOf("text-delta", "reasoning-delta")) {
                         chunk.chunk["text"]?.jsonPrimitive?.contentOrNull
                     } else null
                 }.joinToString("")
-                insert(ConversationItem(eventId(record), ConversationItemKind.ASSISTANT, labels.interrupted,
-                    text.ifEmpty { labels.interrupted }, isError = true, epochSeconds = date), operations)
+                val text = listOfNotNull(partial.takeIf(String::isNotEmpty), failureText(finish?.failure)).joinToString("\n\n")
+                val itemKey = "attempt-${eventId(record)}"
+                attemptKeys[key] = itemKey
+                streamIndexes[itemKey] = mutableItems.size
+                insert(ConversationItem(eventId(record), ConversationItemKind.SYSTEM, title,
+                    text, isError = !cancelled, epochSeconds = date), operations)
+            }
+            event.type == "llm/retry" || event.type == "llm/retry-started" -> {
+                // A retry settles the attempt notice; keep one status row per provider retry chain.
+                attemptKeys.remove(key)?.let { removeStream(it, operations) }
+                val itemKey = "retry-${record.sessionId}-${event.retryId ?: key}"
+                val old = streamIndexes[itemKey]?.let { mutableItems[it] }
+                val count = event.retry?.let { " ($it${event.maxRetries?.let { max -> "/$max" }.orEmpty()})" }.orEmpty()
+                val delay = event.delayMs?.let { " · ${it / 1000} s" }.orEmpty()
+                val started = event.type == "llm/retry-started"
+                val text = failureText(event.failure) ?: old?.text.orEmpty()
+                upsertStatus(itemKey, ConversationItem(old?.id ?: eventId(record), ConversationItemKind.SYSTEM,
+                    if (started && old != null) old.title.replace(labels.modelRetrying, labels.modelRetried)
+                    else (if (started) labels.modelRetried else labels.modelRetrying) + count + delay,
+                    text, epochSeconds = date), operations)
+                event.turn?.let { retryKeys[it] = itemKey }
+            }
+            event.type == "turn/end" -> {
+                val reason = event.reason ?: event.reasonDetails?.get("kind")?.stringValue
+                val failed = reason in setOf("error", "failed")
+                val cancelled = reason in setOf("aborted", "cancelled", "canceled")
+                val interrupted = reason == "interrupted"
+                if (failed || cancelled || interrupted) {
+                    attemptKeys.keys.filter { it.startsWith("${event.turn}-") }.toList().forEach { attempt ->
+                        attemptKeys.remove(attempt)?.let { removeStream(it, operations) }
+                    }
+                    retryKeys.remove(event.turn)?.let { retryKey ->
+                        val old = streamIndexes[retryKey]?.let { mutableItems[it] }
+                        if (old != null && old.title.startsWith(labels.modelRetrying)) {
+                            if (cancelled) removeStream(retryKey, operations)
+                            else upsertStatus(retryKey, old.copy(
+                                title = old.title.replace(labels.modelRetrying, labels.modelRetried)), operations)
+                        }
+                    }
+                    val title = when {
+                        cancelled -> labels.generationCancelled
+                        failed -> labels.generationFailed
+                        else -> labels.interrupted
+                    }
+                    val details = event.reasonDetails ?: event.raw?.get("reason")
+                    insert(ConversationItem(eventId(record), ConversationItemKind.SYSTEM, title,
+                        failureText(details?.get("error") ?: details?.get("failure")) ?: event.error.orEmpty(),
+                        isError = failed || interrupted, epochSeconds = date), operations)
+                } else {
+                    retryKeys.remove(event.turn)
+                }
+                attemptKeys.keys.filter { it.startsWith("${event.turn}-") }.toList().forEach { attemptKeys.remove(it) }
             }
             event.type == "assistant/message" -> {
                 finalizedKeys += key
@@ -236,7 +331,7 @@ class ConversationProjector(
                         epochSeconds = date
                     )
                 }
-                val finalAssistant = if (!event.text.isNullOrEmpty() || !event.images.isNullOrEmpty()) {
+                val finalAssistant = if (!event.text.isNullOrEmpty() || !event.images.isNullOrEmpty() || !filesByTurn[event.turn].isNullOrEmpty()) {
                     ConversationItem(
                         eventId(record),
                         ConversationItemKind.ASSISTANT,
@@ -268,6 +363,12 @@ class ConversationProjector(
                     finalizeStream("text-$key", finalAssistant, operations)
                 }
             }
+            event.type == "deliverables/presented" && event.turn != null && presentedSequences.add(record.seq) -> {
+                val files = filesByTurn.getOrPut(event.turn) { linkedMapOf() }
+                event.files.orEmpty().filter { it.path.isNotBlank() }.forEach { file ->
+                    files[file.path] = file
+                }
+            }
             event.type == "tool/call" -> {
                 val name = event.name ?: "Tool Call"
                 val kind = if (name.equals("run_code", ignoreCase = true)) ConversationItemKind.JSON_TOOL else ConversationItemKind.TOOL
@@ -276,9 +377,9 @@ class ConversationProjector(
             event.type == "tool/result" -> insert(ConversationItem(
                 id = eventId(record),
                 kind = ConversationItemKind.TOOL_RESULT,
-                title = if (event.isError == true) labels.toolResultFailed else labels.toolResultDone,
-                text = event.preview.orEmpty(),
-                isError = event.isError == true,
+                title = if (toolFailed(event)) labels.toolResultFailed else labels.toolResultDone,
+                text = toolOutput(event),
+                isError = toolFailed(event),
                 epochSeconds = date
             ), operations)
             event.type == "command/run" -> commandStarted(record, date, operations)
@@ -414,6 +515,49 @@ class ConversationProjector(
         val updated = transform(mutableItems[index])
         mutableItems[index] = updated
         operations += ConversationProjectionOperation(kind = "replace", item = updated, itemId = itemId)
+    }
+
+    private fun toolFailed(event: GatewayEvent): Boolean {
+        if (event.isError == true) return true
+        val output = event.output ?: event.preview.orEmpty()
+        // Shell tools encode a nonzero process exit in the final line while Host isError may be false.
+        val exit = Regex("\\n\\[exit code: (-?\\d+)\\]$").find(output)?.groupValues?.get(1)?.toIntOrNull()
+        return (exit != null && exit != 0) || Regex("\\n\\[killed by signal: [^\\]\\n]+\\]$").containsMatchIn(output)
+    }
+
+    private fun toolOutput(event: GatewayEvent): String {
+        val output = event.output ?: event.preview.orEmpty()
+        val detail = event.error?.takeIf { it.isNotBlank() && !output.contains(it) }
+        return listOfNotNull(output.takeIf(String::isNotEmpty), detail,
+            labels.outputTruncated.takeIf { event.outputTruncated == true }).joinToString("\n\n")
+    }
+
+    private fun upsertStatus(key: String, item: ConversationItem, operations: MutableList<ConversationProjectionOperation>) {
+        val index = streamIndexes[key]
+        if (index == null) {
+            streamIndexes[key] = mutableItems.size
+            insert(item, operations)
+        } else {
+            mutableItems[index] = item
+            operations += ConversationProjectionOperation("replace", item = item, itemId = item.id)
+        }
+    }
+
+    private fun attachFiles(turn: Int, operations: MutableList<ConversationProjectionOperation>) {
+        val files = filesByTurn[turn]?.values?.toList().orEmpty()
+        if (files.isEmpty()) return
+        val indexes = mutableItems.indices.filter {
+            mutableItems[it].kind == ConversationItemKind.ASSISTANT && mutableItems[it].turn == turn
+        }
+        indexes.forEach { index ->
+            val old = mutableItems[index]
+            val cards = if (index == indexes.last()) files else emptyList()
+            if (old.files != cards || old.knownFiles != files) {
+                val updated = old.copy(files = cards, knownFiles = files)
+                mutableItems[index] = updated
+                operations += ConversationProjectionOperation("replace", item = updated, itemId = old.id)
+            }
+        }
     }
 
     private fun insert(

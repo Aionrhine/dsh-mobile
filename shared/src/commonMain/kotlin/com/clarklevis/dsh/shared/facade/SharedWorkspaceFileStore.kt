@@ -33,7 +33,19 @@ data class SharedWorkspaceFileCompletion(
     val mediaType: String,
     val size: Long,
     val sha256: String,
-    val purpose: String
+    val purpose: String,
+    val modifiedAt: Double? = null
+)
+
+/** 已由远端重新解析的版本；requestId 用于拒绝取消或切换会话后的缓存回调。 */
+data class SharedWorkspaceFileCacheLookup(
+    val requestId: String,
+    val sessionId: String,
+    val path: String,
+    val name: String,
+    val mediaType: String,
+    val size: Long,
+    val modifiedAt: Double
 )
 
 /**
@@ -48,14 +60,19 @@ data class SharedWorkspaceFileTransition(
     val request: GatewayRequest? = null,
     val appendBase64Data: String? = null,
     val completion: SharedWorkspaceFileCompletion? = null,
-    val discardTransferId: String? = null
+    val discardTransferId: String? = null,
+    val cacheLookup: SharedWorkspaceFileCacheLookup? = null,
+    val cacheHit: SharedWorkspaceFileCacheLookup? = null
 )
 
 class SharedWorkspaceFileStore {
     private var state = SharedWorkspaceFileSnapshot()
     private var pendingList: PendingList? = null
     private var pendingOpen: PendingOpen? = null
+    private var pendingResolve: PendingOpen? = null
     private var active: ActiveDownload? = null
+    private var pendingCacheLookup: SharedWorkspaceFileCacheLookup? = null
+    private var pendingVerification: Pair<String, SharedWorkspaceFileCompletion>? = null
 
     fun snapshot(): SharedWorkspaceFileSnapshot = state
 
@@ -63,6 +80,9 @@ class SharedWorkspaceFileStore {
         val discard = active?.transferId
         pendingList = null
         pendingOpen = null
+        pendingResolve = null
+        pendingCacheLookup = null
+        pendingVerification = null
         active = null
         state = SharedWorkspaceFileSnapshot(sessionId = sessionId?.takeIf(String::isNotBlank))
         return SharedWorkspaceFileTransition(state, discardTransferId = discard)
@@ -96,6 +116,28 @@ class SharedWorkspaceFileStore {
         )
     }
 
+    /** 原始交付路径不做 URL 解码；只有 Markdown 链接入口负责解码一次。 */
+    fun resolve(
+        sessionId: String,
+        path: String,
+        requestId: String,
+        supportsResolve: Boolean,
+        useCache: Boolean = false
+    ): SharedWorkspaceFileTransition {
+        requireIdentifier(sessionId, "sessionId")
+        requireIdentifier(requestId, "requestId")
+        if (isBusy()) return fail("download-busy")
+        if (path.isBlank() || '\u0000' in path) return fail("path-invalid")
+        if (!supportsResolve) {
+            val relative = runCatching { normalizeRelativePath(path, allowRoot = false) }
+                .getOrElse { return fail("file-references-upgrade-required") }
+            return download(sessionId, relative, requestId, "preview")
+        }
+        pendingResolve = PendingOpen(requestId, sessionId, path, "preview", useCache = useCache)
+        state = state.copy(lastError = null)
+        return SharedWorkspaceFileTransition(state, request = GatewayRequests.fileResolve(sessionId, path, requestId))
+    }
+
     fun download(
         sessionId: String,
         path: String,
@@ -106,7 +148,7 @@ class SharedWorkspaceFileStore {
         requireIdentifier(requestId, "requestId")
         require(purpose in PURPOSES) { "purpose-invalid" }
         val normalizedPath = normalizeRelativePath(path, allowRoot = false)
-        if (active != null || pendingOpen != null) return fail("download-busy")
+        if (isBusy()) return fail("download-busy")
         pendingOpen = PendingOpen(requestId, sessionId, normalizedPath, purpose)
         state = state.copy(lastError = null)
         return SharedWorkspaceFileTransition(
@@ -115,8 +157,26 @@ class SharedWorkspaceFileStore {
         )
     }
 
+    /** 平台必须检查文件存在、大小和 SHA-256；过期回调不会触发预览或下载。 */
+    fun completeCacheLookup(requestId: String, available: Boolean): SharedWorkspaceFileTransition {
+        val lookup = pendingCacheLookup ?: return SharedWorkspaceFileTransition(state)
+        if (lookup.requestId != requestId) return SharedWorkspaceFileTransition(state)
+        pendingCacheLookup = null
+        state = state.copy(lastError = null)
+        if (available) return SharedWorkspaceFileTransition(state, cacheHit = lookup)
+        val next = download(lookup.sessionId, lookup.path, requestId + "-download", "preview")
+        pendingOpen = pendingOpen?.copy(modifiedAt = lookup.modifiedAt, expectedSize = lookup.size, verifyVersion = true)
+        return next
+    }
+
+    private fun isBusy(): Boolean = active != null || pendingOpen != null || pendingResolve != null ||
+        pendingCacheLookup != null || pendingVerification != null
+
     fun cancel(): SharedWorkspaceFileTransition {
         val transfer = active
+        pendingResolve = null
+        pendingCacheLookup = null
+        pendingVerification = null
         pendingOpen = null
         active = null
         state = state.copy(activeDownload = null, lastError = null)
@@ -133,7 +193,15 @@ class SharedWorkspaceFileStore {
         correlationId: String? = null
     ): SharedWorkspaceFileTransition {
         if (requestType !in REQUEST_TYPES) return SharedWorkspaceFileTransition(state)
+        val verification = pendingVerification
+        if (requestType == "file-resolve" && verification != null &&
+            (correlationId == null || correlationId == verification.first)) {
+            pendingVerification = null
+            return SharedWorkspaceFileTransition(state, completion = verification.second.copy(modifiedAt = null))
+        }
         val matches = when (requestType) {
+            "file-resolve" -> pendingResolve != null &&
+                (correlationId == null || pendingResolve?.requestId == correlationId)
             "file-list" -> pendingList != null &&
                 (correlationId == null || pendingList?.requestId == correlationId)
             "file-download-open" -> pendingOpen != null &&
@@ -145,6 +213,7 @@ class SharedWorkspaceFileStore {
         if (!matches) return SharedWorkspaceFileTransition(state)
         val discard = active?.transferId
         when (requestType) {
+            "file-resolve" -> pendingResolve = null
             "file-list" -> pendingList = null
             "file-download-open" -> pendingOpen = null
             else -> active = null
@@ -164,15 +233,49 @@ class SharedWorkspaceFileStore {
     }
 
     private fun acceptFrame(frame: GatewayFrame): SharedWorkspaceFileTransition = when (frame.kind) {
+        "file-resolved" -> acceptResolved(frame)
         "file-list" -> acceptList(frame)
         "file-download-opened" -> acceptOpened(frame)
         "file-download-chunk" -> acceptChunk(frame)
         "file-download-cancelled" -> acceptCancelled(frame)
         "error" -> frame.requestType
             ?.takeIf { it in REQUEST_TYPES }
-            ?.let { requestFailed(it, frame.message ?: frame.code) }
+            ?.let { requestFailed(it, frame.message ?: frame.code, frame.requestId ?: frame.transferId) }
             ?: SharedWorkspaceFileTransition(state)
         else -> SharedWorkspaceFileTransition(state)
+    }
+
+    private fun acceptResolved(frame: GatewayFrame): SharedWorkspaceFileTransition {
+        val verification = pendingVerification
+        if (verification != null && frame.requestId == verification.first &&
+            frame.sessionId == verification.second.sessionId) {
+            pendingVerification = null
+            val completion = verification.second
+            val unchanged = frame.path == completion.path && frame.size == completion.size &&
+                frame.modifiedAt == completion.modifiedAt
+            return SharedWorkspaceFileTransition(state,
+                completion = if (unchanged) completion else completion.copy(modifiedAt = null))
+        }
+        val pending = pendingResolve ?: return SharedWorkspaceFileTransition(state)
+        if (frame.requestId != pending.requestId) return SharedWorkspaceFileTransition(state)
+        if (frame.sessionId != pending.sessionId) return SharedWorkspaceFileTransition(state)
+        pendingResolve = null
+        val path = runCatching { normalizeRelativePath(frame.path, allowRoot = false) }
+            .getOrElse { return fail("file-resolve-invalid") }
+        if (frame.path.isNullOrBlank() || frame.name.isNullOrBlank() ||
+            frame.size == null || frame.size < 0L || frame.size > MAXIMUM_FILE_BYTES) {
+            return fail("file-resolve-invalid")
+        }
+        val modifiedAt = frame.modifiedAt?.takeIf { it.isFinite() && it >= 0 }
+        if (pending.useCache && modifiedAt != null) {
+            val lookup = SharedWorkspaceFileCacheLookup(
+                pending.requestId, pending.sessionId, path, frame.name,
+                frame.mediaType?.takeIf(String::isNotBlank) ?: DEFAULT_MEDIA_TYPE, frame.size, modifiedAt
+            )
+            pendingCacheLookup = lookup
+            return SharedWorkspaceFileTransition(state, cacheLookup = lookup)
+        }
+        return download(pending.sessionId, path, pending.requestId + "-download", pending.purpose)
     }
 
     private fun acceptList(frame: GatewayFrame): SharedWorkspaceFileTransition {
@@ -211,7 +314,10 @@ class SharedWorkspaceFileStore {
     }
 
     private fun acceptOpened(frame: GatewayFrame): SharedWorkspaceFileTransition {
-        val pending = pendingOpen ?: return fail("file-download-open-unexpected")
+        val pending = pendingOpen
+        if (pending == null || frame.requestId != pending.requestId) {
+            return SharedWorkspaceFileTransition(state, request = frame.transferId?.let(GatewayRequests::fileDownloadCancel))
+        }
         val transferId = frame.transferId
         val size = frame.size
         val chunkBytes = frame.chunkBytes
@@ -234,7 +340,9 @@ class SharedWorkspaceFileStore {
             name = frame.name,
             mediaType = mediaType,
             size = size,
-            purpose = pending.purpose
+            purpose = pending.purpose,
+            modifiedAt = pending.modifiedAt?.takeIf { pending.expectedSize == size },
+            verifyVersion = pending.verifyVersion
         )
         pendingOpen = null
         active = transfer
@@ -246,9 +354,10 @@ class SharedWorkspaceFileStore {
     }
 
     private fun acceptChunk(frame: GatewayFrame): SharedWorkspaceFileTransition {
-        val transfer = active ?: return fail("file-download-chunk-unexpected")
+        val transfer = active ?: return SharedWorkspaceFileTransition(state)
+        if (frame.transferId != transfer.transferId) return SharedWorkspaceFileTransition(state)
         val data = frame.data ?: return abort(transfer, "file-download-data-missing")
-        if (frame.transferId != transfer.transferId || frame.offset != transfer.receivedBytes) {
+        if (frame.offset != transfer.receivedBytes) {
             return abort(transfer, "file-download-offset-mismatch")
         }
         val decoded = decodeBase64Strict(data)
@@ -276,24 +385,29 @@ class SharedWorkspaceFileStore {
         ) return abort(transfer, "file-download-integrity-failed")
         active = null
         state = state.copy(activeDownload = null, lastError = null)
-        return SharedWorkspaceFileTransition(
-            state,
-            appendBase64Data = data,
-            completion = SharedWorkspaceFileCompletion(
-                sessionId = transfer.sessionId,
-                path = transfer.path,
-                name = transfer.name,
-                mediaType = transfer.mediaType,
-                size = transfer.size,
-                sha256 = actualHash,
-                purpose = transfer.purpose
-            )
+        val completion = SharedWorkspaceFileCompletion(
+            sessionId = transfer.sessionId,
+            path = transfer.path,
+            name = transfer.name,
+            mediaType = transfer.mediaType,
+            size = transfer.size,
+            sha256 = actualHash,
+            purpose = transfer.purpose,
+            modifiedAt = transfer.modifiedAt
         )
+        // 下载期间文件可能更新。再 stat 一次，只有版本仍一致才允许写入缓存。
+        if (transfer.verifyVersion && transfer.modifiedAt != null) {
+            val requestId = transfer.transferId + "-verify"
+            pendingVerification = requestId to completion
+            return SharedWorkspaceFileTransition(state, appendBase64Data = data,
+                request = GatewayRequests.fileResolve(transfer.sessionId, transfer.path, requestId))
+        }
+        return SharedWorkspaceFileTransition(state, appendBase64Data = data, completion = completion)
     }
 
     private fun acceptCancelled(frame: GatewayFrame): SharedWorkspaceFileTransition {
         val transfer = active ?: return SharedWorkspaceFileTransition(state)
-        if (frame.transferId != transfer.transferId) return fail("file-download-cancel-mismatch")
+        if (frame.transferId != transfer.transferId) return SharedWorkspaceFileTransition(state)
         active = null
         state = state.copy(activeDownload = null, lastError = null)
         return SharedWorkspaceFileTransition(state, discardTransferId = transfer.transferId)
@@ -319,7 +433,11 @@ class SharedWorkspaceFileStore {
         val requestId: String,
         val sessionId: String,
         val path: String,
-        val purpose: String
+        val purpose: String,
+        val useCache: Boolean = false,
+        val modifiedAt: Double? = null,
+        val expectedSize: Long? = null,
+        val verifyVersion: Boolean = false
     )
 
     private data class ActiveDownload(
@@ -330,6 +448,8 @@ class SharedWorkspaceFileStore {
         val mediaType: String,
         val size: Long,
         val purpose: String,
+        val modifiedAt: Double? = null,
+        val verifyVersion: Boolean = false,
         var receivedBytes: Long = 0L,
         val sha256: Sha256 = Sha256()
     ) {
@@ -342,9 +462,9 @@ class SharedWorkspaceFileStore {
         private const val MAXIMUM_FILE_BYTES = 512L * 1_024 * 1_024
         private const val MAXIMUM_CHUNK_BYTES = 4 * 1_024 * 1_024
         private const val DEFAULT_MEDIA_TYPE = "application/octet-stream"
-        private val PURPOSES = setOf("preview", "download")
+        private val PURPOSES = setOf("preview", "download", "install")
         private val REQUEST_TYPES = setOf(
-            "file-list", "file-download-open", "file-download-read", "file-download-cancel"
+            "file-resolve", "file-list", "file-download-open", "file-download-read", "file-download-cancel"
         )
         private val SHA256_PATTERN = Regex("^[0-9a-f]{64}$")
     }
@@ -363,7 +483,7 @@ private fun normalizeRelativePath(value: String?, allowRoot: Boolean): String {
     require(normalized == "." || (!normalized.startsWith('/') && !normalized.startsWith('\\'))) {
         "path-absolute"
     }
-    require('\u0000' !in normalized && '\\' !in normalized) { "path-invalid" }
+    require('\u0000' !in normalized && '\\' !in normalized && !Regex("^[A-Za-z]:/").containsMatchIn(normalized)) { "path-invalid" }
     val segments = normalized.split('/')
     require(segments.none { it.isEmpty() || it == "." || it == ".." }) { "path-segment-invalid" }
     return normalized

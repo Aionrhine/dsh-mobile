@@ -3,5 +3,6 @@
     <cache-path
         name="workspace_files"
         path="workspace-files/" />
+    <cache-path name="workspace_previews" path="workspace-previews/" />
     <cache-path name="app_updates" path="updates/" />
 </paths>

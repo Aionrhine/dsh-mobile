@@ -40,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.shared.projection.RequestTokenUsage
 import com.clarklevis.dsh.shared.projection.TrajectoryNode
 import com.clarklevis.dsh.shared.projection.TrajectoryNodeKind
@@ -48,16 +49,22 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private enum class GenericDetailTab(val title: String) {
-    SUMMARY("摘要"), PREVIEW("预览"), RAW("原始")
+private enum class GenericDetailTab(private val sourceTitle: String) {
+    SUMMARY("摘要"), PREVIEW("预览"), RAW("原始");
+
+    val title: String get() = appText(sourceTitle)
 }
 
-private enum class RequestDetailTab(val title: String) {
-    SUMMARY("摘要"), OPTIONS("选项"), USAGE("用量"), TIMING("耗时")
+private enum class RequestDetailTab(private val sourceTitle: String) {
+    SUMMARY("摘要"), OPTIONS("选项"), USAGE("用量"), TIMING("耗时");
+
+    val title: String get() = appText(sourceTitle)
 }
 
-private enum class ToolDetailTab(val title: String) {
-    SUMMARY("摘要"), PAYLOAD("参数"), RESULT("结果"), SCHEMA("Schema"), TIMING("耗时")
+private enum class ToolDetailTab(private val sourceTitle: String) {
+    SUMMARY("摘要"), PAYLOAD("参数"), RESULT("结果"), SCHEMA("Schema"), TIMING("耗时");
+
+    val title: String get() = appText(sourceTitle)
 }
 
 @Composable
@@ -115,7 +122,7 @@ private fun DetailSheetHeader(title: String, onDismiss: () -> Unit) {
             ),
             elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
         ) {
-            Text("完成", fontSize = 15.sp)
+            Text(appText("完成"), fontSize = 15.sp)
         }
     }
 }
@@ -142,7 +149,7 @@ private fun RequestDetail(node: TrajectoryNode) {
     DetailScroll {
         when (tab) {
             RequestDetailTab.SUMMARY -> RequestSummary(node)
-            RequestDetailTab.OPTIONS -> JsonOrUnavailable(node.request?.options, "没有记录模型选项")
+            RequestDetailTab.OPTIONS -> JsonOrUnavailable(node.request?.options, appText("没有记录模型选项"))
             RequestDetailTab.USAGE -> RequestUsage(node)
             RequestDetailTab.TIMING -> RequestTiming(node)
         }
@@ -160,7 +167,7 @@ private fun ToolDetail(node: TrajectoryNode) {
     DetailScroll {
         when (tab) {
             ToolDetailTab.SUMMARY -> ToolSummary(node)
-            ToolDetailTab.PAYLOAD -> JsonOrUnavailable(toolArguments(node), "没有参数")
+            ToolDetailTab.PAYLOAD -> JsonOrUnavailable(toolArguments(node), appText("没有参数"))
             ToolDetailTab.RESULT -> ToolResult(node)
             ToolDetailTab.SCHEMA -> ToolSchema(node)
             ToolDetailTab.TIMING -> ToolTiming(node)
@@ -280,7 +287,7 @@ private fun RequestSummary(node: TrajectoryNode) {
     DetailRow("Result", if (isCompleted(node)) "Assistant Message" else "—")
     DetailDivider()
     DetailSectionTitle("Options")
-    JsonOrUnavailable(request?.options, "没有记录模型选项")
+    JsonOrUnavailable(request?.options, appText("没有记录模型选项"))
     DetailDivider()
     DetailSectionTitle("Usage")
     RequestUsage(node)
@@ -328,7 +335,7 @@ private fun ToolSummary(node: TrajectoryNode) {
     DetailRow("Status", statusText(node))
     DetailDivider()
     DetailSectionTitle("Payload")
-    JsonOrUnavailable(toolArguments(node), "没有参数")
+    JsonOrUnavailable(toolArguments(node), appText("没有参数"))
     DetailDivider()
     DetailSectionTitle("Result")
     ToolResult(node)
@@ -346,7 +353,7 @@ private fun ToolSummary(node: TrajectoryNode) {
 private fun ToolResult(node: TrajectoryNode) {
     val result = toolResult(node)
     if (result.isEmpty()) {
-        Unavailable(if (isCompleted(node)) "(no output)" else "等待工具返回…")
+        Unavailable(if (isCompleted(node)) "(no output)" else appText("等待工具返回…"))
     } else {
         SelectionContainer {
             Text(result, fontSize = 14.sp, fontFamily = FontFamily.Monospace)
@@ -358,7 +365,7 @@ private fun ToolResult(node: TrajectoryNode) {
 private fun ToolSchema(node: TrajectoryNode) {
     val schema = node.tool?.schema
     if (schema == null) {
-        Unavailable("没有记录工具 Schema")
+        Unavailable(appText("没有记录工具 Schema"))
         return
     }
     Text(

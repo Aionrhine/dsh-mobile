@@ -85,6 +85,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.android.R
 import com.clarklevis.dsh.shared.protocol.GatewayPendingQuestionRequest
 import com.clarklevis.dsh.shared.protocol.GatewayQuestion
@@ -273,7 +274,7 @@ internal fun HumanQuestionCard(
                         onSkip = { showsCancelConfirmation = true },
                         onContinue = {
                             if (!answered(question, selections, customAnswers)) {
-                                validationMessage = "请选择一个选项或填写自定义答案。"
+                                validationMessage = appText("请选择一个选项或填写自定义答案。")
                                 return@QuestionFooter
                             }
                             if (currentIndex < request.questions.lastIndex) {
@@ -286,7 +287,7 @@ internal fun HumanQuestionCard(
                             }
                             if (firstMissing >= 0) {
                                 currentIndex = firstMissing
-                                validationMessage = "请先完成这道问题。"
+                                validationMessage = appText("请先完成这道问题。")
                                 return@QuestionFooter
                             }
                             onAnswer(
@@ -391,13 +392,13 @@ private fun QuestionCancelConfirmation(
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Text(
-                                "放弃这组问题？",
+                                appText("放弃这组问题？"),
                                 fontSize = 18.sp,
                                 lineHeight = 23.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                "当前填写的答案不会提交。",
+                                appText("当前填写的答案不会提交。"),
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.56f),
                                 fontSize = 14.sp,
                                 lineHeight = 20.sp
@@ -414,7 +415,7 @@ private fun QuestionCancelConfirmation(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    "跳过并让 Agent 继续",
+                                    appText("跳过并让 Agent 继续"),
                                     color = Color(0xFFFF3B30),
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.SemiBold
@@ -488,13 +489,13 @@ private fun QuestionHeader(
         ) { targetCollapsed ->
             Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                 Text(
-                    if (targetCollapsed) "Agent 正在等待回答" else "需要你的回答",
+                    if (targetCollapsed) appText("Agent 正在等待回答") else appText("需要你的回答"),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold
                 )
                 if (targetCollapsed || replay) {
                     Text(
-                        if (targetCollapsed) question.question else "已从断线前恢复",
+                        if (targetCollapsed) question.question else appText("已从断线前恢复"),
                         fontSize = 11.sp,
                         lineHeight = 14.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
@@ -506,7 +507,7 @@ private fun QuestionHeader(
         IconButton(onClick = onToggle, modifier = Modifier.size(40.dp)) {
             Icon(
                 painterResource(R.drawable.ic_question_chevron_down),
-                contentDescription = if (collapsed) "展开问题卡片" else "收起问题卡片",
+                contentDescription = if (collapsed) appText("展开问题卡片") else appText("收起问题卡片"),
                 tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
                 modifier = Modifier.size(20.dp).rotate(chevronRotation)
             )
@@ -522,7 +523,7 @@ private fun QuestionHeader(
                 animationSpec = tween(180, easing = FastOutSlowInEasing)
             ) + fadeOut(tween(100))
         ) {
-            HeaderIconButton(R.drawable.ic_close, "放弃整组问题", onCancel)
+            HeaderIconButton(R.drawable.ic_close, appText("放弃整组问题"), onCancel)
         }
     }
 }
@@ -567,7 +568,7 @@ private fun QuestionHeading(question: GatewayQuestion) {
                     modifier = Modifier.size(16.dp)
                 )
                 Text(
-                    "可以选择多项",
+                    appText("可以选择多项"),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f)
                 )
@@ -620,7 +621,7 @@ private fun AnswerControls(
                             else -> R.drawable.ic_radio_unselected
                         }
                     ),
-                    contentDescription = if (selected) "已选择" else "未选择",
+                    contentDescription = if (selected) appText("已选择") else appText("未选择"),
                     tint = if (selected) DshColors.Ocean
                     else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.42f),
                     modifier = Modifier.padding(top = 1.dp).size(19.dp)
@@ -639,7 +640,7 @@ private fun AnswerControls(
                         )
                         if (metadata.isRecommended) {
                             Text(
-                                "推荐",
+                                appText("推荐"),
                                 fontSize = 10.sp,
                                 lineHeight = 13.sp,
                                 fontWeight = FontWeight.SemiBold,
@@ -696,7 +697,7 @@ private fun CustomAnswerField(value: String, onValueChange: (String) -> Unit, ha
         Box(Modifier.weight(1f)) {
             if (value.isEmpty()) {
                 Text(
-                    if (hasOptions) "或输入自定义答案" else "输入你的答案",
+                    if (hasOptions) appText("或输入自定义答案") else appText("输入你的答案"),
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.34f),
                     fontSize = 16.sp,
                     lineHeight = 22.sp
@@ -753,7 +754,7 @@ private fun QuestionFooter(
         ) {
             FooterIconButton(
                 R.drawable.ic_back_chevron,
-                "上一题",
+                appText("上一题"),
                 currentIndex > 0,
                 onPrevious
             )
@@ -765,7 +766,7 @@ private fun QuestionFooter(
             )
             FooterIconButton(
                 R.drawable.ic_chevron_right,
-                "下一题",
+                appText("下一题"),
                 currentIndex < questionCount - 1,
                 onNext
             )
@@ -786,7 +787,7 @@ private fun QuestionFooter(
                 contentPadding = ButtonDefaults.ContentPadding
             ) {
                 Text(
-                    "跳过问题",
+                    appText("跳过问题"),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
@@ -807,7 +808,7 @@ private fun QuestionFooter(
                 contentPadding = ButtonDefaults.ContentPadding
             ) {
                 Text(
-                    if (currentIndex == questionCount - 1) "提交" else "下一题",
+                    if (currentIndex == questionCount - 1) appText("提交") else appText("下一题"),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,

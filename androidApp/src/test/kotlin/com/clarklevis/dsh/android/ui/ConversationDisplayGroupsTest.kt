@@ -1,5 +1,7 @@
 package com.clarklevis.dsh.android.ui
 
+import com.clarklevis.dsh.android.localization.LocaleTestRule
+import org.junit.Rule
 import com.clarklevis.dsh.shared.projection.ConversationItem
 import com.clarklevis.dsh.shared.projection.ConversationItemKind
 import org.junit.Assert.assertEquals
@@ -9,6 +11,21 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ConversationDisplayGroupsTest {
+    @get:Rule val locale = LocaleTestRule()
+
+    @Test
+    fun fileCardsRemainInFooterAndKnownReferencesReachMarkdown() {
+        val files = listOf(com.clarklevis.dsh.shared.protocol.PresentedFile("build/报告.pdf", "8 页"))
+        val reply = item("reply", ConversationItemKind.ASSISTANT, text = "请看 `报告.pdf`")
+            .copy(files = files, knownFiles = files)
+        val timeline = makeConversationTimelineEntries(makeConversationDisplayEntries(listOf(reply)))
+        assertEquals(files, (timeline.first() as ConversationTimelineEntry.AssistantMarkdown).knownFiles)
+        assertEquals(files, (timeline.last() as ConversationTimelineEntry.AssistantFooter).files)
+        val emptyReply = reply.copy(text = "")
+        val emptyTimeline = makeConversationTimelineEntries(makeConversationDisplayEntries(listOf(emptyReply)))
+        assertEquals(files, (emptyTimeline.last() as ConversationTimelineEntry.AssistantFooter).files)
+    }
+
     @Test
     fun `only the current turn assistant is treated as streaming`() {
         val oldAssistant = item("stream-text-1-1", ConversationItemKind.ASSISTANT)

@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
+import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.android.R
 
 /** 与 iOS 会话菜单对齐：浅色圆角面板、前置图标及红色归档操作。 */
@@ -70,8 +71,8 @@ internal fun SessionContextMenu(
                         Brush.linearGradient(listOf(Color.White.copy(alpha = 0.15f), Color.Transparent))
                     ).padding(vertical = 8.dp)
                 ) {
-                    SessionMenuAction("重命名", R.drawable.ic_session_rename, Color(0xFF17202D), onRename)
-                    SessionMenuAction("删除（归档）", R.drawable.ic_session_archive, Color(0xFFFF3B30), onArchive)
+                    SessionMenuAction(appText("重命名"), R.drawable.ic_session_rename, Color(0xFF17202D), onRename)
+                    SessionMenuAction(appText("删除（归档）"), R.drawable.ic_session_archive, Color(0xFFFF3B30), onArchive)
                 }
             }
         }

@@ -241,6 +241,7 @@ struct GatewayFrame: Codable, Sendable {
     var name: String?
     var mediaType: String?
     var size: Int64?
+    var modifiedAt: Double?
     var chunkBytes: Int?
     var offset: Int64?
     var eof: Bool?
@@ -982,6 +983,7 @@ struct RawSessionEvent: Codable, Hashable, Sendable {
                 step: step,
                 text: text,
                 usage: data["usage"],
+                finish: data["finish"]?.decode(FinishInfo.self),
                 reasoning: reasoning,
                 toolCalls: calls,
                 images: imageBlocks(data["message"]?["content"]),
@@ -990,13 +992,32 @@ struct RawSessionEvent: Codable, Hashable, Sendable {
                 stream: data["stream"]
             )
         case "assistant/attempt":
-            return GatewayEvent(type: type, turn: turn, step: step, raw: data, stream: data["stream"])
+            return GatewayEvent(type: type, turn: turn, step: step, finish: data["finish"]?.decode(FinishInfo.self), raw: data, stream: data["stream"])
+        case "deliverables/presented":
+            return GatewayEvent(
+                type: type, turn: turn, callId: data["callId"]?.stringValue, raw: data,
+                files: data["files"]?.arrayValue?.compactMap { file in
+                    guard let path = file["path"]?.stringValue, !path.isEmpty else { return nil }
+                    return PresentedFile(path: path, description: file["description"]?.stringValue)
+                }
+            )
         case "tool/call":
             return GatewayEvent(type: type, turn: turn, step: step, callId: data["callId"]?.stringValue, name: data["name"]?.stringValue, arguments: data["arguments"], raw: data)
         case "tool/result":
-            let preview = toolResultText(data["message"])
-            return GatewayEvent(type: type, turn: turn, step: step, callId: data["message"]?["source"]?["callId"]?.stringValue, isError: (data["error"] != nil && data["error"] != .null && data["error"] != .bool(false)) ||
-                (data["message"]?["content"]?.arrayValue ?? []).contains { $0["type"]?.stringValue == "tool-result" && $0["isError"]?.boolValue == true }, preview: preview, raw: data)
+            let content = data["message"]?["content"]?.arrayValue ?? []
+            return GatewayEvent(type: type, turn: turn, step: step,
+                callId: data["message"]?["toolCallId"]?.stringValue ?? data["message"]?["source"]?["callId"]?.stringValue,
+                isError: (data["error"] != nil && data["error"] != .null && data["error"] != .bool(false)) ||
+                    data["message"]?["isError"]?.boolValue == true ||
+                    content.contains { $0["type"]?.stringValue == "tool-result" && $0["isError"]?.boolValue == true },
+                preview: toolResultText(data["message"]),
+                error: data["error"]?["message"]?.stringValue ?? data["error"]?["reason"]?.stringValue ?? data["error"]?.stringValue,
+                raw: data, output: data["output"]?.stringValue, outputTruncated: data["outputTruncated"]?.boolValue)
+        case "llm/retry", "llm/retry-started":
+            return GatewayEvent(type: type, turn: turn, step: step, raw: data,
+                retryId: data["retryId"]?.stringValue, retry: data["retry"]?.doubleValue.map(Int.init),
+                maxRetries: data["maxRetries"]?.doubleValue.map(Int.init), delayMs: data["delayMs"]?.doubleValue,
+                failure: data["failure"])
         case "tool/code-dispatch-start":
             return GatewayEvent(
                 type: type,
@@ -1025,7 +1046,7 @@ struct RawSessionEvent: Codable, Hashable, Sendable {
                 turn: turn,
                 step: step,
                 reason: data["reason"]?.stringValue ?? data["reason"]?["kind"]?.stringValue,
-                raw: data
+                raw: data, reasonDetails: data["reasonDetails"] ?? data["reason"]
             )
         case "session/title":
             return GatewayEvent(type: type, text: data["title"]?.stringValue, raw: data)
@@ -1064,8 +1085,13 @@ struct RawSessionEvent: Codable, Hashable, Sendable {
 
     private func toolResultText(_ message: JSONValue?) -> String {
         let outer = message?["content"]?.arrayValue ?? []
-        return outer.flatMap { $0["content"]?.arrayValue ?? [] }.filter { $0["type"]?.stringValue == "text" }.compactMap { $0["text"]?.stringValue }.joined()
+        return outer.flatMap { $0["type"]?.stringValue == "tool-result" ? ($0["content"]?.arrayValue ?? []) : [$0] }.filter { $0["type"]?.stringValue == "text" }.compactMap { $0["text"]?.stringValue }.joined()
     }
+}
+
+struct PresentedFile: Codable, Hashable, Sendable {
+    let path: String
+    let description: String?
 }
 
 struct GatewayEvent: Codable, Hashable, Sendable, Identifiable {
@@ -1102,6 +1128,15 @@ struct GatewayEvent: Codable, Hashable, Sendable, Identifiable {
     var raw: JSONValue?
     var interrupted: Bool?
     var stream: JSONValue?
+    var output: String?
+    var outputTruncated: Bool?
+    var reasonDetails: JSONValue?
+    var retryId: String?
+    var retry: Int?
+    var maxRetries: Int?
+    var delayMs: Double?
+    var failure: JSONValue?
+    var files: [PresentedFile]?
 
     init(
         type: String,
@@ -1136,7 +1171,16 @@ struct GatewayEvent: Codable, Hashable, Sendable, Identifiable {
         error: String? = nil,
         raw: JSONValue? = nil,
         interrupted: Bool? = nil,
-        stream: JSONValue? = nil
+        stream: JSONValue? = nil,
+        output: String? = nil,
+        outputTruncated: Bool? = nil,
+        reasonDetails: JSONValue? = nil,
+        retryId: String? = nil,
+        retry: Int? = nil,
+        maxRetries: Int? = nil,
+        delayMs: Double? = nil,
+        failure: JSONValue? = nil,
+        files: [PresentedFile]? = nil
     ) {
         self.type = type
         self.turn = turn
@@ -1171,6 +1215,15 @@ struct GatewayEvent: Codable, Hashable, Sendable, Identifiable {
         self.raw = raw
         self.interrupted = interrupted
         self.stream = stream
+        self.output = output
+        self.outputTruncated = outputTruncated
+        self.reasonDetails = reasonDetails
+        self.retryId = retryId
+        self.retry = retry
+        self.maxRetries = maxRetries
+        self.delayMs = delayMs
+        self.failure = failure
+        self.files = files
     }
 
     var id: String {
@@ -1190,7 +1243,10 @@ struct ToolCall: Codable, Hashable, Sendable, Identifiable {
     var arguments: JSONValue?
 }
 
-struct FinishInfo: Codable, Hashable, Sendable { var kind: String? }
+struct FinishInfo: Codable, Hashable, Sendable {
+    var kind: String?
+    var failure: JSONValue? = nil
+}
 
 struct SessionEvent: Codable, Hashable, Sendable, Identifiable {
     var sessionId: String

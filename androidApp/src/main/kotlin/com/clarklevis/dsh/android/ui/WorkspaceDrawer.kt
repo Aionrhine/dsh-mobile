@@ -53,6 +53,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
+import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.android.R
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -156,10 +157,10 @@ internal fun WorkspaceDrawer(
                         modifier = Modifier.size(width = 183.dp, height = 29.dp)
                     )
                 }
-                DrawerItem("插件", R.drawable.ic_drawer_plugin, "drawer-plugins") {
+                DrawerItem(appText("插件"), R.drawable.ic_drawer_plugin, "drawer-plugins") {
                     onPlugins()
                 }
-                DrawerItem("定时任务", R.drawable.ic_drawer_schedule, "drawer-scheduled-tasks") {
+                DrawerItem(appText("定时任务"), R.drawable.ic_drawer_schedule, "drawer-scheduled-tasks") {
                     onScheduledTasks()
                 }
             }
@@ -204,7 +205,7 @@ internal fun WorkspaceDrawer(
                     Box(
                         Modifier.fillMaxSize().testTag("workspace-drawer-close").clickable(
                             role = Role.Button,
-                            onClickLabel = "关闭侧边栏"
+                            onClickLabel = appText("关闭侧边栏")
                         ) { settle(open = false) }
                     )
                 }

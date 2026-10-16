@@ -30,18 +30,84 @@ static float harnessFBM(float2 p) {
     return value;
 }
 
+// 手机参数与改动前的版本保持一致。
+static float harnessPhoneRibbons(float2 uv, float aspect, float t, float2 q, float2 r) {
+    float2 warpedUV = float2(uv.x * aspect, uv.y) + (q - 0.5) * 0.085 + (r - 0.5) * 0.045;
+    float2 waveCenterA = float2(aspect * 0.58, 0.16);
+    float2 waveCenterB = float2(aspect * -0.20, 0.13);
+    float radiusA = length(warpedUV - waveCenterA);
+    float radiusB = length(warpedUV - waveCenterB);
+    float ribbonA = exp(-pow((radiusA - (0.35 + 0.025 * sin(t * 1.5))) / 0.042, 2.0));
+    float ribbonB = exp(-pow((radiusB - (0.83 + 0.020 * cos(t * 1.15))) / 0.065, 2.0));
+    return saturate(ribbonA * 0.78 + ribbonB * 0.62);
+}
+
+static float harnessPadRibbons(float2 uv, float2 safeSize, float t, float2 distortion) {
+    // 截取圆环左下侧：从左上进入画面，向下弯曲后从右侧离开。
+    // 按入场、出场位置计算屏幕外的圆心，横竖屏均保留这一段圆弧。
+    float2 waveExtent = safeSize / min(safeSize.x, safeSize.y);
+    float2 warpedUV = uv * waveExtent + distortion;
+    float2 arcEntry = float2(waveExtent.x * 0.04, 0.0);
+    float2 arcExit = waveExtent * float2(1.0, 0.56);
+    float centerX = max(waveExtent.x * 1.10,
+        waveExtent.x * 0.52 + 0.14 * waveExtent.y * waveExtent.y / waveExtent.x);
+    float entryDX = centerX - arcEntry.x;
+    float exitDX = centerX - arcExit.x;
+    float centerY = (arcExit.y * arcExit.y - entryDX * entryDX + exitDX * exitDX)
+        / (2.0 * arcExit.y);
+    float2 waveCenter = float2(centerX, centerY);
+    float waveRadius = length(waveCenter - arcEntry) + 0.020 * sin(t * 1.5);
+    float radius = length(warpedUV - waveCenter);
+    float arcMask = 1.0 - smoothstep(0.65, 0.90, uv.y);
+    // 保留约 25% 的渐粗变化，叠加宽幅漫射，让光晕边缘柔和、轮廓更淡。
+    float upperWidth = mix(0.070, 0.0875, smoothstep(0.02, 0.56, uv.y));
+    float upperDistance = radius - waveRadius;
+    float upperCore = exp(-pow(upperDistance / upperWidth, 2.0));
+    float upperBloom = exp(-pow(upperDistance / (upperWidth * 2.0), 2.0));
+    float ribbonA = (upperCore * 0.55 + upperBloom * 0.45) * arcMask;
+
+    // 下方保留另一层更宽、更淡的光晕，从左下方延伸至右侧。
+    // 圆心置于左侧窗口外，并仅显示下半弧，避免额外露出上半圆。
+    float2 outerEntry = waveExtent * float2(-0.05, 1.02);
+    float2 outerExit = waveExtent * float2(1.02, 0.80);
+    float outerCenterX = -waveExtent.x * 0.18;
+    float outerEntryDX = outerEntry.x - outerCenterX;
+    float outerExitDX = outerExit.x - outerCenterX;
+    float outerCenterY = (outerExitDX * outerExitDX - outerEntryDX * outerEntryDX
+        + outerExit.y * outerExit.y - outerEntry.y * outerEntry.y)
+        / (2.0 * (outerExit.y - outerEntry.y));
+    float2 outerCenter = float2(outerCenterX, outerCenterY);
+    float outerRadius = length(outerEntry - outerCenter) + 0.018 * cos(t * 1.15);
+    float outerMask = smoothstep(0.38, 0.66, uv.y)
+        * smoothstep(0.0, 0.12, warpedUV.y - outerCenterY);
+    // 除几何错位外，按主光弧的有符号距离保留间隔，流动时也不会交叉。
+    outerMask *= smoothstep(upperWidth * 2.0 + 0.02, upperWidth * 2.0 + 0.10,
+        radius - waveRadius);
+    float outerDistance = length(warpedUV - outerCenter) - outerRadius;
+    float outerCore = exp(-pow(outerDistance / 0.105, 2.0));
+    float outerBloom = exp(-pow(outerDistance / 0.189, 2.0));
+    float ribbonB = (outerCore * 0.55 + outerBloom * 0.45) * outerMask;
+    return saturate(ribbonA * 0.72 + ribbonB * 0.86);
+}
+
 [[ stitchable ]] half4 harnessFluid(
     float2 position,
     half4 currentColor,
     float2 size,
-    float time
+    float time,
+    float tabletStyle
 ) {
     float2 safeSize = max(size, float2(1.0));
     float2 uv = position / safeSize;
     float aspect = safeSize.x / safeSize.y;
     float t = time * 0.075;
 
-    float2 p = float2(uv.x * aspect, uv.y) * 2.05 + float2(-0.30, -0.08);
+    // 宽屏扩展视野，同时按短边放大光带，保持圆弧形状与流动尺度。
+    float sceneScale = mix(1.0, 1.6, smoothstep(0.65, 1.6, aspect));
+    float2 fieldUV = tabletStyle > 0.5
+        ? (uv - 0.5) * float2(aspect, 1.0) / sceneScale + float2(0.30, 0.5)
+        : float2(uv.x * aspect, uv.y);
+    float2 p = fieldUV * 2.05 + float2(-0.30, -0.08);
     float2 q = float2(
         harnessFBM(p * 0.62 + float2(0.0, t)),
         harnessFBM(p * 0.62 + float2(5.2, 1.3 - t))
@@ -63,16 +129,10 @@ static float harnessFBM(float2 p) {
     color = mix(color, oceanBlue, smoothstep(0.42, 0.82, fluid + swirl * 0.18));
     color = mix(color, mistBlue, smoothstep(0.74, 0.98, swirl) * 0.18);
 
-    // Two broad, softly distorted wave fronts reproduce the luminous liquid
-    // ribbons crossing the website hero without simulating expensive fluid.
-    float2 warpedUV = float2(uv.x * aspect, uv.y) + (q - 0.5) * 0.085 + (r - 0.5) * 0.045;
-    float2 waveCenterA = float2(aspect * 0.58, 0.16);
-    float2 waveCenterB = float2(aspect * -0.20, 0.13);
-    float radiusA = length(warpedUV - waveCenterA);
-    float radiusB = length(warpedUV - waveCenterB);
-    float ribbonA = exp(-pow((radiusA - (0.35 + 0.025 * sin(t * 1.5))) / 0.042, 2.0));
-    float ribbonB = exp(-pow((radiusB - (0.83 + 0.020 * cos(t * 1.15))) / 0.065, 2.0));
-    float ribbon = saturate(ribbonA * 0.78 + ribbonB * 0.62);
+    float2 distortion = (q - 0.5) * 0.085 + (r - 0.5) * 0.045;
+    float ribbon = tabletStyle > 0.5
+        ? harnessPadRibbons(uv, safeSize, t, distortion)
+        : harnessPhoneRibbons(uv, aspect, t, q, r);
     color = mix(color, warmLight, ribbon * (0.48 + 0.24 * swirl));
 
     float glow = smoothstep(0.90, 0.18, length((uv - float2(0.58, 0.32)) * float2(0.82, 1.0)));

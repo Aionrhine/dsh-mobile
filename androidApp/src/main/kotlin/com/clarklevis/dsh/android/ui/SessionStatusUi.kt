@@ -1,5 +1,13 @@
 package com.clarklevis.dsh.android.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -40,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -52,11 +61,11 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.android.R
 import com.clarklevis.dsh.shared.protocol.GatewaySessionStats
 import com.clarklevis.dsh.shared.protocol.GatewaySessionStatsSnapshot
@@ -68,7 +77,7 @@ import kotlin.math.roundToInt
 internal object SessionStatsFormatter {
     fun turnsStepsLine(stats: GatewaySessionStats?): String? {
         if (stats?.turns == null && stats?.steps == null) return null
-        return "${stats.turns ?: 0} 轮 · ${stats.steps ?: 0} 步"
+        return appText("%1\$s 轮 · %2\$s 步", stats.turns ?: 0, stats.steps ?: 0)
     }
 
     fun duration(milliseconds: Double): String {
@@ -154,7 +163,7 @@ internal fun SessionStatsBanner(
                     )
                     .clickable(role = Role.Button) { expanded = true }
                     .semantics {
-                        contentDescription = "查看会话执行状态"
+                        contentDescription = appText("查看会话执行状态")
                     }
                     .testTag("session-stats-capsule"),
                 shape = shape,
@@ -168,7 +177,7 @@ internal fun SessionStatsBanner(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        SessionStatsFormatter.turnsStepsLine(snapshot.stats) ?: "正在读取会话统计…",
+                        SessionStatsFormatter.turnsStepsLine(snapshot.stats) ?: appText("正在读取会话统计…"),
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontSize = 12.sp,
@@ -205,62 +214,98 @@ private fun SessionStatsPopover(
     onDismiss: () -> Unit,
     onViewFullStats: () -> Unit
 ) {
-    if (!expanded) return
+    val visibility = remember { MutableTransitionState(false) }
+    visibility.targetState = expanded
+    // 保留 Popup 到缩回胶囊的动画结束，避免直接销毁浮层。
+    if (!visibility.currentState && !visibility.targetState) return
     val density = LocalDensity.current
+    val windowSize = LocalWindowInfo.current.containerSize
+    val shadowPadding = with(density) { 16.dp.roundToPx() }
+    val gap = with(density) { 6.dp.roundToPx() }
+    var placement by remember { mutableStateOf<SessionStatsPopoverPlacement?>(null) }
+    val positionProvider = remember(shadowPadding, gap) {
+        SessionStatsPopoverPositionProvider(shadowPadding, gap) { placement = it }
+    }
+    val transformOrigin = placement?.transformOrigin ?: TransformOrigin(0.5f, 1f)
+    val pointsUp = placement?.pointsUp == true
+    val surfaceWidth = with(density) { windowSize.width.toDp() - 32.dp }.coerceIn(1.dp, 300.dp)
+    val maxSurfaceHeight = with(density) {
+        (placement?.surfaceHeightLimit ?: (windowSize.height - shadowPadding * 2)).coerceAtLeast(1).toDp()
+    }
     val isDark = isSystemInDarkTheme()
     val glassEdge = dshGlassEdge(isDark)
     val shadowColor = dshFloatingSurfaceShadow(isDark)
     Popup(
-        alignment = Alignment.BottomEnd,
-        offset = with(density) { IntOffset(0, (-20).dp.roundToPx()) },
+        popupPositionProvider = positionProvider,
         onDismissRequest = onDismiss,
-        properties = PopupProperties(focusable = true, clippingEnabled = false)
+        properties = PopupProperties(focusable = expanded, clippingEnabled = false)
     ) {
-        Box(Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 24.dp)) {
-            val shape = RoundedCornerShape(24.dp)
-            Surface(
-                modifier = Modifier.width(300.dp).dropShadow(
+        AnimatedVisibility(
+            visibleState = visibility,
+            enter = fadeIn(tween(220)) + scaleIn(
+                animationSpec = spring(dampingRatio = 0.88f, stiffness = 400f),
+                initialScale = 0.16f,
+                transformOrigin = transformOrigin
+            ),
+            exit = fadeOut(tween(180)) + scaleOut(
+                animationSpec = tween(180),
+                targetScale = 0.16f,
+                transformOrigin = transformOrigin
+            )
+        ) {
+            Box(Modifier.padding(16.dp)) {
+                val shape = SessionStatsPopoverShape(
+                    arrowX = placement?.arrowX ?: with(density) { surfaceWidth.toPx() / 2 },
+                    pointsUp = pointsUp
+                )
+                Surface(
+                    modifier = Modifier.width(surfaceWidth).dropShadow(
+                        shape = shape,
+                        shadow = Shadow(
+                            radius = 10.dp,
+                            spread = 0.dp,
+                            color = shadowColor,
+                            offset = DpOffset(0.dp, 3.dp)
+                        )
+                    ).testTag("session-stats-popover"),
                     shape = shape,
-                    shadow = Shadow(
-                        radius = 10.dp,
-                        spread = 0.dp,
-                        color = shadowColor,
-                        offset = DpOffset(0.dp, 4.dp)
-                    )
-                ).testTag("session-stats-popover"),
-                shape = shape,
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-                border = BorderStroke(0.8.dp, glassEdge),
-                shadowElevation = 0.dp
-            ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 22.dp, vertical = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+                    border = BorderStroke(0.8.dp, glassEdge),
+                    shadowElevation = 0.dp
                 ) {
-                    val stats = snapshot.stats
-                    SessionStatsFormatter.turnsStepsLine(stats)?.let { AgentStatusRow("轮次 · 步骤", it) }
-                    stats?.llmMs?.let { AgentStatusRow("LLM", SessionStatsFormatter.duration(it)) }
-                    stats?.toolMs?.let { AgentStatusRow("工具调用", SessionStatsFormatter.duration(it)) }
-                    SessionStatsFormatter.averageTtft(stats)?.let {
-                        AgentStatusRow("首 token 平均", SessionStatsFormatter.duration(it))
+                    Column(
+                        modifier = Modifier
+                            .padding(top = if (pointsUp) 8.dp else 0.dp, bottom = if (pointsUp) 0.dp else 8.dp)
+                            .heightIn(max = (maxSurfaceHeight - 8.dp).coerceAtLeast(40.dp))
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 22.dp, vertical = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        val stats = snapshot.stats
+                        SessionStatsFormatter.turnsStepsLine(stats)?.let { AgentStatusRow(appText("轮次 · 步骤"), it) }
+                        stats?.llmMs?.let { AgentStatusRow("LLM", SessionStatsFormatter.duration(it)) }
+                        stats?.toolMs?.let { AgentStatusRow(appText("工具调用"), SessionStatsFormatter.duration(it)) }
+                        SessionStatsFormatter.averageTtft(stats)?.let {
+                            AgentStatusRow(appText("首 token 平均"), SessionStatsFormatter.duration(it))
+                        }
+                        SessionStatsFormatter.throughput(stats)?.let {
+                            AgentStatusRow(appText("解码吞吐"), "${SessionStatsFormatter.compactDecimal(it)} tok/s")
+                        }
+                        SessionStatsFormatter.cacheHitRate(snapshot.tokenUsage?.totals)?.let {
+                            AgentStatusRow(appText("缓存命中"), "${(it * 100).roundToInt()}%")
+                        }
+                        snapshot.tokenUsage?.totals?.inputTokens?.let {
+                            AgentStatusRow(appText("输入"), "${SessionStatsFormatter.compact(it)} tok")
+                        }
+                        HorizontalDivider(color = Color.Black.copy(alpha = 0.08f))
+                        Text(
+                            appText("查看完整统计"),
+                            modifier = Modifier.fillMaxWidth().clickable(onClick = onViewFullStats)
+                                .padding(vertical = 2.dp).testTag("view-full-session-stats"),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        )
                     }
-                    SessionStatsFormatter.throughput(stats)?.let {
-                        AgentStatusRow("解码吞吐", "${SessionStatsFormatter.compactDecimal(it)} tok/s")
-                    }
-                    SessionStatsFormatter.cacheHitRate(snapshot.tokenUsage?.totals)?.let {
-                        AgentStatusRow("缓存命中", "${(it * 100).roundToInt()}%")
-                    }
-                    snapshot.tokenUsage?.totals?.inputTokens?.let {
-                        AgentStatusRow("输入", "${SessionStatsFormatter.compact(it)} tok")
-                    }
-                    HorizontalDivider(color = Color.Black.copy(alpha = 0.08f))
-                    Text(
-                        "查看完整统计",
-                        modifier = Modifier.fillMaxWidth().clickable(onClick = onViewFullStats)
-                            .padding(vertical = 2.dp).testTag("view-full-session-stats"),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium
-                    )
                 }
             }
         }
@@ -329,7 +374,7 @@ internal fun SessionStatsSheet(
                 modifier = Modifier.fillMaxWidth().height(54.dp).padding(horizontal = 20.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text("会话状态", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text(appText("会话状态"), fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Surface(
                     modifier = Modifier.align(Alignment.CenterEnd).height(44.dp)
                         .clickable(role = Role.Button, onClick = dismissWithAnimation),
@@ -338,7 +383,7 @@ internal fun SessionStatsSheet(
                     border = BorderStroke(0.7.dp, Color.Black.copy(alpha = 0.06f))
                 ) {
                     Box(Modifier.padding(horizontal = 18.dp), contentAlignment = Alignment.Center) {
-                        Text("完成", fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                        Text(appText("完成"), fontSize = 16.sp, fontWeight = FontWeight.Medium)
                     }
                 }
             }
@@ -351,49 +396,49 @@ internal fun SessionStatsSheet(
                 if (stats == null) {
                     Box(Modifier.fillMaxWidth().heightIn(min = 220.dp), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("正在读取会话统计", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                            Text(appText("正在读取会话统计"), fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                             Spacer(Modifier.height(8.dp))
-                            Text("统计会在本轮结束后自动更新。", color = Color(0xFF8E8E93), fontSize = 14.sp)
+                            Text(appText("统计会在本轮结束后自动更新。"), color = Color(0xFF8E8E93), fontSize = 14.sp)
                         }
                     }
                 } else {
                     StatsMetricsSection(
-                        title = "执行",
+                        title = appText("执行"),
                         metrics = listOf(
-                            "轮次" to "${stats.turns ?: 0} 轮",
-                            "步骤" to "${stats.steps ?: 0} 步",
+                            appText("轮次") to appText("%1\$s 轮", stats.turns ?: 0),
+                            appText("步骤") to appText("%1\$s 步", stats.steps ?: 0),
                             "LLM" to (stats.llmMs?.let(SessionStatsFormatter::duration) ?: "—"),
-                            "工具调用" to (stats.toolMs?.let(SessionStatsFormatter::duration) ?: "—"),
-                            "首 token 平均" to (SessionStatsFormatter.averageTtft(stats)?.let(SessionStatsFormatter::duration) ?: "—"),
-                            "解码吞吐" to (SessionStatsFormatter.throughput(stats)?.let { "${SessionStatsFormatter.compactDecimal(it)} tok/s" } ?: "—")
+                            appText("工具调用") to (stats.toolMs?.let(SessionStatsFormatter::duration) ?: "—"),
+                            appText("首 token 平均") to (SessionStatsFormatter.averageTtft(stats)?.let(SessionStatsFormatter::duration) ?: "—"),
+                            appText("解码吞吐") to (SessionStatsFormatter.throughput(stats)?.let { "${SessionStatsFormatter.compactDecimal(it)} tok/s" } ?: "—")
                         )
                     )
                     snapshot.tokenUsage?.totals?.let { totals ->
                         StatsMetricsSection(
-                            title = "Token 用量",
+                            title = appText("Token 用量"),
                             metrics = listOf(
-                                "输入" to token(totals.inputTokens),
-                                "输出" to token(totals.outputTokens),
-                                "缓存读取" to token(totals.cacheReadTokens),
-                                "缓存写入" to token(totals.cacheWriteTokens),
-                                "推理" to token(totals.reasoningTokens),
-                                "缓存命中" to (SessionStatsFormatter.cacheHitRate(totals)?.let { "${(it * 100).roundToInt()}%" } ?: "—")
+                                appText("输入") to token(totals.inputTokens),
+                                appText("输出") to token(totals.outputTokens),
+                                appText("缓存读取") to token(totals.cacheReadTokens),
+                                appText("缓存写入") to token(totals.cacheWriteTokens),
+                                appText("推理") to token(totals.reasoningTokens),
+                                appText("缓存命中") to (SessionStatsFormatter.cacheHitRate(totals)?.let { "${(it * 100).roundToInt()}%" } ?: "—")
                             )
                         )
                     }
                     snapshot.contextPressure?.let { pressure ->
                         StatsMetricsSection(
-                            title = "上下文",
+                            title = appText("上下文"),
                             metrics = listOf(
-                                "当前压力" to token(pressure.pressureTokens),
-                                "预计用量" to token(pressure.projectedTokens),
-                                "上下文窗口" to token(pressure.contextWindow)
+                                appText("当前压力") to token(pressure.pressureTokens),
+                                appText("预计用量") to token(pressure.projectedTokens),
+                                appText("上下文窗口") to token(pressure.contextWindow)
                             )
                         )
                     }
                     snapshot.asOfSeq?.let {
                         Text(
-                            "数据截至事件 #$it",
+                            appText("数据截至事件 #%1\$s", it),
                             color = Color(0xFFAEAEB2),
                             fontSize = 12.sp,
                             fontFamily = FontFamily.Monospace

@@ -371,7 +371,8 @@ struct ConversationView: View {
                     Text("轨迹").tag(1)
                 }
                 .pickerStyle(.segmented)
-                .padding(.horizontal, 66)
+                .padding(.horizontal, 40)
+                .readableContentWidth(440)
                 .padding(.vertical, 6)
 
                 PersistentSessionPager(selection: $activeView) {
@@ -393,6 +394,16 @@ struct ConversationView: View {
         .foregroundStyle(.primary)
         .onChange(of: activeView) { _, view in
             if view != 0 { composerIsFocused = false }
+            showsSessionStatsPopover = false
+        }
+        .onChange(of: store.selectedSessionId) { _, _ in
+            showsSessionStatsPopover = false
+        }
+        .onDisappear {
+            if store.conversationFileIsOpening { store.cancelWorkspaceFileDownload() }
+        }
+        .sheet(item: conversationPreviewBinding) { file in
+            WorkspaceFilePreview(file: file, gatewayID: store.gatewayLocalID)
         }
         .sheet(isPresented: $showsSessionStats) {
             SessionStatsSheet(
@@ -400,6 +411,18 @@ struct ConversationView: View {
                 sessionTitle: store.selectedSession?.title ?? String(localized: "session.new.fallback", defaultValue: "新建 DeepSeek Harness")
             )
         }
+    }
+
+    private var conversationPreviewBinding: Binding<WorkspaceLocalFile?> {
+        Binding(
+            get: {
+                guard store.conversationFilePreviewRequested,
+                      let file = store.completedWorkspaceFile,
+                      file.purpose == "preview", file.sessionID == store.selectedSessionId else { return nil }
+                return file
+            },
+            set: { if $0 == nil { store.completedWorkspaceFile = nil } }
+        )
     }
 
     private var conversationBackground: Color {
@@ -463,16 +486,19 @@ struct ConversationView: View {
             .padding(.horizontal, 20)
             .padding(.top, 8)
             .opacity(shouldShowHistoryPresentationMask ? 0 : 1)
+            .readableContentWidth()
 
             if !hasVisibleConversationContent, let error = selectedHistoryError {
                 historyFailureState(error)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .padding(.bottom, composerHeight)
+                    .readableContentWidth()
                     .zIndex(1)
             } else if shouldShowHistoryPresentationMask {
                 historyPresentationMask
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .padding(.bottom, composerHeight)
+                    .readableContentWidth()
                     .zIndex(1)
             } else if !hasVisibleConversationContent {
                 Group {
@@ -481,8 +507,10 @@ struct ConversationView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(.bottom, composerHeight)
+                .readableContentWidth()
             }
 
+            // 底部材质铺满页面，避免在正文宽度边界留下垂直截断。
             composerBackdrop
                 .frame(height: composerHeight + 28)
                 .allowsHitTesting(false)
@@ -599,6 +627,8 @@ struct ConversationView: View {
                     }
                 }
             }
+            // 只约束控件的排版宽度，阴影仍可绘制到页面两侧留白。
+            .readableContentWidth()
             .opacity(voiceState.overlayVisible ? 0 : 1)
             .zIndex(2)
             ZStack {
@@ -612,6 +642,24 @@ struct ConversationView: View {
             .allowsHitTesting(voiceState.overlayVisible && !voiceTouchActive)
             .animation(voiceOverlayAnimation(active: voiceState.overlayVisible, reduceMotion: reduceMotion), value: voiceState.overlayVisible)
             .zIndex(3)
+        }
+        .overlayPreferenceValue(SessionStatsPopoverAnchorKey.self) { anchor in
+            if let anchor,
+               let snapshot = store.selectedSessionStatsSnapshot {
+                GeometryReader { geometry in
+                    SessionStatsPopoverOverlay(
+                        sourceFrame: geometry[anchor],
+                        availableSize: geometry.size,
+                        snapshot: snapshot,
+                        isPresented: showsSessionStatsPopover,
+                        onDismiss: { showsSessionStatsPopover = false },
+                        onViewFullStats: {
+                            showsSessionStatsPopover = false
+                            showsSessionStats = true
+                        }
+                    )
+                }
+            }
         }
         .overlay(alignment: .bottom) {
             if let voiceToast {
@@ -633,6 +681,7 @@ struct ConversationView: View {
         .onChange(of: composerIsFocused) { _, isFocused in
             store.voiceInput.keyboardChanged(isFocused)
             guard isFocused else { return }
+            showsSessionStatsPopover = false
             viewportScrollToBottomToken &+= 1
         }
         .onChange(of: store.selectedPendingQuestionRequest?.rpcId) { _, rpcId in
@@ -1054,12 +1103,15 @@ struct ConversationView: View {
         .padding(.horizontal, 14)
         .padding(.top, 14)
         .padding(.bottom, 12)
-        .glassSurface(radius: 24, tint: glassTint)
+        .glassSurface(radius: 24, tint: glassTint, shadowOpacity: 0)
+        // 先收住玻璃自带的向下投影，再单独控制输入框阴影。
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .stroke(glassEdge, lineWidth: 0.7)
         }
-        .shadow(color: glassShadow, radius: 18, y: 8)
+        // 轻微下移增强底部层次，保持原有扩散范围。
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.24 : 0.10), radius: 10, x: 0, y: 2)
         .padding(.horizontal, 14)
         .padding(.bottom, composerBottomPadding)
         .onChange(of: store.messageAcceptedRevision) { _, _ in
@@ -1537,7 +1589,7 @@ struct ConversationView: View {
             Spacer(minLength: 0)
             Button {
                 viewportProxy.prepareForOverlayPresentation()
-                showsSessionStatsPopover = true
+                showsSessionStatsPopover.toggle()
             } label: {
                 HStack(spacing: 7) {
                     Text(SessionStatsFormatter.turnsStepsLine(snapshot.stats) ?? String(localized: "正在读取会话统计…"))
@@ -1562,13 +1614,7 @@ struct ConversationView: View {
             }
             .accessibilityLabel("查看会话执行状态")
             .accessibilityValue(SessionStatsFormatter.compactLine(snapshot))
-            .popover(isPresented: $showsSessionStatsPopover, arrowEdge: .bottom) {
-                SessionStatsPopover(snapshot: snapshot) {
-                    showsSessionStatsPopover = false
-                    showsSessionStats = true
-                }
-                .presentationCompactAdaptation(.popover)
-            }
+            .anchorPreference(key: SessionStatsPopoverAnchorKey.self, value: .bounds) { $0 }
         }
 
     }
@@ -1881,6 +1927,8 @@ struct ConversationView: View {
             if case .message(let item) = entry.content,
                item.kind == .assistant,
                item.images.isEmpty,
+               item.files.isEmpty,
+               item.knownFiles.isEmpty,
                item.title == L10n.streamingAssistantTitle {
                 return [ConversationViewportEntry(
                     id: entry.id,
@@ -1916,7 +1964,8 @@ struct ConversationView: View {
                     content: AnyView(ConversationRow(
                         item: item,
                         showsCopyButton: entry.showsCopyButton,
-                        imageData: { store.imageData(for: $0) }
+                        imageData: { store.imageData(for: $0) },
+                        onOpenFile: conversationFileOpener()
                     )),
                     // Completed responses are immutable for this revision.
                     // The viewport measures their SwiftUI root directly before
@@ -2032,6 +2081,15 @@ struct ConversationView: View {
         }
     }
 
+    private func conversationFileOpener() -> (String) -> Void {
+        let gatewayID = store.gatewayLocalID
+        let sessionID = store.selectedSessionId
+        return { path in
+            guard let sessionID else { return }
+            store.openConversationFile(gatewayID: gatewayID, sessionID: sessionID, path: path)
+        }
+    }
+
     private func viewportEntryRevision(_ entry: ConversationDisplayEntry) -> Int {
         var hasher = Hasher()
         hasher.combine(entry.id)
@@ -2042,6 +2100,8 @@ struct ConversationView: View {
             hasher.combine(item.title)
             hasher.combine(item.text)
             hasher.combine(item.isError)
+            hasher.combine(item.files)
+            hasher.combine(item.knownFiles)
             for image in item.images {
                 hasher.combine(image)
                 hasher.combine(store.imageData(for: image.id) != nil)
@@ -2799,6 +2859,132 @@ private struct SessionStatsSheet: View {
     }
 }
 
+private struct SessionStatsPopoverAnchorKey: PreferenceKey {
+    static var defaultValue: Anchor<CGRect>? { nil }
+
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = nextValue() ?? value
+    }
+}
+
+/// 使用页面内浮层控制投影范围，避免系统 popover 的大面积阴影。
+private struct SessionStatsPopoverOverlay: View {
+    let sourceFrame: CGRect
+    let availableSize: CGSize
+    let snapshot: GatewaySessionStatsSnapshot
+    let isPresented: Bool
+    let onDismiss: () -> Void
+    let onViewFullStats: () -> Void
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var contentHeight: CGFloat = 240
+
+    private var presentationAnimation: Animation {
+        if reduceMotion { return .easeOut(duration: 0.15) }
+        return isPresented
+            ? .spring(response: 0.32, dampingFraction: 0.88)
+            : .easeInOut(duration: 0.18)
+    }
+
+    var body: some View {
+        let margin: CGFloat = 14
+        let gap: CGFloat = 6
+        let arrowHeight: CGFloat = 8
+        let width = min(300, max(1, availableSize.width - margin * 2))
+        let above = max(0, sourceFrame.minY - margin - gap)
+        let below = max(0, availableSize.height - sourceFrame.maxY - margin - gap)
+        let displaysAbove = above >= contentHeight + arrowHeight || above >= below
+        let height = min(contentHeight + arrowHeight, max(arrowHeight + 1, displaysAbove ? above : below))
+        let centerX = min(max(sourceFrame.maxX - width / 2, margin + width / 2), availableSize.width - margin - width / 2)
+        let centerY = displaysAbove
+            ? sourceFrame.minY - gap - height / 2
+            : sourceFrame.maxY + gap + height / 2
+        let shape = SessionStatsPopoverShape(
+            arrowX: sourceFrame.midX - (centerX - width / 2),
+            pointsUp: !displaysAbove
+        )
+        // 缩放原点使用胶囊中心，即使弹窗显示在胶囊下方，也从触发处展开。
+        let scaleAnchor = UnitPoint(
+            x: sourceFrame.midX / max(1, availableSize.width),
+            y: sourceFrame.midY / max(1, availableSize.height)
+        )
+
+        ZStack(alignment: .topLeading) {
+            if isPresented {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture(perform: onDismiss)
+                    .accessibilityLabel("关闭会话统计")
+                    .accessibilityAddTraits(.isButton)
+
+                ScrollView {
+                    SessionStatsPopover(snapshot: snapshot, onViewFullStats: onViewFullStats)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .frame(width: width, height: height - arrowHeight)
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .padding(displaysAbove ? .bottom : .top, arrowHeight)
+                .background {
+                    shape.fill(.regularMaterial)
+                        .overlay {
+                            shape.stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+                        }
+                        .shadow(color: .black.opacity(colorScheme == .dark ? 0.24 : 0.12), radius: 10, x: 0, y: 3)
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityAddTraits(.isModal)
+                .accessibilityAction(.escape, onDismiss)
+                .position(x: centerX, y: centerY)
+                .transition(reduceMotion ? .opacity : .scale(scale: 0.16, anchor: scaleAnchor).combined(with: .opacity))
+            }
+        }
+        .animation(presentationAnimation, value: isPresented)
+        .allowsHitTesting(isPresented)
+    }
+}
+
+/// 箭头与卡片共用一条轮廓，材质、描边和紧凑阴影不会在连接处叠加。
+private struct SessionStatsPopoverShape: Shape {
+    let arrowX: CGFloat
+    let pointsUp: Bool
+
+    func path(in rect: CGRect) -> Path {
+        let arrowHeight = min(8, rect.height / 3)
+        let top = rect.minY + arrowHeight
+        let bottom = rect.maxY
+        let radius = min(24, (bottom - top) / 2, rect.width / 2)
+        let halfArrow = min(10, max(0, (rect.width - radius * 2) / 2))
+        let center = min(max(arrowX, rect.minX + radius + halfArrow), rect.maxX - radius - halfArrow)
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX + radius, y: top))
+        path.addLine(to: CGPoint(x: center - halfArrow, y: top))
+        path.addQuadCurve(
+            to: CGPoint(x: center - 2, y: rect.minY + 2),
+            control: CGPoint(x: center - 4, y: top)
+        )
+        path.addQuadCurve(
+            to: CGPoint(x: center + 2, y: rect.minY + 2),
+            control: CGPoint(x: center, y: rect.minY - 2)
+        )
+        path.addQuadCurve(
+            to: CGPoint(x: center + halfArrow, y: top),
+            control: CGPoint(x: center + 4, y: top)
+        )
+        path.addLine(to: CGPoint(x: rect.maxX - radius, y: top))
+        path.addQuadCurve(to: CGPoint(x: rect.maxX, y: top + radius), control: CGPoint(x: rect.maxX, y: top))
+        path.addLine(to: CGPoint(x: rect.maxX, y: bottom - radius))
+        path.addQuadCurve(to: CGPoint(x: rect.maxX - radius, y: bottom), control: CGPoint(x: rect.maxX, y: bottom))
+        path.addLine(to: CGPoint(x: rect.minX + radius, y: bottom))
+        path.addQuadCurve(to: CGPoint(x: rect.minX, y: bottom - radius), control: CGPoint(x: rect.minX, y: bottom))
+        path.addLine(to: CGPoint(x: rect.minX, y: top + radius))
+        path.addQuadCurve(to: CGPoint(x: rect.minX + radius, y: top), control: CGPoint(x: rect.minX, y: top))
+        path.closeSubpath()
+        if pointsUp { return path }
+        return path.applying(CGAffineTransform(translationX: 0, y: rect.minY + rect.maxY).scaledBy(x: 1, y: -1))
+    }
+}
+
 private struct SessionStatsPopover: View {
     let snapshot: GatewaySessionStatsSnapshot
     let onViewFullStats: () -> Void
@@ -2844,8 +3030,7 @@ private struct SessionStatsPopover: View {
         }
         .padding(.horizontal, 22)
         .padding(.vertical, 16)
-        .frame(width: 300)
-        .presentationBackground(.ultraThinMaterial)
+        .frame(maxWidth: .infinity)
     }
 
     private func row(_ title: String, _ value: String) -> some View {
@@ -3789,6 +3974,7 @@ struct ConversationRow: View {
     let item: ConversationItem
     let showsCopyButton: Bool
     let imageData: (String) -> Data?
+    var onOpenFile: ((String) -> Void)? = nil
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -3830,8 +4016,14 @@ struct ConversationRow: View {
                     AttachmentImageGrid(attachments: item.images, imageData: imageData)
                 }
                 if !item.text.isEmpty {
-                    MarkdownContent(item.text)
+                    MarkdownContent(item.text, knownFiles: item.knownFiles, onOpenFile: onOpenFile)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                ForEach(item.files, id: \.path) { file in
+                    FileReferenceCard(path: file.path, description: file.description) {
+                        onOpenFile?(file.path)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 if showsCopyButton && !item.text.isEmpty {
                     CopyMessageButton(text: item.text)
@@ -4054,22 +4246,55 @@ struct MarkdownContent: View {
     @AppStorage(AppFontScale.followsSystemKey) private var fontFollowsSystem = false
     let text: String
     var compact = false
+    var knownFiles: [PresentedFile] = []
+    var onOpenFile: ((String) -> Void)?
 
-    init(_ text: String, compact: Bool = false) { self.text = text; self.compact = compact }
+    init(_ text: String, compact: Bool = false, knownFiles: [PresentedFile] = [], onOpenFile: ((String) -> Void)? = nil) {
+        self.text = text
+        self.compact = compact
+        self.knownFiles = knownFiles
+        self.onOpenFile = onOpenFile
+    }
 
     var body: some View {
-        Markdown(ParsedMarkdownCache.document(for: markdownSource))
+        Markdown(ParsedMarkdownCache.document(for: markdownSource).linkingInlineCode(codeDestinations))
+            .environment(\.openURL, OpenURLAction { url in
+                guard let onOpenFile else { return .systemAction }
+                if url.scheme == "dsh-file-reference", let index = Int(url.lastPathComponent), knownFiles.indices.contains(index) {
+                    onOpenFile(knownFiles[index].path)
+                    return .handled
+                }
+                if let path = ConversationFileReferences.shared.filePath(link: url.absoluteString) {
+                    onOpenFile(path)
+                    return .handled
+                }
+                return .systemAction
+            })
             .markdownTheme(.deepSeek(compact: compact, scale: CGFloat(AppFontScale.effective(fontScale, followsSystem: fontFollowsSystem))))
             .markdownCodeSyntaxHighlighter(DSHCodeSyntaxHighlighter())
             // MarkdownUI 会自行应用 Dynamic Type。主题已合并系统与应用倍率，避免重复缩放。
             .dynamicTypeSize(.large)
     }
 
+    private var codeDestinations: [String: String] {
+        let paths = knownFiles.map(\.path)
+        var destinations: [String: String] = [:]
+        for (index, file) in knownFiles.enumerated() {
+            let destination = "dsh-file-reference:///\(index)"
+            destinations[file.path] = destination
+            let name = file.path.replacingOccurrences(of: "\\", with: "/").split(separator: "/").last.map(String.init) ?? file.path
+            if ConversationFileReferences.shared.knownPath(code: name, paths: paths) != nil {
+                destinations[name] = destination
+            }
+        }
+        return destinations
+    }
+
     private var markdownSource: String {
         // The thin spaces participate in text layout, keeping adjacent
         // punctuation outside the chip. MarkdownUI's renderer merges their
         // separate font runs into one rounded background on modern iOS.
-        InlineCodePadding.apply(to: text)
+        knownFiles.isEmpty ? InlineCodePadding.apply(to: text) : text
     }
 }
 

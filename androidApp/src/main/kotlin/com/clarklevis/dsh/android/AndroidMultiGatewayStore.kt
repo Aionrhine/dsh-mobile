@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.android.platform.AndroidGatewayCredentialStore
 import com.clarklevis.dsh.android.platform.AndroidGatewayPreferences
 import com.clarklevis.dsh.android.platform.AndroidNetworkMonitor
@@ -133,7 +134,7 @@ class AndroidMultiGatewayStore(private val application: Application) {
                 } else {
                     activeGraph.pairingHandler = ::pair
                 }
-            }.onFailure { error = "主机资料读取或迁移失败：${it.message}" }
+            }.onFailure { error = appText("主机资料读取或迁移失败：%1\$s", it.message) }
             ready = true
         }
     }
@@ -157,7 +158,7 @@ class AndroidMultiGatewayStore(private val application: Application) {
                                 it.gatewayId.equals(frame.gatewayId, true)
                         }
                     ) {
-                        "网关身份已属于另一条记录"
+                        appText("网关身份已属于另一条记录")
                     }
                     verified(frame)
                     if (frame.kind == "hello" && activeId == profile.localId && !pairing) {
@@ -198,7 +199,7 @@ class AndroidMultiGatewayStore(private val application: Application) {
         scoped(profile.localId).update(stored.copy(endpoint = profile.connectionEndpoints.first()))
         activeId = profile.localId
         activeGraph = prepared ?: graph(profile)
-        check(preferences.edit().putString("active", profile.localId).commit()) { "无法保存当前主机" }
+        check(preferences.edit().putString("active", profile.localId).commit()) { appText("无法保存当前主机") }
         activeObservation?.cancel()
         activeObservation =
             scope.launch {
@@ -259,7 +260,7 @@ class AndroidMultiGatewayStore(private val application: Application) {
                                     it.connection == GatewayConnectionState.FAILED
                             }
                         }
-                    check(state.connection == GatewayConnectionState.CONNECTED) { state.lastError ?: "配对失败" }
+                    check(state.connection == GatewayConnectionState.CONNECTED) { state.lastError ?: appText("配对失败") }
                     val hello = identity.await()
                     profile = updated(profile, hello, endpoints.first())
                     profiles = profiles.filterNot { it.localId == profile.localId } + profile
@@ -271,7 +272,7 @@ class AndroidMultiGatewayStore(private val application: Application) {
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (failure: Exception) {
-                    error = "配对失败：${failure.message}"
+                    error = appText("配对失败：%1\$s", failure.message)
                 } finally {
                     if (!committed) {
                         candidate?.let { graph ->
@@ -480,7 +481,7 @@ class AndroidMultiGatewayStore(private val application: Application) {
     }
 
     private fun persist() {
-        check(preferences.edit().putString("profiles", profileJson.encodeToString(profiles)).commit()) { "无法保存主机资料" }
+        check(preferences.edit().putString("profiles", profileJson.encodeToString(profiles)).commit()) { appText("无法保存主机资料") }
     }
 }
 

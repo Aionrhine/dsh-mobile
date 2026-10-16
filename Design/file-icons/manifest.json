@@ -1,0 +1,918 @@
+{
+  "source": "https://www.untitledui.com/resources/file-icons",
+  "figma": "https://www.figma.com/design/BjWYaFHG2LKe85T844105j?node-id=77-2072",
+  "upstreamPackage": "@untitledui/file-icons",
+  "upstreamVersion": "0.0.9",
+  "license": "MIT (upstream package.json)",
+  "colors": {
+    "pdf": "D92D20",
+    "document": "155EEF",
+    "text": "344054",
+    "sheet": "079455",
+    "slides": "E62E05",
+    "code": "444CE7",
+    "image": "7F56D9",
+    "media": "DD2590",
+    "video": "155EEF",
+    "archive": "344054",
+    "package": "444CE7",
+    "unknown": "344054"
+  },
+  "cardTint": {
+    "light": 0.08,
+    "dark": 0.16
+  },
+  "cardSurface": {
+    "light": "FFFFFF",
+    "dark": "1C1C1E"
+  },
+  "icons": [
+    {
+      "key": "pdf",
+      "enum": "PDF",
+      "label": "PDF",
+      "family": "pdf",
+      "extensions": [
+        "pdf"
+      ],
+      "upstream": "pdf",
+      "figmaNode": "76:318",
+      "sha256": "ce7a8c7c9604564ec6ff9c3f15d126585d095f339d6f3206b2857ca6a824735c"
+    },
+    {
+      "key": "doc",
+      "enum": "DOC",
+      "label": "DOC",
+      "family": "document",
+      "extensions": [
+        "doc"
+      ],
+      "upstream": "doc",
+      "figmaNode": "76:328",
+      "sha256": "c0ee0ffd16b6adbd5a032ce0ecda09e38cff145194c944ac9fd98b06b7392d80"
+    },
+    {
+      "key": "docx",
+      "enum": "DOCX",
+      "label": "DOCX",
+      "family": "document",
+      "extensions": [
+        "docx"
+      ],
+      "upstream": "docx",
+      "figmaNode": "76:337",
+      "sha256": "343e6bf75fd5308c55acd7485ba31c87c214b5d3b7b3a68c1f305179645d1f1a"
+    },
+    {
+      "key": "txt",
+      "enum": "TXT",
+      "label": "TXT",
+      "family": "text",
+      "extensions": [
+        "txt",
+        "text"
+      ],
+      "upstream": "txt",
+      "figmaNode": "76:346",
+      "sha256": "6ba2a13ed60eba456389aa546db7e96a8fffc58aecd5eeca89402e6ba5f858de"
+    },
+    {
+      "key": "md",
+      "enum": "MD",
+      "label": "MD",
+      "family": "text",
+      "extensions": [
+        "md",
+        "markdown"
+      ],
+      "upstream": null,
+      "figmaNode": "76:358",
+      "sha256": "654ee553deb61cad5262b6e732445f2b51a31218a1ba3d016d3336b7dae951cb"
+    },
+    {
+      "key": "rtf",
+      "enum": "RTF",
+      "label": "RTF",
+      "family": "text",
+      "extensions": [
+        "rtf"
+      ],
+      "upstream": null,
+      "figmaNode": "76:366",
+      "sha256": "1a7f298a090c0e70577cea7ab20397b74b2c37538bf7281b140d7085e1228e2b"
+    },
+    {
+      "key": "odt",
+      "enum": "ODT",
+      "label": "ODT",
+      "family": "document",
+      "extensions": [
+        "odt"
+      ],
+      "upstream": null,
+      "figmaNode": "76:375",
+      "sha256": "33a67eb51f159e0a0057a926bc225a38ec2cd074b65983f22ce2697e384a101e"
+    },
+    {
+      "key": "epub",
+      "enum": "EPUB",
+      "label": "EPUB",
+      "family": "document",
+      "extensions": [
+        "epub"
+      ],
+      "upstream": null,
+      "figmaNode": "76:384",
+      "sha256": "7fe54092b2783f6efc3a553f6f5e4409851412a8f422292faa60c741ecb732f2"
+    },
+    {
+      "key": "xls",
+      "enum": "XLS",
+      "label": "XLS",
+      "family": "sheet",
+      "extensions": [
+        "xls"
+      ],
+      "upstream": "xls",
+      "figmaNode": "76:393",
+      "sha256": "394d71403515d8ab6fd510f15a792fe2f86d3aa9ade5be8a1b74a3d3bec2a902"
+    },
+    {
+      "key": "xlsx",
+      "enum": "XLSX",
+      "label": "XLSX",
+      "family": "sheet",
+      "extensions": [
+        "xlsx"
+      ],
+      "upstream": "xlsx",
+      "figmaNode": "76:403",
+      "sha256": "a64441a60ac0eabc81530537e0c650a20540528e6fcbba1e37d0e13eac1df0c2"
+    },
+    {
+      "key": "csv",
+      "enum": "CSV",
+      "label": "CSV",
+      "family": "sheet",
+      "extensions": [
+        "csv"
+      ],
+      "upstream": "csv",
+      "figmaNode": "76:412",
+      "sha256": "235f20d4a836aec4e7fc71bb2c0b9940fd0124f304c6565c344b8798b19158ab"
+    },
+    {
+      "key": "tsv",
+      "enum": "TSV",
+      "label": "TSV",
+      "family": "sheet",
+      "extensions": [
+        "tsv"
+      ],
+      "upstream": null,
+      "figmaNode": "76:421",
+      "sha256": "905ee2bd1bde2e16d3758aedb5748a9ebce46d039988c392e91412f81b8fbbda"
+    },
+    {
+      "key": "ods",
+      "enum": "ODS",
+      "label": "ODS",
+      "family": "sheet",
+      "extensions": [
+        "ods"
+      ],
+      "upstream": null,
+      "figmaNode": "76:430",
+      "sha256": "0310d53329acecb129a6b62c251959a2b6ed5b34ad02935ad36f8fc94e8d363f"
+    },
+    {
+      "key": "ppt",
+      "enum": "PPT",
+      "label": "PPT",
+      "family": "slides",
+      "extensions": [
+        "ppt"
+      ],
+      "upstream": "ppt",
+      "figmaNode": "76:439",
+      "sha256": "cad34fbaceb56c20825441fc734fdefe3825463d597e970c112dbac369764e79"
+    },
+    {
+      "key": "pptx",
+      "enum": "PPTX",
+      "label": "PPTX",
+      "family": "slides",
+      "extensions": [
+        "pptx"
+      ],
+      "upstream": "pptx",
+      "figmaNode": "76:449",
+      "sha256": "d0e91ef8b3f14f9a95eea6d06863bf0afa699da26f66f67e5d6d8d5cdf373b47"
+    },
+    {
+      "key": "odp",
+      "enum": "ODP",
+      "label": "ODP",
+      "family": "slides",
+      "extensions": [
+        "odp"
+      ],
+      "upstream": null,
+      "figmaNode": "76:458",
+      "sha256": "cabba4577c7f6edd1489122870ece8abbe13db69608b9ab0a55fd3ecc5965179"
+    },
+    {
+      "key": "c",
+      "enum": "C",
+      "label": "C",
+      "family": "code",
+      "extensions": [
+        "c"
+      ],
+      "upstream": null,
+      "figmaNode": "76:467",
+      "sha256": "6ba84bcdac59a908c367cd2bc67da2204c2a6ae723b2fb9cda3478e7a183d18a"
+    },
+    {
+      "key": "cpp",
+      "enum": "CPP",
+      "label": "C++",
+      "family": "code",
+      "extensions": [
+        "cpp",
+        "cc",
+        "cxx"
+      ],
+      "upstream": null,
+      "figmaNode": "76:474",
+      "sha256": "369e167ac765f6428935a80a1dd174f45cdd3ccbe9b304f69dd1497509a9be5c"
+    },
+    {
+      "key": "h",
+      "enum": "H",
+      "label": "H",
+      "family": "code",
+      "extensions": [
+        "h"
+      ],
+      "upstream": null,
+      "figmaNode": "76:485",
+      "sha256": "faa341b3ae40b24320f6116d6d1ee77eb1a7d0d650f3df2d42854d9ccd2da0ac"
+    },
+    {
+      "key": "hpp",
+      "enum": "HPP",
+      "label": "HPP",
+      "family": "code",
+      "extensions": [
+        "hpp",
+        "hxx",
+        "hh"
+      ],
+      "upstream": null,
+      "figmaNode": "76:494",
+      "sha256": "6a779d3f0218eb48bcbf3b798b2ef7dbe202fe3995157a5f96708064764ffb86"
+    },
+    {
+      "key": "csharp",
+      "enum": "CSHARP",
+      "label": "C#",
+      "family": "code",
+      "extensions": [
+        "cs"
+      ],
+      "upstream": null,
+      "figmaNode": "76:503",
+      "sha256": "b8601cb2025daec2024ddd234181337c5377c0270181b8a35d992021165d8263"
+    },
+    {
+      "key": "java",
+      "enum": "JAVA",
+      "label": "JAVA",
+      "family": "code",
+      "extensions": [
+        "java"
+      ],
+      "upstream": "java",
+      "figmaNode": "76:514",
+      "sha256": "18153bfe0d47587cf978784dc2ea0d06b902ef534789bc724a0e754e873153b5"
+    },
+    {
+      "key": "kt",
+      "enum": "KT",
+      "label": "KT",
+      "family": "code",
+      "extensions": [
+        "kt",
+        "kts"
+      ],
+      "upstream": null,
+      "figmaNode": "76:523",
+      "sha256": "5c42fbe1dd17bdf079a87dde0e60cdbbfd893d748f308d10925c61f431271f06"
+    },
+    {
+      "key": "swift",
+      "enum": "SWIFT",
+      "label": "SWIFT",
+      "family": "code",
+      "extensions": [
+        "swift"
+      ],
+      "upstream": null,
+      "figmaNode": "76:532",
+      "sha256": "f752c1b02c603db33d4702f6534e76a0523f17ed9c085f6d3e07e2e5a853ce4e"
+    },
+    {
+      "key": "objc",
+      "enum": "OBJC",
+      "label": "OBJC",
+      "family": "code",
+      "extensions": [
+        "m"
+      ],
+      "upstream": null,
+      "figmaNode": "76:541",
+      "sha256": "3ddc6803b69580688c820e509eaf8ce9e903bff53779f68bae591ed173b27e6b"
+    },
+    {
+      "key": "objcpp",
+      "enum": "OBJCPP",
+      "label": "OBJ++",
+      "family": "code",
+      "extensions": [
+        "mm"
+      ],
+      "upstream": null,
+      "figmaNode": "76:550",
+      "sha256": "e93507b864fe87a76ab87e92b370b5bd6a17a56b9547daa8cf12b7784b7f77e1"
+    },
+    {
+      "key": "py",
+      "enum": "PY",
+      "label": "PY",
+      "family": "code",
+      "extensions": [
+        "py",
+        "pyw"
+      ],
+      "upstream": null,
+      "figmaNode": "76:559",
+      "sha256": "45b58341642842adbf2312a4337becbd1d3a4f459fbe2b9b0660107db388f4d7"
+    },
+    {
+      "key": "ipynb",
+      "enum": "IPYNB",
+      "label": "IPYNB",
+      "family": "code",
+      "extensions": [
+        "ipynb"
+      ],
+      "upstream": null,
+      "figmaNode": "76:568",
+      "sha256": "321b610ab1da694f1936d5bcd5ddc3fb45fa343e3f3f1d5baa34ad4a736a2f4a"
+    },
+    {
+      "key": "js",
+      "enum": "JS",
+      "label": "JS",
+      "family": "code",
+      "extensions": [
+        "js",
+        "mjs",
+        "cjs"
+      ],
+      "upstream": "js",
+      "figmaNode": "76:577",
+      "sha256": "4124b12fe9bc14104a1ddea6929e54168f96e93cde65efc8ccc303bbd8ae94c3"
+    },
+    {
+      "key": "jsx",
+      "enum": "JSX",
+      "label": "JSX",
+      "family": "code",
+      "extensions": [
+        "jsx"
+      ],
+      "upstream": null,
+      "figmaNode": "76:585",
+      "sha256": "a36351a417668d18aff4f01a470ad00248b8a087fc9a69d85ae0501aac8c72b6"
+    },
+    {
+      "key": "ts",
+      "enum": "TS",
+      "label": "TS",
+      "family": "code",
+      "extensions": [
+        "ts",
+        "mts",
+        "cts"
+      ],
+      "upstream": null,
+      "figmaNode": "76:595",
+      "sha256": "ff00a3247756d23958f34c2079e18ba4cd4023e466467b9b51088404a2fd2ea6"
+    },
+    {
+      "key": "tsx",
+      "enum": "TSX",
+      "label": "TSX",
+      "family": "code",
+      "extensions": [
+        "tsx"
+      ],
+      "upstream": null,
+      "figmaNode": "76:604",
+      "sha256": "19425146090ec7080e462e8e238d24df7338530391f32bf67c675781ecbb53d2"
+    },
+    {
+      "key": "html",
+      "enum": "HTML",
+      "label": "HTML",
+      "family": "code",
+      "extensions": [
+        "html",
+        "htm"
+      ],
+      "upstream": "html",
+      "figmaNode": "76:615",
+      "sha256": "a3a26ab33ca948e7f3ce4b9793ad0e74073bd6ca92f1eb30ab08f6b6ce6b1e14"
+    },
+    {
+      "key": "css",
+      "enum": "CSS",
+      "label": "CSS",
+      "family": "code",
+      "extensions": [
+        "css"
+      ],
+      "upstream": "css",
+      "figmaNode": "76:628",
+      "sha256": "e40dca15d0036f309e2314882a05138aff377b49cf7735da90811a2393eb43fa"
+    },
+    {
+      "key": "scss",
+      "enum": "SCSS",
+      "label": "SCSS",
+      "family": "code",
+      "extensions": [
+        "scss"
+      ],
+      "upstream": null,
+      "figmaNode": "76:637",
+      "sha256": "076fcae4617e6456579c90ee3ef9309a305d4c254885fca1882b59180577ddd4"
+    },
+    {
+      "key": "vue",
+      "enum": "VUE",
+      "label": "VUE",
+      "family": "code",
+      "extensions": [
+        "vue"
+      ],
+      "upstream": null,
+      "figmaNode": "76:646",
+      "sha256": "93180d64018e58fdc613100f08fa214901f02bfe6808509e8307b15370bd7e70"
+    },
+    {
+      "key": "svelte",
+      "enum": "SVELTE",
+      "label": "SVELTE",
+      "family": "code",
+      "extensions": [
+        "svelte"
+      ],
+      "upstream": null,
+      "figmaNode": "76:656",
+      "sha256": "87e77203b73ef7bdb770de53714cd00fe3bdd244d88f7febc225a9ea3410828f"
+    },
+    {
+      "key": "go",
+      "enum": "GO",
+      "label": "GO",
+      "family": "code",
+      "extensions": [
+        "go"
+      ],
+      "upstream": null,
+      "figmaNode": "76:665",
+      "sha256": "5747b5dd7981d15a25d0c5a4faf5ee6f3ed02330d2693880c26f8205e438b627"
+    },
+    {
+      "key": "rs",
+      "enum": "RS",
+      "label": "RS",
+      "family": "code",
+      "extensions": [
+        "rs"
+      ],
+      "upstream": null,
+      "figmaNode": "76:674",
+      "sha256": "7da9884d31e0a66a3b65274278f6c6553943d6b5b0d5331aa7ea9bb12fe8ce23"
+    },
+    {
+      "key": "dart",
+      "enum": "DART",
+      "label": "DART",
+      "family": "code",
+      "extensions": [
+        "dart"
+      ],
+      "upstream": null,
+      "figmaNode": "76:683",
+      "sha256": "b425d82fc9de4c93bb64671c461ca43b7e4c6cd19988f7b27d16f15e41c5efae"
+    },
+    {
+      "key": "rb",
+      "enum": "RB",
+      "label": "RB",
+      "family": "code",
+      "extensions": [
+        "rb",
+        "rake"
+      ],
+      "upstream": null,
+      "figmaNode": "76:692",
+      "sha256": "b4f55867751afc70f11e7fb1b604ec0071595882d2ffa9693e8797fa38106e93"
+    },
+    {
+      "key": "php",
+      "enum": "PHP",
+      "label": "PHP",
+      "family": "code",
+      "extensions": [
+        "php"
+      ],
+      "upstream": null,
+      "figmaNode": "76:701",
+      "sha256": "53fbd57a9b366b7458808210eeba0b5756c2e08705ce7928605dda1b05a00bb7"
+    },
+    {
+      "key": "sh",
+      "enum": "SH",
+      "label": "SH",
+      "family": "code",
+      "extensions": [
+        "sh",
+        "bash",
+        "zsh",
+        "fish"
+      ],
+      "upstream": null,
+      "figmaNode": "76:710",
+      "sha256": "728c0538a92b6b04ea19b18eafd56ad04a2a8a90fabde2048c147ee393899f38"
+    },
+    {
+      "key": "ps1",
+      "enum": "PS1",
+      "label": "PS1",
+      "family": "code",
+      "extensions": [
+        "ps1",
+        "psm1"
+      ],
+      "upstream": null,
+      "figmaNode": "76:719",
+      "sha256": "8b166c737c92aa28ca2e50af958f1f34b9b81b7ed03b08fe75ae7d7e468075b2"
+    },
+    {
+      "key": "sql",
+      "enum": "SQL",
+      "label": "SQL",
+      "family": "code",
+      "extensions": [
+        "sql"
+      ],
+      "upstream": "sql",
+      "figmaNode": "76:728",
+      "sha256": "cf131393bfa060fc52b2cfad22495566ef11886fc026989fd10c31f1328c6e2e"
+    },
+    {
+      "key": "json",
+      "enum": "JSON",
+      "label": "JSON",
+      "family": "code",
+      "extensions": [
+        "json",
+        "jsonc",
+        "json5"
+      ],
+      "upstream": "json",
+      "figmaNode": "76:738",
+      "sha256": "b0c7e3925bfafde8cd12c36141e4443bd1bba2f6f9d80081a1afa4df16d726cf"
+    },
+    {
+      "key": "yaml",
+      "enum": "YAML",
+      "label": "YAML",
+      "family": "code",
+      "extensions": [
+        "yaml",
+        "yml"
+      ],
+      "upstream": null,
+      "figmaNode": "76:747",
+      "sha256": "f96e81f4e991d03e23265f1c9dfe5176fddd58f4a24eb674321f7c3cb3251b93"
+    },
+    {
+      "key": "xml",
+      "enum": "XML",
+      "label": "XML",
+      "family": "code",
+      "extensions": [
+        "xml"
+      ],
+      "upstream": "xml",
+      "figmaNode": "76:756",
+      "sha256": "2cf2264872ea49b85dce74b8ac66cccde03d9b041ddea863618f0b7c5c0a0da9"
+    },
+    {
+      "key": "toml",
+      "enum": "TOML",
+      "label": "TOML",
+      "family": "code",
+      "extensions": [
+        "toml"
+      ],
+      "upstream": null,
+      "figmaNode": "76:765",
+      "sha256": "76c9323f4ec509e8db721dc256bd6acd4084ba7e23d679c01afcff7c1825098d"
+    },
+    {
+      "key": "ini",
+      "enum": "INI",
+      "label": "INI",
+      "family": "code",
+      "extensions": [
+        "ini"
+      ],
+      "upstream": null,
+      "figmaNode": "76:774",
+      "sha256": "00f6613f890a8c7991389d90caa7a6f79ca69711d2346fc23e83caf9b0b38b2b"
+    },
+    {
+      "key": "conf",
+      "enum": "CONF",
+      "label": "CONF",
+      "family": "code",
+      "extensions": [
+        "conf",
+        "cfg",
+        "config",
+        "plist"
+      ],
+      "upstream": null,
+      "figmaNode": "76:783",
+      "sha256": "2f975363a2a8e14527c4a850e47c00f66bbd361b328fdb45d0cd9499d9e9fed6"
+    },
+    {
+      "key": "env",
+      "enum": "ENV",
+      "label": "ENV",
+      "family": "code",
+      "extensions": [
+        "env"
+      ],
+      "upstream": null,
+      "figmaNode": "76:792",
+      "sha256": "5db109942748a8bb655d9a0320601e3ae01b43ed62575630895c6761e51c1560"
+    },
+    {
+      "key": "gradle",
+      "enum": "GRADLE",
+      "label": "GRADLE",
+      "family": "code",
+      "extensions": [
+        "gradle",
+        "gradle.kts"
+      ],
+      "upstream": null,
+      "figmaNode": "76:801",
+      "sha256": "2dc0cf6bf14ade3cdb8ab5a14146620fd826a6158287c4a1527fcc430cefd744"
+    },
+    {
+      "key": "cmake",
+      "enum": "CMAKE",
+      "label": "CMAKE",
+      "family": "code",
+      "extensions": [
+        "cmake"
+      ],
+      "upstream": null,
+      "figmaNode": "76:810",
+      "sha256": "86487f34bc62668ba19bafb5ece8eefe189a8b27c560d06c649b7033c0ddf76f"
+    },
+    {
+      "key": "make",
+      "enum": "MAKE",
+      "label": "MAKE",
+      "family": "code",
+      "extensions": [
+        "mk"
+      ],
+      "upstream": null,
+      "figmaNode": "76:819",
+      "sha256": "2f2783242e1e03fa1259e50429908941c499fdccd6570c18942f8fd6239eff59"
+    },
+    {
+      "key": "bat",
+      "enum": "BAT",
+      "label": "BAT",
+      "family": "code",
+      "extensions": [
+        "bat",
+        "cmd"
+      ],
+      "upstream": null,
+      "figmaNode": "76:828",
+      "sha256": "0295f9817184549afd480da3bd8bf484916eacdcaa84931527c6e55b76d53356"
+    },
+    {
+      "key": "png",
+      "enum": "PNG",
+      "label": "PNG",
+      "family": "image",
+      "extensions": [
+        "png"
+      ],
+      "upstream": "png",
+      "figmaNode": "76:837",
+      "sha256": "a1126e65b15ef0aa6912c4a5122c537726d7e460c41397bbd618b7bc28b301e7"
+    },
+    {
+      "key": "jpg",
+      "enum": "JPG",
+      "label": "JPG",
+      "family": "image",
+      "extensions": [
+        "jpg",
+        "jpeg"
+      ],
+      "upstream": "jpg",
+      "figmaNode": "76:846",
+      "sha256": "9fbf21f0ddf946488436d16e5e1aa2c5465c96680c7dbb598248ba346e0a5a60"
+    },
+    {
+      "key": "svg",
+      "enum": "SVG",
+      "label": "SVG",
+      "family": "image",
+      "extensions": [
+        "svg",
+        "svgz"
+      ],
+      "upstream": "svg",
+      "figmaNode": "76:855",
+      "sha256": "e4295cae6f1b4186fb72d2ad726b325db2b348527ace99e52bb0f780b06eb722"
+    },
+    {
+      "key": "gif",
+      "enum": "GIF",
+      "label": "GIF",
+      "family": "image",
+      "extensions": [
+        "gif"
+      ],
+      "upstream": "gif",
+      "figmaNode": "76:864",
+      "sha256": "7399e236a4fff3903854be8f5ec0ffe6ccd4ef64acf1fd7af03aa9e59a1b3572"
+    },
+    {
+      "key": "webp",
+      "enum": "WEBP",
+      "label": "WEBP",
+      "family": "image",
+      "extensions": [
+        "webp"
+      ],
+      "upstream": "webp",
+      "figmaNode": "76:873",
+      "sha256": "e2f71a402a3073cfbed1b134b1c8d73ece78ddb950a591d66c69a4656f1d6659"
+    },
+    {
+      "key": "mp3",
+      "enum": "MP3",
+      "label": "MP3",
+      "family": "media",
+      "extensions": [
+        "mp3"
+      ],
+      "upstream": "mp3",
+      "figmaNode": "76:882",
+      "sha256": "5e35713772c3dce424836539b1c164bc97820f5a1239c393abe0a64c9f45d351"
+    },
+    {
+      "key": "mp4",
+      "enum": "MP4",
+      "label": "MP4",
+      "family": "video",
+      "extensions": [
+        "mp4"
+      ],
+      "upstream": "mp4",
+      "figmaNode": "76:891",
+      "sha256": "6b212a782966cb8903ef5cb3de5304e86b32fb3b6732182a5bf6eb465b5b39eb"
+    },
+    {
+      "key": "zip",
+      "enum": "ZIP",
+      "label": "ZIP",
+      "family": "archive",
+      "extensions": [
+        "zip"
+      ],
+      "upstream": "zip",
+      "figmaNode": "76:900",
+      "sha256": "1b781185ac52544209f748fc4ffaf8b6bf9cec1e4803c3d9b973bd38928304be"
+    },
+    {
+      "key": "rar",
+      "enum": "RAR",
+      "label": "RAR",
+      "family": "archive",
+      "extensions": [
+        "rar"
+      ],
+      "upstream": "rar",
+      "figmaNode": "76:909",
+      "sha256": "b7b698113b4fbf4e359793a370f92ad803067cb9cc08d3fb9881c7105ddd7d03"
+    },
+    {
+      "key": "7z",
+      "enum": "SEVEN_Z",
+      "label": "7Z",
+      "family": "archive",
+      "extensions": [
+        "7z"
+      ],
+      "upstream": null,
+      "figmaNode": "76:918",
+      "sha256": "ad80fefcd462803ae8969e57203c5f28e3962582fe62cc7e393b22e5d272ade9"
+    },
+    {
+      "key": "apk",
+      "enum": "APK",
+      "label": "APK",
+      "family": "package",
+      "extensions": [
+        "apk"
+      ],
+      "upstream": null,
+      "figmaNode": "76:927",
+      "sha256": "e076560237597b4e03ebdf4cac58091f7493257a030ce9f9351679b9cc707ff6"
+    },
+    {
+      "key": "ipa",
+      "enum": "IPA",
+      "label": "IPA",
+      "family": "package",
+      "extensions": [
+        "ipa"
+      ],
+      "upstream": null,
+      "figmaNode": "76:936",
+      "sha256": "bd1aae96662146e8dfe8367456d518da63632958beffacf93dc95a4f54252591"
+    },
+    {
+      "key": "document",
+      "enum": "DOCUMENT",
+      "label": "DOCUMENT",
+      "family": "unknown",
+      "extensions": [],
+      "upstream": "document",
+      "figmaNode": "76:945",
+      "sha256": "37774a22f1cf12669e82db49670d26604a90dab5da9f833764ad11105f9531aa"
+    },
+    {
+      "key": "code",
+      "enum": "CODE",
+      "label": "CODE",
+      "family": "unknown",
+      "extensions": [],
+      "upstream": "code",
+      "figmaNode": "76:953",
+      "sha256": "cd600dbdb85256b16eefde55c3fdf26947071e333fe355250f2dc8edf312d604"
+    },
+    {
+      "key": "binary",
+      "enum": "BINARY",
+      "label": "BINARY",
+      "family": "unknown",
+      "extensions": [
+        "bin",
+        "dat"
+      ],
+      "upstream": null,
+      "figmaNode": "76:961",
+      "sha256": "720df81c514ec0b32bff0c9ede3fd9234ce2012892a8676ed1a5a9ea5b7ea805"
+    },
+    {
+      "key": "unknown",
+      "enum": "UNKNOWN",
+      "label": "UNKNOWN",
+      "family": "unknown",
+      "extensions": [],
+      "upstream": null,
+      "figmaNode": "76:970",
+      "sha256": "25375225af9acb09e3f107d7d4a4d372b443ef886ca38ffb3d6c7debbdf1ab0f"
+    }
+  ]
+}

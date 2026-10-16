@@ -34,6 +34,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.android.AndroidSharedStateHolder
 import com.clarklevis.dsh.android.MobileScheduledTask
 import com.clarklevis.dsh.shared.protocol.JsonValue
@@ -92,8 +93,8 @@ internal fun ScheduledTaskEditSheet(
                 Modifier.fillMaxWidth().padding(bottom = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                TextButton(onClick = onDismiss, enabled = pendingRequestId == null) { Text("取消") }
-                Text("编辑定时任务", fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
+                TextButton(onClick = onDismiss, enabled = pendingRequestId == null) { Text(appText("取消")) }
+                Text(appText("编辑定时任务"), fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(top = 12.dp))
                 TextButton(
                     enabled = canSave,
@@ -101,49 +102,49 @@ internal fun ScheduledTaskEditSheet(
                         localError = null
                         pendingRequestId = stateHolder.updateScheduledTask(task, title, prompt, timeChange)
                         if (pendingRequestId == null) {
-                            localError = stateHolder.scheduledTaskMutationError ?: "操作正在进行，请稍后重试"
+                            localError = stateHolder.scheduledTaskMutationError ?: appText("操作正在进行，请稍后重试")
                         }
                     }
-                ) { Text("保存") }
+                ) { Text(appText("保存")) }
             }
             OutlinedTextField(
-                value = title, onValueChange = { title = it }, label = { Text("标题") },
-                supportingText = { Text("最多 120 个字") }, singleLine = true,
+                value = title, onValueChange = { title = it }, label = { Text(appText("标题")) },
+                supportingText = { Text(appText("最多 120 个字")) }, singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
             OutlinedTextField(
-                value = prompt, onValueChange = { prompt = it }, label = { Text("任务内容") },
+                value = prompt, onValueChange = { prompt = it }, label = { Text(appText("任务内容")) },
                 minLines = 4, modifier = Modifier.fillMaxWidth()
             )
-            Text("执行时间", fontWeight = FontWeight.Medium)
+            Text(appText("执行时间"), fontWeight = FontWeight.Medium)
             if (repeating) {
                 OutlinedButton(onClick = { useSpecificDate = !useSpecificDate }) {
-                    Text(if (useSpecificDate) "保持原重复规则" else "改为指定日期执行一次")
+                    Text(if (useSpecificDate) appText("保持原重复规则") else appText("改为指定日期执行一次"))
                 }
             }
             if (useSpecificDate) {
                 OutlinedButton(
                     onClick = { showScheduleDatePicker(context, selectedDate) { selectedDate = it } },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("执行日期  ${formatSelectedDate(selectedDate)}") }
+                ) { Text(appText("执行日期  %1\$s", formatSelectedDate(selectedDate))) }
                 OutlinedButton(
                     onClick = { showScheduleTimePicker(context, selectedDate, TimeZone.getDefault()) { selectedDate = it } },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("执行时刻  ${formatSelectedTime(selectedDate, TimeZone.getDefault())}") }
-                Text("按当前设备时区 ${TimeZone.getDefault().id} 选择，保存后按该时间执行一次。",
+                ) { Text(appText("执行时刻  %1\$s", formatSelectedTime(selectedDate, TimeZone.getDefault()))) }
+                Text(appText("按当前设备时区 %1\$s 选择，保存后按该时间执行一次。", TimeZone.getDefault().id),
                     fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (timeChange != null && !selectedDate.after(Date())) {
-                    Text("请选择未来的日期和时间。", fontSize = 13.sp, color = MaterialTheme.colorScheme.error)
+                    Text(appText("请选择未来的日期和时间。"), fontSize = 13.sp, color = MaterialTheme.colorScheme.error)
                 }
             } else if (task.kind == "daily" || task.kind == "weekly") {
                 OutlinedButton(
                     onClick = { showScheduleTimePicker(context, selectedTime, zone) { selectedTime = it } },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("执行时刻  ${formatSelectedTime(selectedTime, zone)}") }
-                Text("保留原有${if (task.kind == "daily") "每日" else "每周"}规则和时区 ${zone.id}。",
+                ) { Text(appText("执行时刻  %1\$s", formatSelectedTime(selectedTime, zone))) }
+                Text(appText("保留原有%1\$s规则和时区 %2\$s。", if (task.kind == "daily") appText("每日") else appText("每周"), zone.id),
                     fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
-                Text("当前规则：${scheduleRuleLabel(task)}。可选择指定日期和时间，明确改为单次执行。",
+                Text(appText("当前规则：%1\$s。可选择指定日期和时间，明确改为单次执行。", scheduleRuleLabel(task)),
                     fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             (localError ?: if (pendingRequestId != null) stateHolder.scheduledTaskMutationError else null)?.let {
@@ -207,13 +208,13 @@ private fun initialScheduleClock(task: MobileScheduledTask, zone: TimeZone): Dat
     }.time
 }
 
-private fun formatSelectedDate(date: Date): String = SimpleDateFormat("yyyy年M月d日", Locale.CHINA).format(date)
+private fun formatSelectedDate(date: Date): String = SimpleDateFormat(appText("yyyy年M月d日"), Locale.getDefault()).format(date)
 
 private fun formatSelectedTime(date: Date, zone: TimeZone): String =
-    SimpleDateFormat("HH:mm", Locale.CHINA).apply { timeZone = zone }.format(date)
+    SimpleDateFormat("HH:mm", Locale.getDefault()).apply { timeZone = zone }.format(date)
 
 private fun scheduleRuleLabel(task: MobileScheduledTask): String = when (task.kind) {
-    "every" -> "每 ${task.raw["everySeconds"]?.doubleValue?.toInt() ?: 0} 秒"
+    "every" -> appText("每 %1\$s 秒", task.raw["everySeconds"]?.doubleValue?.toInt() ?: 0)
     "cron" -> "Cron ${task.raw["expression"]?.stringValue.orEmpty()}"
     else -> task.kind
 }

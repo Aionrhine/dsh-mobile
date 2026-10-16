@@ -1,30 +1,32 @@
 package com.clarklevis.dsh.android.ui
 
+import com.clarklevis.dsh.android.localization.appText
+
 /** 与 iOS L10n.presetModeName 保持一致；未知的部署自定义预设继续显示网关名称。 */
 internal fun agentPresetDisplayName(id: String?, gatewayName: String? = null): String = when (id) {
     null -> "Agent"
-    "standard" -> "标准模式"
-    "code" -> "PTC 模式"
-    "minimal" -> "极简模式"
-    "cordis" -> "创造模式"
+    "standard" -> appText("标准模式")
+    "code" -> appText("PTC 模式")
+    "minimal" -> appText("极简模式")
+    "cordis" -> appText("创造模式")
     else -> gatewayName?.takeIf(String::isNotBlank) ?: id
 }
 
 /** 与 iOS L10n.presetModeBlurb 保持一致，网关有描述时优先展示网关内容。 */
 internal fun agentPresetDisplayDescription(id: String, gatewayDescription: String?): String =
     gatewayDescription?.takeIf(String::isNotBlank) ?: when (id) {
-        "standard" -> "功能完整的编码 Agent，支持文件编辑、Shell、检索、Skills、计划与工作流。"
-        "code" -> "通过 Code Mode SDK 组合多步工具操作。"
-        "minimal" -> "精简工具集合，适合轻量、直接的编码任务。"
-        "cordis" -> "用于创建和维护自定义 Agent 预设。"
-        else -> "由 DeepSeek Harness 提供的 Agent 预设。"
+        "standard" -> appText("功能完整的编码 Agent，支持文件编辑、Shell、检索、Skills、计划与工作流。")
+        "code" -> appText("通过 Code Mode SDK 组合多步工具操作。")
+        "minimal" -> appText("精简工具集合，适合轻量、直接的编码任务。")
+        "cordis" -> appText("用于创建和维护自定义 Agent 预设。")
+        else -> appText("由 DeepSeek Harness 提供的 Agent 预设。")
     }
 
 /** 输入框菜单保持单行，完整介绍仍用于设置页。 */
 internal fun agentPresetCompactDescription(id: String, description: String?): String = when (id) {
-    "standard" -> "完整工具，适合日常开发"
-    "code" -> "用代码组合多步工具操作"
-    "minimal" -> "仅用 Shell，轻量直接"
-    "cordis" -> "创建和调试自定义 Agent"
-    else -> description?.replace(Regex("\\s+"), " ")?.trim().orEmpty().ifBlank { "自定义 Agent 模式" }
+    "standard" -> appText("完整工具，适合日常开发")
+    "code" -> appText("用代码组合多步工具操作")
+    "minimal" -> appText("仅用 Shell，轻量直接")
+    "cordis" -> appText("创建和调试自定义 Agent")
+    else -> description?.replace(Regex("\\s+"), " ")?.trim().orEmpty().ifBlank { appText("自定义 Agent 模式") }
 }

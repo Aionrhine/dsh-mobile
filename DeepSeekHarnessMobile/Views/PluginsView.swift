@@ -2,6 +2,8 @@ import SwiftUI
 import WebKit
 
 struct PluginsView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var containerWidth: CGFloat = 0
     @ObservedObject var store: AppStore
     @Environment(\.colorScheme) private var colorScheme
     @State private var gatewayToggle: MobilePluginBundle?
@@ -43,7 +45,11 @@ struct PluginsView: View {
                 }
             }
             .padding(.horizontal, 20).padding(.vertical, 20)
+            .readableContentWidth()
         }
+        .onGeometryChange(for: CGFloat.self) { geometry in
+            geometry.size.width
+        } action: { containerWidth = $0 }
         .background(Color(uiColor: .systemBackground))
         .navigationTitle("插件")
         .navigationBarTitleDisplayMode(.inline)
@@ -80,7 +86,16 @@ struct PluginsView: View {
                 Text(title).appFont(.headline)
                 Text("\(count)").foregroundStyle(.secondary)
             }.padding(.bottom, 4)
-            content()
+            LazyVGrid(
+                columns: Array(
+                    repeating: GridItem(.flexible(), spacing: 24),
+                    count: containerWidth >= 760 && !dynamicTypeSize.isAccessibilitySize ? 2 : 1
+                ),
+                alignment: .leading,
+                spacing: 16
+            ) {
+                content()
+            }
         }
     }
 
@@ -215,6 +230,7 @@ private struct PluginDetailView: View {
                     }
                 }
                 .padding(22).frame(maxWidth: .infinity, alignment: .leading)
+                .readableContentWidth()
             }
         }
         .navigationTitle("插件详情").navigationBarTitleDisplayMode(.inline)
@@ -295,6 +311,7 @@ private struct OfficialPluginDetailView: View {
                     Text(namespace).appFont(.subheadline.monospaced()).foregroundStyle(.secondary)
                 }
             }.padding(22).frame(maxWidth: .infinity, alignment: .leading)
+                .readableContentWidth()
         }
         .navigationTitle("插件详情").navigationBarTitleDisplayMode(.inline)
     }

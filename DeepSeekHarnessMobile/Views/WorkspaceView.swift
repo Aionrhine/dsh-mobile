@@ -2,6 +2,7 @@ import SwiftUI
 import AVFoundation
 
 struct WorkspaceView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var store: AppStore
@@ -42,14 +43,19 @@ struct WorkspaceView: View {
                     .frame(width: drawerWidth, height: fullHeight, alignment: .topLeading)
                     .highPriorityGesture(drawerClosingGesture(width: drawerWidth))
 
-                workspaceContent(openDrawer: { openDrawer(width: drawerWidth) }, topInset: topInset, drawerWidth: drawerWidth)
+                workspaceContent(
+                    openDrawer: { openDrawer(width: drawerWidth) },
+                    size: geometry.size,
+                    safeArea: geometry.safeAreaInsets,
+                    drawerWidth: drawerWidth
+                )
                     .frame(width: geometry.size.width, height: fullHeight)
                     .background(DSHColor.navy)
                     .overlay {
                         Color.black.opacity(dimOpacity)
                             .allowsHitTesting(false)
                     }
-                    .clipShape(RoundedRectangle(cornerRadius: 48, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 48 * progress, style: .continuous))
                     .compositingGroup()
                     .shadow(
                         color: .black.opacity(0.12 * progress),
@@ -77,6 +83,12 @@ struct WorkspaceView: View {
             }
             .frame(width: geometry.size.width, height: fullHeight)
             .offset(y: -topInset)
+            .onChange(of: geometry.size) { _, _ in
+                // 旋转或调整分屏后清理旧拖拽距离，避免侧栏停在半开位置。
+                drawerFeedback.endDrag(cancelled: true)
+                drawerDragStart = nil
+                drawerOffset = progress > 0.5 ? drawerWidth : 0
+            }
             .onChange(of: drawerClosingGestureActive) { _, active in
                 if !active {
                     finishDrawerDrag(translation: 0, velocity: 0, cancelled: true, width: drawerWidth)
@@ -141,39 +153,44 @@ struct WorkspaceView: View {
         }
     }
 
-    private func workspaceContent(openDrawer: @escaping () -> Void, topInset: CGFloat, drawerWidth: CGFloat) -> some View {
-        ZStack {
+    private func workspaceContent(
+        openDrawer: @escaping () -> Void,
+        size: CGSize,
+        safeArea: EdgeInsets,
+        drawerWidth: CGFloat
+    ) -> some View {
+        let usesColumns = AdaptiveLayout.workspaceUsesColumns(
+            size: size, accessibilityText: dynamicTypeSize.isAccessibilitySize
+        )
+        return ZStack {
             DeepOceanBackground()
                 .contentShape(Rectangle())
                 .onTapGesture { sessionSearchIsFocused = false }
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: usesColumns ? 40 : 18) {
                     VStack(alignment: .leading, spacing: 6) {
                         header(openDrawer: openDrawer).id("workspace-header")
                         GatewaySwitcherBar()
                     }
-                    Spacer(minLength: 44)
-                    VStack(alignment: .leading, spacing: 7) {
-                        Text("探索未至之境")
-                            .appFont(.system(size: 32, weight: .bold))
-                        if connectionIsReady {
-                            Text("已连接Deepseek Harness预览版")
-                                .appFont(.subheadline).foregroundStyle(.white.opacity(0.65))
+                    if usesColumns {
+                        HStack(alignment: .top, spacing: 48) {
+                            workspaceActions
+                                .frame(width: min(440, size.width * 0.38))
+                            recentSessions
+                                .frame(maxWidth: .infinity)
                         }
-                    }
-                    .id("workspace-hero")
-                    workspaceCard.id("workspace-card")
-                    newSessionButton.id("workspace-new-session")
-                    sessionsHeader.id("workspace-sessions-header")
-                    sessionSearch.id("workspace-session-search")
-                    if displayedSessions.isEmpty {
-                        emptySessions.id("workspace-sessions-empty")
                     } else {
-                        sessionsList
+                        Spacer(minLength: 44)
+                        workspaceActions
+                        recentSessions
                     }
-                    Spacer(minLength: 24)
                 }
-                .padding(.horizontal, 22).padding(.top, topInset + 18)
+                .padding(.horizontal, usesColumns ? 40 : 22)
+                .padding(.leading, safeArea.leading)
+                .padding(.trailing, safeArea.trailing)
+                .padding(.top, safeArea.top + 18)
+                .padding(.bottom, safeArea.bottom + 24)
+                .readableContentWidth(AdaptiveLayout.workspaceWidth)
                 .background {
                     DrawerPanGestureAttachment(
                         shouldBegin: { translation in
@@ -202,9 +219,42 @@ struct WorkspaceView: View {
         .onTapGesture { sessionSearchIsFocused = false }
     }
 
+    private var workspaceActions: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 7) {
+                Text("探索未至之境")
+                    .appFont(.system(size: 32, weight: .bold))
+                if connectionIsReady {
+                    Text("已连接Deepseek Harness预览版")
+                        .appFont(.subheadline).foregroundStyle(.white.opacity(0.65))
+                }
+            }
+            .id("workspace-hero")
+            workspaceCard.id("workspace-card")
+            newSessionButton.id("workspace-new-session")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var recentSessions: some View {
+        LazyVStack(alignment: .leading, spacing: 18) {
+            sessionsHeader.id("workspace-sessions-header")
+            sessionSearch.id("workspace-session-search")
+            if displayedSessions.isEmpty {
+                emptySessions.id("workspace-sessions-empty")
+            } else {
+                sessionsList
+            }
+        }
+    }
+
     private func header(openDrawer: @escaping () -> Void) -> some View {
         HStack {
-            Button(action: openDrawer) { HarnessMark() }
+            Button(action: openDrawer) {
+                HarnessMark(width: dynamicTypeSize.isAccessibilitySize ? 150 : 216)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+                .layoutPriority(-1)
                 .buttonStyle(.plain)
                 .accessibilityLabel("打开侧边栏")
             Spacer()
@@ -436,7 +486,7 @@ struct WorkspaceView: View {
         HStack(spacing: 12) {
             Image(systemName: "folder").foregroundStyle(.blue).appFont(.title3)
             VStack(alignment: .leading, spacing: 2) {
-                Text(workspaceDisplayTitle).appFont(.subheadline.weight(.semibold))
+                Text(workspaceDisplayTitle).appFont(.subheadline.weight(.semibold)).lineLimit(2)
                 Text(workspaceDisplayPath).appFont(.caption).foregroundStyle(.white.opacity(0.55)).lineLimit(1)
             }
             Spacer()
@@ -1215,6 +1265,12 @@ private struct GatewayQRScannerView: View {
     let onFailure: (String) -> Void
 
     var body: some View {
+        GeometryReader { geometry in
+            scannerContent(side: min(360, max(120, min(geometry.size.width - 44, geometry.size.height - 230))))
+        }
+    }
+
+    private func scannerContent(side: CGFloat) -> some View {
         ZStack {
             GatewayCameraPreview(onCode: onCode, onFailure: onFailure)
                 .ignoresSafeArea()
@@ -1253,7 +1309,7 @@ private struct GatewayQRScannerView: View {
 
                 RoundedRectangle(cornerRadius: 28, style: .continuous)
                     .stroke(.white, lineWidth: 3)
-                    .frame(width: 272, height: 272)
+                    .frame(width: side, height: side)
                     .overlay(alignment: .bottom) {
                         Text("将二维码完整放入框内")
                             .appFont(.subheadline.weight(.medium))
@@ -1300,6 +1356,18 @@ private final class GatewayScannerController: UIViewController, AVCaptureMetadat
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         previewLayer?.frame = view.bounds
+        guard let connection = previewLayer?.connection,
+              let orientation = view.window?.windowScene?.interfaceOrientation else { return }
+        let angle: CGFloat
+        switch orientation {
+        case .landscapeRight: angle = 0
+        case .landscapeLeft: angle = 180
+        case .portraitUpsideDown: angle = 270
+        default: angle = 90
+        }
+        if connection.isVideoRotationAngleSupported(angle) {
+            connection.videoRotationAngle = angle
+        }
     }
 
     func start() {

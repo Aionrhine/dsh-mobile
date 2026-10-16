@@ -1,6 +1,7 @@
 package com.clarklevis.dsh.android
 
 import android.app.Application
+import android.content.Context
 import android.content.Intent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -9,11 +10,16 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.clarklevis.dsh.android.platform.GatewayLifecycleEvent
+import com.clarklevis.dsh.android.ui.AppearanceSettings
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 class DshAndroidApplication : Application(), DefaultLifecycleObserver {
+    override fun attachBaseContext(base: Context) {
+        super.attachBaseContext(AppearanceSettings.localizedContext(base))
+    }
+
     lateinit var hosts: AndroidMultiGatewayStore
         private set
     val graph: AndroidAppGraph get() = hosts.activeGraph

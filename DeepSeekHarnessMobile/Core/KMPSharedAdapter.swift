@@ -15,6 +15,8 @@ private struct KMPConversationItemSnapshot: Decodable {
     let images: [GatewayImageAttachment]
     let isError: Bool
     let epochSeconds: Double
+    let files: [PresentedFile]?
+    let knownFiles: [PresentedFile]?
 
     var item: ConversationItem? {
         guard !id.isEmpty,
@@ -27,7 +29,9 @@ private struct KMPConversationItemSnapshot: Decodable {
             text: text,
             images: images,
             isError: isError,
-            date: Date(timeIntervalSince1970: epochSeconds)
+            date: Date(timeIntervalSince1970: epochSeconds),
+            files: files ?? [],
+            knownFiles: knownFiles ?? []
         )
     }
 }
@@ -168,7 +172,13 @@ final class KMPConversationStoreAdapter {
                 localized: "command.compacted-history",
                 defaultValue: "已压缩 {items} 条历史记录（约 {tokens} tokens）"
             ),
-            interrupted: String(localized: "assistant.interrupted", defaultValue: "生成已中断")
+            interrupted: String(localized: "assistant.interrupted", defaultValue: "生成已中断"),
+            modelAttemptFailed: String(localized: "assistant.modelAttemptFailed", defaultValue: "模型请求失败"),
+            modelRetrying: String(localized: "assistant.modelRetrying", defaultValue: "正在重试模型请求"),
+            modelRetried: String(localized: "assistant.modelRetried", defaultValue: "已重试模型请求"),
+            generationFailed: String(localized: "assistant.generationFailed", defaultValue: "生成失败"),
+            generationCancelled: String(localized: "assistant.generationCancelled", defaultValue: "生成已取消"),
+            outputTruncated: String(localized: "assistant.outputTruncated", defaultValue: "输出已截断，保留开头和末尾")
         )
         guard let eventStore = store as? any KMPConversationEventBridging else {
             failClosed(.runtimeFailed("Conversation bridge 不支持 MVI event stream"))
@@ -404,7 +414,9 @@ final class KMPConversationStoreAdapter {
                         text: old.text + delta,
                         images: old.images,
                         isError: old.isError,
-                        date: Date(timeIntervalSince1970: epochSeconds)
+                        date: Date(timeIntervalSince1970: epochSeconds),
+                        files: old.files,
+                        knownFiles: old.knownFiles
                     )
                 case "replace":
                     guard let item = operation.item?.item,

@@ -82,6 +82,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.android.AndroidSharedStateHolder
 import com.clarklevis.dsh.android.R
 import com.clarklevis.dsh.shared.gateway.GatewayConnectionState
@@ -102,7 +103,7 @@ internal fun GatewayAuthenticationMenu(
     Box {
         GlassCircleButton(
             iconRes = R.drawable.ic_gateway_auth,
-            description = "设备认证，${gatewayConnectionTitle(state.connection)}",
+            description = appText("设备认证，%1\$s", gatewayConnectionTitle(state.connection)),
             onClick = { expanded = true }
         )
         DropdownMenu(
@@ -117,7 +118,7 @@ internal fun GatewayAuthenticationMenu(
             border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.62f))
         ) {
             AuthenticationMenuItem(
-                title = "扫描二维码",
+                title = appText("扫描二维码"),
                 iconRes = R.drawable.ic_qr_viewfinder,
                 testTag = "gateway-auth-scan"
             ) {
@@ -125,7 +126,7 @@ internal fun GatewayAuthenticationMenu(
                 onScan()
             }
             AuthenticationMenuItem(
-                title = "手动输入配对信息",
+                title = appText("手动输入配对信息"),
                 iconRes = R.drawable.ic_keyboard_outline,
                 testTag = "gateway-auth-manual"
             ) {
@@ -218,7 +219,7 @@ internal fun ManualGatewayPairingSheet(
                 modifier = Modifier.fillMaxWidth().height(72.dp).padding(horizontal = 22.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text("设备认证", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text(appText("设备认证"), fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 Surface(
                     modifier = Modifier.align(Alignment.CenterEnd).height(48.dp)
                         .clickable(role = Role.Button, onClick = dismissWithAnimation),
@@ -227,7 +228,7 @@ internal fun ManualGatewayPairingSheet(
                     shadowElevation = 0.dp
                 ) {
                     Box(Modifier.padding(horizontal = 19.dp), contentAlignment = Alignment.Center) {
-                        Text("完成", fontSize = 17.sp, fontWeight = FontWeight.Medium)
+                        Text(appText("完成"), fontSize = 17.sp, fontWeight = FontWeight.Medium)
                     }
                 }
             }
@@ -238,9 +239,9 @@ internal fun ManualGatewayPairingSheet(
                 verticalArrangement = Arrangement.spacedBy(22.dp)
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("手动输入配对信息", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    Text(appText("手动输入配对信息"), fontSize = 22.sp, fontWeight = FontWeight.Bold)
                     Text(
-                        "粘贴 Harness WebUI 提供的 Base64URL 配对字符串。长期设备 token 仍只会安全保存到 Android Keystore。",
+                        appText("粘贴 Harness WebUI 提供的 Base64URL 配对字符串。长期设备 token 仍只会安全保存到 Android Keystore。"),
                         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.52f),
                         fontSize = 15.sp,
                         lineHeight = 21.sp
@@ -280,7 +281,7 @@ internal fun ManualGatewayPairingSheet(
                                     GatewayPairingPayloadParser.parse(trimmed, System.currentTimeMillis())
                                 }
                                 if (validation.isFailure) {
-                                    validationError = validation.exceptionOrNull()?.message ?: "配对信息无效"
+                                    validationError = validation.exceptionOrNull()?.message ?: appText("配对信息无效")
                                 } else {
                                     stateHolder.pair(
                                         payload = trimmed,
@@ -316,11 +317,11 @@ internal fun ManualGatewayPairingSheet(
                         Spacer(Modifier.width(9.dp))
                         Text(
                             if (isConnecting) {
-                                "取消连接"
+                                appText("取消连接")
                             } else if (stateHolder.gatewayState.connection == GatewayConnectionState.CONNECTED) {
-                                "重新配对并连接"
+                                appText("重新配对并连接")
                             } else {
-                                "连接"
+                                appText("连接")
                             },
                             color = Color.White,
                             fontSize = 16.sp,
@@ -388,8 +389,8 @@ private fun pairingResultPresentation(
 ): PairingResultPresentation {
     if (validationError != null) {
         return PairingResultPresentation(
-            "配对信息无效",
-            validationError,
+            appText("配对信息无效"),
+            appText(validationError),
             MaterialTheme.colorScheme.error,
             R.drawable.ic_permission_warning
         )
@@ -397,7 +398,7 @@ private fun pairingResultPresentation(
     if (!didAttemptConnection) {
         return PairingResultPresentation(
             gatewayConnectionTitle(state.connection),
-            "输入 Base64URL 配对字符串后点击连接，结果会显示在这里。",
+            appText("输入 Base64URL 配对字符串后点击连接，结果会显示在这里。"),
             MaterialTheme.colorScheme.onBackground.copy(alpha = 0.50f),
             R.drawable.ic_gateway_auth
         )
@@ -406,27 +407,27 @@ private fun pairingResultPresentation(
         GatewayConnectionState.CONNECTING,
         GatewayConnectionState.AUTHENTICATING,
         GatewayConnectionState.WAITING_FOR_NETWORK -> PairingResultPresentation(
-            "正在连接",
-            "正在提交一次性配对码并等待 Mobile Gateway 完成设备鉴权…",
+            appText("正在连接"),
+            appText("正在提交一次性配对码并等待 Mobile Gateway 完成设备鉴权…"),
             DshColors.Amber,
             R.drawable.ic_link
         )
         GatewayConnectionState.CONNECTED -> PairingResultPresentation(
-            "连接成功",
-            "设备鉴权已完成，长期 token 已安全保存到 Android Keystore。",
+            appText("连接成功"),
+            appText("设备鉴权已完成，长期 token 已安全保存到 Android Keystore。"),
             DshColors.Success,
             R.drawable.ic_menu_check
         )
         GatewayConnectionState.FAILED -> PairingResultPresentation(
-            "连接失败",
+            appText("连接失败"),
             pairingFailureDetail(state.lastError),
             MaterialTheme.colorScheme.error,
             R.drawable.ic_permission_warning
         )
         GatewayConnectionState.DISCONNECTED,
         GatewayConnectionState.SUSPENDED -> PairingResultPresentation(
-            "未连接",
-            "请检查配对信息后重新连接。",
+            appText("未连接"),
+            appText("请检查配对信息后重新连接。"),
             MaterialTheme.colorScheme.onBackground.copy(alpha = 0.50f),
             R.drawable.ic_gateway_auth
         )
@@ -434,9 +435,9 @@ private fun pairingResultPresentation(
 }
 
 private fun pairingFailureDetail(error: String?): String = when (error) {
-    "connection-timeout" -> "连接超时，请检查网络或配对信息后重试。"
-    "network-lost" -> "网络不可用，请恢复网络后重新连接。"
-    else -> error ?: "请检查配对信息后重新连接。"
+    "connection-timeout" -> appText("连接超时，请检查网络或配对信息后重试。")
+    "network-lost" -> appText("网络不可用，请恢复网络后重新连接。")
+    else -> error?.let { appText(it) } ?: appText("请检查配对信息后重新连接。")
 }
 
 @Composable
@@ -486,7 +487,7 @@ internal fun GatewayQrScannerScreen(
     ) { granted ->
         hasPermission = granted
         if (!granted) {
-            onFailure("未获得相机权限。请在系统设置中允许 DeepSeek Harness 使用相机后重试。")
+            onFailure(appText("未获得相机权限。请在系统设置中允许 DeepSeek Harness 使用相机后重试。"))
         }
     }
     LaunchedEffect(Unit) {
@@ -517,9 +518,9 @@ internal fun GatewayQrScannerScreen(
                 verticalAlignment = Alignment.Top
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("扫描设备配对码", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    Text(appText("扫描设备配对码"), color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                     Text(
-                        "请扫描 Harness WebUI 生成的二维码",
+                        appText("请扫描 Harness WebUI 生成的二维码"),
                         color = Color.White.copy(alpha = 0.72f),
                         fontSize = 15.sp
                     )
@@ -527,7 +528,7 @@ internal fun GatewayQrScannerScreen(
                 Spacer(Modifier.weight(1f))
                 Surface(
                     modifier = Modifier.size(44.dp).clickable(role = Role.Button, onClick = onCancel)
-                        .semantics { contentDescription = "取消扫描" },
+                        .semantics { contentDescription = appText("取消扫描") },
                     shape = CircleShape,
                     color = Color.White.copy(alpha = 0.16f),
                     border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.22f))
@@ -556,7 +557,7 @@ internal fun GatewayQrScannerScreen(
                     border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.18f))
                 ) {
                     Text(
-                        "将二维码完整放入框内",
+                        appText("将二维码完整放入框内"),
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
                         color = Color.White,
                         fontSize = 15.sp,
@@ -609,7 +610,7 @@ private fun GatewayCameraPreview(onCode: (String) -> Unit, onFailure: (String) -
         }.onFailure {
             if (!didFinish) {
                 didFinish = true
-                onFailure("相机启动失败，请稍后重试。")
+                onFailure(appText("相机启动失败，请稍后重试。"))
             }
         }
         onDispose {
@@ -631,13 +632,13 @@ private fun GatewayCameraPreview(onCode: (String) -> Unit, onFailure: (String) -
 }
 
 internal fun gatewayConnectionTitle(state: GatewayConnectionState): String = when (state) {
-    GatewayConnectionState.CONNECTED -> "已连接"
+    GatewayConnectionState.CONNECTED -> appText("已连接")
     GatewayConnectionState.CONNECTING,
-    GatewayConnectionState.AUTHENTICATING -> "正在连接"
-    GatewayConnectionState.WAITING_FOR_NETWORK -> "等待网络"
-    GatewayConnectionState.FAILED -> "连接失败"
+    GatewayConnectionState.AUTHENTICATING -> appText("正在连接")
+    GatewayConnectionState.WAITING_FOR_NETWORK -> appText("等待网络")
+    GatewayConnectionState.FAILED -> appText("连接失败")
     GatewayConnectionState.DISCONNECTED,
-    GatewayConnectionState.SUSPENDED -> "未连接"
+    GatewayConnectionState.SUSPENDED -> appText("未连接")
 }
 
 private const val MANUAL_PAIRING_PLACEHOLDER =

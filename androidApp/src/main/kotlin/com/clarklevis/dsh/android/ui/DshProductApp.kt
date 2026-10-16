@@ -3,6 +3,7 @@ package com.clarklevis.dsh.android.ui
 import android.app.Activity
 import android.net.Uri
 import androidx.compose.runtime.rememberCoroutineScope
+import com.clarklevis.dsh.android.localization.appText
 import kotlinx.coroutines.launch
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.core.tween
@@ -249,11 +250,11 @@ internal fun DshProductApp(
     stateHolder.platformError?.let { error ->
         DshAlertDialog(
             title = "DeepSeek Harness",
-            message = error,
+            message = appText(error),
             onDismissRequest = stateHolder::clearPlatformError,
-            dismissLabel = "好",
+            dismissLabel = appText("好"),
             onDismissClick = stateHolder::clearPlatformError,
-            confirmLabel = "重新连接",
+            confirmLabel = appText("重新连接"),
             onConfirm = {
                 stateHolder.clearPlatformError()
                 stateHolder.connect()
@@ -272,7 +273,7 @@ private fun DrawerDestinationScreen(title: String, message: String, onBack: () -
                 navigationIcon = {
                     TopBarCircleButton(
                         iconRes = R.drawable.ic_back_chevron,
-                        description = "返回",
+                        description = appText("返回"),
                         onClick = onBack,
                         modifier = Modifier.padding(start = 8.dp)
                     )
@@ -385,7 +386,7 @@ private fun WorkspaceScreen(
                                 modifier = Modifier.semantics { heading() }.testTag("workspace-hero-title")
                             )
                             if (stateHolder.gatewayState.connection == GatewayConnectionState.CONNECTED) {
-                                Text("已连接Deepseek Harness预览版", color = Color.White.copy(alpha = 0.65f), fontSize = 14.sp)
+                                Text(appText("已连接Deepseek Harness预览版"), color = Color.White.copy(alpha = 0.65f), fontSize = 14.sp)
                             }
                         }
                         Box(Modifier.fillMaxWidth()) {
@@ -413,9 +414,9 @@ private fun WorkspaceScreen(
                                 onDismiss = { showWorkspaceMenu = false }
                             )
                         }
-                        GlassActionButton("＋", "新建会话", onNewSession)
+                        GlassActionButton("＋", appText("新建会话"), onNewSession)
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("最近会话", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                            Text(appText("最近会话"), color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
                             Spacer(Modifier.weight(1f))
                             ConnectionStatusText(stateHolder.gatewayState)
                         }
@@ -470,7 +471,7 @@ private fun WorkspaceHeader(
             onManualEntry = onManualEntry
         )
         Spacer(Modifier.width(12.dp))
-        GlassCircleButton(R.drawable.ic_settings, "设置", onSettings)
+        GlassCircleButton(R.drawable.ic_settings, appText("设置"), onSettings)
     }
 }
 
@@ -480,7 +481,7 @@ private fun HarnessMark(onClick: () -> Unit, modifier: Modifier = Modifier) {
         modifier = modifier.heightIn(min = 52.dp)
             .clip(RoundedCornerShape(12.dp))
             .clickable(role = Role.Button, onClick = onClick)
-            .semantics { contentDescription = "打开侧边栏" },
+            .semantics { contentDescription = appText("打开侧边栏") },
         contentAlignment = Alignment.CenterStart
     ) {
         // 不按机型或屏幕像素缩放整页：仅品牌图片根据其实际可用宽度等比例收缩。
@@ -561,14 +562,14 @@ private fun WorkspaceCard(
         )
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(0.dp)) {
             Text(
-                if (ungrouped) "未分组" else workspace?.title ?: "DeepseekHarnessProject",
+                if (ungrouped) appText("未分组") else workspace?.title ?: "DeepseekHarnessProject",
                 color = Color.White,
                 fontSize = 14.sp,
                 lineHeight = 16.sp,
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                if (ungrouped) "$ungroupedCount 个未归属会话" else workspace?.path ?: "通过 Mobile Gateway 连接",
+                if (ungrouped) appText("%1\$s 个未归属会话", ungroupedCount) else workspace?.path ?: appText("通过 Mobile Gateway 连接"),
                 color = Color.White.copy(alpha = 0.55f),
                 fontSize = 12.sp,
                 lineHeight = 14.sp,
@@ -631,7 +632,7 @@ private fun SessionSearch(query: String, onChange: (String) -> Unit) {
             decorationBox = { innerTextField ->
                 Box(contentAlignment = Alignment.CenterStart) {
                     if (query.isEmpty()) {
-                        Text("搜索会话内容", color = Color.White.copy(alpha = 0.58f), fontSize = 16.sp)
+                        Text(appText("搜索会话内容"), color = Color.White.copy(alpha = 0.58f), fontSize = 16.sp)
                     }
                     innerTextField()
                 }
@@ -643,7 +644,7 @@ private fun SessionSearch(query: String, onChange: (String) -> Unit) {
 @Composable
 private fun EmptySessions() {
     Text(
-        "暂无已知会话。连接服务后创建第一个任务。",
+        appText("暂无已知会话。连接服务后创建第一个任务。"),
         color = Color.White.copy(alpha = 0.5f),
         fontSize = 14.sp,
         modifier = Modifier.fillMaxWidth()
@@ -684,24 +685,24 @@ private fun SessionList(
                 }
                 if (renaming) AlertDialog(
                     onDismissRequest = { renaming = false },
-                    title = { Text("重命名会话") },
+                    title = { Text(appText("重命名会话")) },
                     text = { OutlinedTextField(value = title, onValueChange = { title = it }, singleLine = true) },
                     confirmButton = {
                         TextButton(enabled = title.isNotBlank(), onClick = {
                             onRename(session.id, title)
                             renaming = false
-                        }) { Text("保存") }
+                        }) { Text(appText("保存")) }
                     },
-                    dismissButton = { TextButton(onClick = { renaming = false }) { Text("取消") } }
+                    dismissButton = { TextButton(onClick = { renaming = false }) { Text(appText("取消")) } }
                 )
                 if (archiving) AlertDialog(
                     onDismissRequest = { archiving = false },
-                    title = { Text("删除会话？") },
-                    text = { Text("会话将被归档并从列表隐藏，历史记录会保留。") },
+                    title = { Text(appText("删除会话？")) },
+                    text = { Text(appText("会话将被归档并从列表隐藏，历史记录会保留。")) },
                     confirmButton = {
-                        TextButton(onClick = { onArchive(session.id); archiving = false }) { Text("删除") }
+                        TextButton(onClick = { onArchive(session.id); archiving = false }) { Text(appText("删除")) }
                     },
-                    dismissButton = { TextButton(onClick = { archiving = false }) { Text("取消") } }
+                    dismissButton = { TextButton(onClick = { archiving = false }) { Text(appText("取消")) } }
                 )
             }
             HorizontalDivider(
@@ -747,7 +748,7 @@ private fun SessionRow(session: SessionSummary, onClick: () -> Unit, onLongClick
             )
         }
         Text(
-            if (session.isRunning) "运行中" else relativeTime(session.lastActivityEpochSeconds),
+            if (session.isRunning) appText("运行中") else relativeTime(session.lastActivityEpochSeconds),
             color = if (session.isRunning) Color(0xFF68A0FF) else Color.White.copy(alpha = 0.48f),
             fontSize = 13.sp
         )
@@ -780,11 +781,11 @@ private fun ConnectionStatusText(state: GatewayRuntimeState) {
     }
     Text(
         when (state.connection) {
-            GatewayConnectionState.CONNECTED -> "已连接"
-            GatewayConnectionState.CONNECTING, GatewayConnectionState.AUTHENTICATING -> "连接中"
-            GatewayConnectionState.WAITING_FOR_NETWORK -> "等待网络"
-            GatewayConnectionState.FAILED -> "连接失败"
-            else -> "未连接"
+            GatewayConnectionState.CONNECTED -> appText("已连接")
+            GatewayConnectionState.CONNECTING, GatewayConnectionState.AUTHENTICATING -> appText("连接中")
+            GatewayConnectionState.WAITING_FOR_NETWORK -> appText("等待网络")
+            GatewayConnectionState.FAILED -> appText("连接失败")
+            else -> appText("未连接")
         },
         color = color,
         fontSize = 12.sp,
@@ -824,12 +825,12 @@ internal fun relativeTime(
     val elapsed = ((nowMillis - eventMillis) / 1_000).coerceAtLeast(0)
     val dayDifference = localDayIndex(nowMillis, timeZone) - localDayIndex(eventMillis, timeZone)
     return when {
-        dayDifference == 1L -> "昨天"
-        dayDifference == 2L -> "前天"
-        dayDifference > 2L -> "$dayDifference 天前"
-        elapsed < 60 -> "刚刚"
-        elapsed < 3_600 -> "${elapsed / 60} 分钟前"
-        else -> "${elapsed / 3_600} 小时前"
+        dayDifference == 1L -> appText("昨天")
+        dayDifference == 2L -> appText("前天")
+        dayDifference > 2L -> appText("%1\$s 天前", dayDifference)
+        elapsed < 60 -> appText("刚刚")
+        elapsed < 3_600 -> appText("%1\$s 分钟前", elapsed / 60)
+        else -> appText("%1\$s 小时前", elapsed / 3_600)
     }
 }
 

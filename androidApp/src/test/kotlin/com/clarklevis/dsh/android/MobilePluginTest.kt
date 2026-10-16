@@ -1,5 +1,7 @@
 package com.clarklevis.dsh.android
 
+import com.clarklevis.dsh.android.localization.LocaleTestRule
+import org.junit.Rule
 import com.clarklevis.dsh.shared.protocol.GatewayWireDecoder
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -7,6 +9,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MobilePluginTest {
+    @get:Rule val locale = LocaleTestRule()
+
     @Test
     fun catalogKeepsDisabledRowsAndUsesBundleState() {
         val frame = GatewayWireDecoder.decode("""

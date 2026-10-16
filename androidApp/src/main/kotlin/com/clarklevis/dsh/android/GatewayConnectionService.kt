@@ -12,6 +12,7 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.clarklevis.dsh.android.platform.GatewayLifecycleEvent
+import com.clarklevis.dsh.android.ui.AppearanceSettings
 import kotlinx.coroutines.launch
 
 /**
@@ -19,6 +20,10 @@ import kotlinx.coroutines.launch
  * 普通前台浏览不常驻服务；通知的“断开”操作会显式结束 socket 与后台保活。
  */
 class GatewayConnectionService : Service() {
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(AppearanceSettings.localizedContext(newBase))
+    }
+
     private val graph: AndroidAppGraph
         get() = (application as DshAndroidApplication).graph
 

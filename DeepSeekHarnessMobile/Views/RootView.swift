@@ -354,6 +354,7 @@ private struct ScheduledTasksView: View {
             }
         }
         .listStyle(.plain)
+        .adaptiveListWidth()
         .scrollContentBackground(.hidden)
         .scrollBounceBehavior(.always)
         .refreshable { store.refreshScheduledTasks() }
@@ -950,7 +951,8 @@ private struct WorkspaceFilesSheet: View {
                 }
             }
             .overlay(alignment: .bottom) {
-                if let progress = store.workspaceFileDownloadProgress {
+                if store.workspaceFileDownloadPurpose == "download",
+                   let progress = store.workspaceFileDownloadProgress {
                     VStack(spacing: 9) {
                         ProgressView(value: progress)
                         HStack {
@@ -984,11 +986,9 @@ private struct WorkspaceFilesSheet: View {
             if store.workspaceFileDownloadProgress != nil { store.cancelWorkspaceFileDownload() }
         }
         .sheet(item: previewBinding) { file in
-            WorkspaceQuickLookPreview(url: file.url)
-                .ignoresSafeArea()
-        }
-        .fullScreenCover(item: codePreviewBinding) { file in
-            WorkspaceCodePreview(file: file)
+            WorkspaceFilePreview(file: file, gatewayID: store.gatewayLocalID) {
+                if file.sessionID == sessionID { downloadedPaths.insert(file.remotePath) }
+            }
         }
         .sheet(item: exportBinding) { file in
             WorkspaceFileExporter(url: file.url) { localURL in
@@ -1024,26 +1024,7 @@ private struct WorkspaceFilesSheet: View {
         Binding(
             get: {
                 guard let file = store.completedWorkspaceFile,
-                      file.purpose == "preview",
-                      !WorkspaceCodePreviewSupport.shared.isSupported(
-                        name: file.name,
-                        mediaType: file.mediaType
-                      ) else { return nil }
-                return file
-            },
-            set: { if $0 == nil { store.completedWorkspaceFile = nil } }
-        )
-    }
-
-    private var codePreviewBinding: Binding<WorkspaceLocalFile?> {
-        Binding(
-            get: {
-                guard let file = store.completedWorkspaceFile,
-                      file.purpose == "preview",
-                      WorkspaceCodePreviewSupport.shared.isSupported(
-                        name: file.name,
-                        mediaType: file.mediaType
-                      ) else { return nil }
+                      file.purpose == "preview" else { return nil }
                 return file
             },
             set: { if $0 == nil { store.completedWorkspaceFile = nil } }
@@ -1103,10 +1084,7 @@ private struct WorkspaceFileRow: View {
                     store.openWorkspaceFile(item, purpose: "preview")
                 } label: {
                     HStack(spacing: 12) {
-                        Image(systemName: workspaceFileIcon(item))
-                            .appFont(.title3)
-                            .foregroundStyle(DSHColor.ocean)
-                            .frame(width: 28)
+                        FileTypeIcon(kind: FileIconCatalog.shared.resolve(name: item.name, mediaType: item.mediaType), size: 40)
                         VStack(alignment: .leading, spacing: 3) {
                             Text(item.name)
                                 .foregroundStyle(.primary)
@@ -1132,6 +1110,7 @@ private struct WorkspaceFileRow: View {
                     isDownloaded ? "\(item.name) 已下载，点击重新下载" : "下载 \(item.name)"
                 )
             }
+            .listRowBackground(FileIconCatalog.shared.resolve(name: item.name, mediaType: item.mediaType).cardBackground)
         }
     }
 
@@ -1161,17 +1140,113 @@ private struct WorkspaceFileRow: View {
         return "\(size) · \(date.formatted(date: .abbreviated, time: .shortened))"
     }
 
-    private func workspaceFileIcon(_ item: GatewayDirectoryItem) -> String {
-        let type = item.mediaType ?? ""
-        if type.hasPrefix("image/") { return "photo" }
-        if type == "application/pdf" { return "doc.richtext" }
-        if type.hasPrefix("text/") || item.name.hasSuffix(".md") { return "doc.text" }
-        if item.name.hasSuffix(".ipa") || item.name.hasSuffix(".apk") { return "shippingbox" }
-        return "doc"
+}
+
+/// 聊天和工作区共用的预览容器，Header 始终位于可滚动内容上方。
+struct WorkspaceFilePreview: View {
+    let file: WorkspaceLocalFile
+    let gatewayID: String
+    var onSaved: (() -> Void)? = nil
+    @Environment(\.dismiss) private var dismiss
+    @State private var showsExporter = false
+    @State private var usesSystemPreview = false
+
+    var body: some View {
+        previewWithHeader
+        .background(Color(uiColor: .systemBackground))
+        .presentationDetents([.large])
+        .presentationDragIndicator(.hidden)
+        .sheet(isPresented: $showsExporter) {
+            WorkspaceFileExporter(url: file.url, onCancelled: { showsExporter = false }, onExported: { localURL in
+                showsExporter = false
+                WorkspaceDownloadRegistry.shared.record(
+                    sessionID: "\(gatewayID):\(file.sessionID)",
+                    remotePath: file.remotePath,
+                    localURL: localURL
+                )
+                onSaved?()
+            })
+        }
+    }
+
+    @ViewBuilder
+    private var previewWithHeader: some View {
+        if #available(iOS 26.0, *) {
+            // 保留真实滚动内容的磨砂效果，不复制或镜像文档边缘。
+            previewContent.safeAreaBar(edge: .top, spacing: 0) { header }
+        } else {
+            previewContent.safeAreaInset(edge: .top, spacing: 0) { header }
+        }
+    }
+
+    private var header: some View {
+        WorkspaceFilePreviewHeader(
+            fileName: file.name,
+            onClose: { dismiss() },
+            onSave: { showsExporter = true }
+        )
+    }
+
+    private var previewContent: some View {
+        Group {
+            if !usesSystemPreview,
+               WorkspaceCodePreviewSupport.shared.isSupported(name: file.name, mediaType: file.mediaType) {
+                WorkspaceCodePreview(file: file, onOpenSystem: { usesSystemPreview = true })
+            } else {
+                WorkspaceQuickLookPreview(url: file.url)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .ignoresSafeArea(.container, edges: .bottom)
+    }
+
+}
+
+struct WorkspaceFilePreviewHeader: View {
+    let fileName: String
+    let onClose: () -> Void
+    let onSave: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(width: 44, height: 44)
+            }
+            .glassCircleButton()
+            .accessibilityLabel("关闭文件预览")
+            .accessibilityIdentifier("workspace-preview-close")
+
+            Text(fileName)
+                .appFont(.headline)
+                .multilineTextAlignment(.center)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("workspace-preview-title")
+
+            Menu {
+                Button("保存", systemImage: "square.and.arrow.down", action: onSave)
+                    .accessibilityIdentifier("workspace-preview-save")
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 19, weight: .semibold))
+                    .frame(width: 44, height: 44)
+            }
+            .glassCircleButton()
+            .accessibilityLabel("文件菜单")
+            .accessibilityIdentifier("workspace-preview-menu")
+        }
+        .foregroundStyle(.primary)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(.ultraThinMaterial)
     }
 }
 
-private struct WorkspaceQuickLookPreview: UIViewControllerRepresentable {
+struct WorkspaceQuickLookPreview: UIViewControllerRepresentable {
     let url: URL
 
     func makeCoordinator() -> Coordinator { Coordinator(url: url) }
@@ -1192,49 +1267,32 @@ private struct WorkspaceQuickLookPreview: UIViewControllerRepresentable {
     }
 }
 
-private struct WorkspaceCodePreview: View {
+struct WorkspaceCodePreview: View {
     let file: WorkspaceLocalFile
-    @Environment(\.dismiss) private var dismiss
+    let onOpenSystem: () -> Void
     @State private var document: WorkspaceCodeDocument?
     @State private var errorMessage: String?
-    @State private var showsSystemPreview = false
 
     private let maximumPreviewBytes = 2 * 1_024 * 1_024
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if let document {
-                    WorkspaceCodeDocumentView(document: document)
-                } else if let errorMessage {
-                    ContentUnavailableView(
-                        "无法在应用内预览",
-                        systemImage: "doc.text.magnifyingglass",
-                        description: Text(errorMessage)
-                    )
-                } else {
-                    ProgressView("正在准备代码预览…")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        Group {
+            if let document {
+                WorkspaceCodeDocumentView(document: document)
+            } else if let errorMessage {
+                ContentUnavailableView {
+                    Label("无法在应用内预览", systemImage: "doc.text.magnifyingglass")
+                } description: {
+                    Text(errorMessage)
+                } actions: {
+                    Button("使用系统预览", action: onOpenSystem)
                 }
-            }
-            .navigationTitle(file.name)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("关闭") { dismiss() }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("系统打开", systemImage: "arrow.up.forward.app") {
-                        showsSystemPreview = true
-                    }
-                }
+            } else {
+                ProgressView("正在准备代码预览…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .task(id: file.id) { await loadDocument() }
-        .sheet(isPresented: $showsSystemPreview) {
-            WorkspaceQuickLookPreview(url: file.url)
-                .ignoresSafeArea()
-        }
     }
 
     @MainActor
@@ -1532,9 +1590,12 @@ private enum WorkspaceCodeAttributedText {
 
 private struct WorkspaceFileExporter: UIViewControllerRepresentable {
     let url: URL
+    var onCancelled: (() -> Void)? = nil
     let onExported: (URL) -> Void
 
-    func makeCoordinator() -> Coordinator { Coordinator(onExported: onExported) }
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onExported: onExported, onCancelled: onCancelled)
+    }
 
     func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
         let controller = UIDocumentPickerViewController(forExporting: [url], asCopy: true)
@@ -1545,9 +1606,15 @@ private struct WorkspaceFileExporter: UIViewControllerRepresentable {
 
     final class Coordinator: NSObject, UIDocumentPickerDelegate {
         let onExported: (URL) -> Void
+        let onCancelled: (() -> Void)?
 
-        init(onExported: @escaping (URL) -> Void) {
+        init(onExported: @escaping (URL) -> Void, onCancelled: (() -> Void)?) {
             self.onExported = onExported
+            self.onCancelled = onCancelled
+        }
+
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            onCancelled?()
         }
 
         func documentPicker(

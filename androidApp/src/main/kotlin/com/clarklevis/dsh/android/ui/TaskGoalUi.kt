@@ -45,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.android.AndroidSharedStateHolder
 import com.clarklevis.dsh.android.R
 import com.clarklevis.dsh.shared.protocol.GatewayTask
@@ -102,12 +103,12 @@ internal fun TaskGoalPanels(
                 }
                 if (confirmGoalClear) {
                     DshAlertDialog(
-                        title = "删除当前目标？",
-                        message = "删除后，智能体不再持有这个持续目标。",
+                        title = appText("删除当前目标？"),
+                        message = appText("删除后，智能体不再持有这个持续目标。"),
                         onDismissRequest = { confirmGoalClear = false },
-                        dismissLabel = "取消",
+                        dismissLabel = appText("取消"),
                         onDismissClick = { confirmGoalClear = false },
-                        confirmLabel = "删除",
+                        confirmLabel = appText("删除"),
                         onConfirm = {
                             confirmGoalClear = false
                             stateHolder.clearGoal()
@@ -154,7 +155,7 @@ private fun TaskPanel(
                         role = androidx.compose.ui.semantics.Role.Button,
                         onClick = onExpandedChange
                     )
-                    .semantics { contentDescription = if (expanded) "收起任务" else "展开任务" },
+                    .semantics { contentDescription = if (expanded) appText("收起任务") else appText("展开任务") },
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
@@ -164,7 +165,7 @@ private fun TaskPanel(
                     tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f)
                 )
                 Spacer(Modifier.width(10.dp))
-                Text("任务", fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
+                Text(appText("任务"), fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
                 Spacer(Modifier.width(12.dp))
                 Text(
                     taskSummary(completed, active, pending),
@@ -209,7 +210,7 @@ private fun TaskRow(task: GatewayTask) {
             when (task.status) {
                 "completed" -> Icon(
                     painter = painterResource(R.drawable.ic_check_circle),
-                    contentDescription = "已完成",
+                    contentDescription = appText("已完成"),
                     modifier = Modifier.size(iconVisualSize),
                     tint = DshColors.Success
                 )
@@ -220,7 +221,7 @@ private fun TaskRow(task: GatewayTask) {
                 )
                 else -> Icon(
                     painter = painterResource(R.drawable.ic_task_pending),
-                    contentDescription = "待处理",
+                    contentDescription = appText("待处理"),
                     modifier = Modifier.size(iconVisualSize),
                     tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f)
                 )
@@ -251,10 +252,10 @@ private fun GoalPanel(
     val panelSurface = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
     val isActive = phase == "active"
     val phaseLabel = when (phase) {
-        "active" -> "进行中的目标"
-        "paused" -> "已暂停的目标"
-        "blocked" -> "受阻的目标"
-        else -> "当前目标"
+        "active" -> appText("进行中的目标")
+        "paused" -> appText("已暂停的目标")
+        "blocked" -> appText("受阻的目标")
+        else -> appText("当前目标")
     }
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -294,11 +295,11 @@ private fun GoalPanel(
             } else {
                 GoalActionButton(
                     icon = if (isActive) R.drawable.ic_pause_circle else R.drawable.ic_play_circle,
-                    description = if (isActive) "暂停目标" else "继续目标",
+                    description = if (isActive) appText("暂停目标") else appText("继续目标"),
                     onClick = onPauseResume
                 )
-                GoalActionButton(R.drawable.ic_pencil_line, "编辑目标", onEdit)
-                GoalActionButton(R.drawable.ic_trash, "删除目标", onClear)
+                GoalActionButton(R.drawable.ic_pencil_line, appText("编辑目标"), onEdit)
+                GoalActionButton(R.drawable.ic_trash, appText("删除目标"), onClear)
             }
         }
     }
@@ -329,18 +330,18 @@ private fun GoalEditDialog(
 ) {
     var objective by remember(initialObjective) { mutableStateOf(initialObjective) }
     DshAlertDialog(
-        title = "编辑目标",
+        title = appText("编辑目标"),
         onDismissRequest = onDismiss,
-        dismissLabel = "取消",
+        dismissLabel = appText("取消"),
         onDismissClick = onDismiss,
-        confirmLabel = "保存",
+        confirmLabel = appText("保存"),
         confirmEnabled = objective.trim().isNotEmpty(),
         onConfirm = { onConfirm(objective.trim()) },
         content = {
             OutlinedTextField(
                 value = objective,
                 onValueChange = { objective = it },
-                label = { Text("目标") },
+                label = { Text(appText("目标")) },
                 maxLines = 4,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -349,7 +350,7 @@ private fun GoalEditDialog(
 }
 
 private fun taskSummary(completed: Int, active: Int, pending: Int): String = buildList {
-    if (completed > 0) add("$completed 已完成")
-    if (active > 0) add("$active 进行中")
-    if (pending > 0) add("$pending 待处理")
-}.joinToString(" · ").ifEmpty { "暂无任务" }
+    if (completed > 0) add(appText("%1\$s 已完成", completed))
+    if (active > 0) add(appText("%1\$s 进行中", active))
+    if (pending > 0) add(appText("%1\$s 待处理", pending))
+}.joinToString(" · ").ifEmpty { appText("暂无任务") }

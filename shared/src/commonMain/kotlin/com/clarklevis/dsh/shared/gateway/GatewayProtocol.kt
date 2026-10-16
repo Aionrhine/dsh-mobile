@@ -401,6 +401,15 @@ object GatewayRequests {
         path?.takeIf(String::isNotBlank)?.let { put("path", it) }
     }
 
+    fun fileResolve(sessionId: String, path: String, requestId: String): GatewayRequest = request(
+        "file-resolve", "file-resolved", targetSessionId = sessionId, correlationId = requestId,
+        lanePolicy = GatewayRequestLanePolicy.REJECT_IF_BUSY
+    ) {
+        put("requestId", requestId)
+        put("sessionId", sessionId)
+        put("path", path)
+    }
+
     fun fileDownloadOpen(
         sessionId: String,
         path: String,

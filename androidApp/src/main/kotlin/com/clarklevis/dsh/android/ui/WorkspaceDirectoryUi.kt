@@ -64,6 +64,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.android.AndroidSharedStateHolder
 import com.clarklevis.dsh.android.R
 import com.clarklevis.dsh.android.resolveWorkspaceSelection
@@ -99,7 +100,7 @@ internal fun WorkspaceSelectionMenu(
         )
     ) {
         WorkspaceMenuItem(
-            title = "未分组",
+            title = appText("未分组"),
             icon = if (effectiveSelection == AndroidSharedStateHolder.UNGROUPED_WORKSPACE_ID) {
                 WorkspaceMenuIcon.Selected
             } else {
@@ -135,7 +136,7 @@ internal fun WorkspaceSelectionMenu(
             color = foreground.copy(alpha = 0.11f)
         )
         WorkspaceMenuItem(
-            title = "添加工作区",
+            title = appText("添加工作区"),
             icon = WorkspaceMenuIcon.Add,
             foreground = foreground,
             modifier = Modifier.testTag("workspace-add"),
@@ -277,13 +278,13 @@ internal fun WorkspaceDirectoryBrowserSheet(
 
             Column(Modifier.padding(horizontal = 22.dp)) {
                 Text(
-                    "当前目录",
+                    appText("当前目录"),
                     color = foreground.copy(alpha = 0.52f),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    stateHolder.directoryPath ?: "正在读取…",
+                    stateHolder.directoryPath ?: appText("正在读取…"),
                     color = foreground.copy(alpha = 0.40f),
                     fontSize = 13.sp,
                     fontFamily = FontFamily.Monospace,
@@ -308,7 +309,7 @@ internal fun WorkspaceDirectoryBrowserSheet(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                            Text("正在读取远程目录…", color = foreground.copy(alpha = 0.58f))
+                            Text(appText("正在读取远程目录…"), color = foreground.copy(alpha = 0.58f))
                         }
                     }
                 } else {
@@ -321,7 +322,7 @@ internal fun WorkspaceDirectoryBrowserSheet(
                         item(key = "parent") {
                             DirectoryRow(
                                 title = "..",
-                                subtitle = "返回上一级",
+                                subtitle = appText("返回上一级"),
                                 icon = DirectoryIcon.Parent,
                                 enabled = parentPath != null,
                                 highlighted = false,
@@ -335,7 +336,7 @@ internal fun WorkspaceDirectoryBrowserSheet(
                         ) { index, entry ->
                             DirectoryRow(
                                 title = entry.name,
-                                subtitle = if (entry.hidden) "隐藏目录" else null,
+                                subtitle = if (entry.hidden) appText("隐藏目录") else null,
                                 icon = if (entry.hidden) DirectoryIcon.HiddenFolder else DirectoryIcon.Folder,
                                 enabled = true,
                                 highlighted = highlightedPath == entry.path,
@@ -363,12 +364,12 @@ internal fun WorkspaceDirectoryBrowserSheet(
 
     if (showCreateDirectoryPrompt) {
         DshAlertDialog(
-            title = "新建文件夹",
-            message = "将在当前目录中创建一个新的子文件夹。",
+            title = appText("新建文件夹"),
+            message = appText("将在当前目录中创建一个新的子文件夹。"),
             onDismissRequest = { showCreateDirectoryPrompt = false },
-            dismissLabel = "取消",
+            dismissLabel = appText("取消"),
             onDismissClick = { showCreateDirectoryPrompt = false },
-            confirmLabel = "创建",
+            confirmLabel = appText("创建"),
             confirmEnabled = newDirectoryName.trim().isNotEmpty(),
             onConfirm = {
                 val parent = stateHolder.directoryPath ?: return@DshAlertDialog
@@ -380,7 +381,7 @@ internal fun WorkspaceDirectoryBrowserSheet(
                     OutlinedTextField(
                         value = newDirectoryName,
                         onValueChange = { newDirectoryName = it },
-                        label = { Text("文件夹名称") },
+                        label = { Text(appText("文件夹名称")) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None),
                         modifier = Modifier.fillMaxWidth().testTag("new-directory-name")
@@ -401,7 +402,7 @@ private fun DirectoryBrowserHeader(
         Modifier.fillMaxWidth().height(66.dp).padding(horizontal = 18.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text("选择工作区目录", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Text(appText("选择工作区目录"), fontSize = 18.sp, fontWeight = FontWeight.Bold)
         IconButton(
             onClick = onCreateDirectory,
             enabled = enabled,
@@ -415,7 +416,7 @@ private fun DirectoryBrowserHeader(
             Box(contentAlignment = Alignment.TopEnd) {
                 Image(
                     painter = androidx.compose.ui.res.painterResource(R.drawable.ic_folder_outline),
-                    contentDescription = "新建文件夹",
+                    contentDescription = appText("新建文件夹"),
                     modifier = Modifier.size(26.dp),
                     colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface)
                 )
@@ -435,7 +436,7 @@ private fun DirectoryBrowserHeader(
                 .clip(RoundedCornerShape(24.dp))
                 .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.88f))
         ) {
-            Text("取消", color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp)
+            Text(appText("取消"), color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp)
         }
     }
 }
@@ -565,12 +566,12 @@ private fun DirectoryCreateWorkspaceBar(
                 )
             }
             Spacer(Modifier.width(9.dp))
-            Text("在当前目录创建工作区", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text(appText("在当前目录创建工作区"), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
         }
         if (directoryCreationIsLoading) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 1.7.dp)
-                Text("正在创建文件夹…", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.52f), fontSize = 12.sp)
+                Text(appText("正在创建文件夹…"), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.52f), fontSize = 12.sp)
             }
         }
     }

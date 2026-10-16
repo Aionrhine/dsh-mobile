@@ -64,7 +64,7 @@ app.build_configurations.each do |config|
   config.build_settings['ASSETCATALOG_COMPILER_APPICON_NAME'] = 'AppIcon'
   config.build_settings['ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME'] = 'AccentColor'
   config.build_settings['SWIFT_VERSION'] = '5.10'
-  config.build_settings['TARGETED_DEVICE_FAMILY'] = '1'
+  config.build_settings['TARGETED_DEVICE_FAMILY'] = '1,2'
   config.build_settings['CODE_SIGN_STYLE'] = 'Automatic'
   config.build_settings['LOCALIZATION_PREFERS_STRING_CATALOGS'] = 'YES'
   config.build_settings['GENERATE_INFOPLIST_FILE'] = 'NO'

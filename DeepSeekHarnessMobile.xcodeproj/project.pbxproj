@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+        AF18C0000000000000000001 /* WorkspacePreviewCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF18C0000000000000000002 /* WorkspacePreviewCache.swift */; };
+        AF18C0000000000000000003 /* WorkspacePreviewCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF18C0000000000000000004 /* WorkspacePreviewCacheTests.swift */; };
+		AF17C0000000000000000001 /* FileTypeIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF17C0000000000000000002 /* FileTypeIcon.swift */; };
+		AF17C0000000000000000003 /* FileIconAssetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF17C0000000000000000004 /* FileIconAssetTests.swift */; };
 		3874FCB0CE354690A304E63F /* WorkspaceDrawerFeedbackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9A3BDFA7B0949F8BA0B01A6 /* WorkspaceDrawerFeedbackTests.swift */; };
 		3459A8BD9696202CAC9D85A5 /* GatewaySwitcherView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65B6B2953247E15BDA40F0BB /* GatewaySwitcherView.swift */; };
 		375D401B1B6F03015EC9073D /* GatewayProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = E638ED93D0BBFD018966FB52 /* GatewayProfile.swift */; };
@@ -101,6 +105,10 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+        AF18C0000000000000000002 /* WorkspacePreviewCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspacePreviewCache.swift; sourceTree = "<group>"; };
+        AF18C0000000000000000004 /* WorkspacePreviewCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspacePreviewCacheTests.swift; sourceTree = "<group>"; };
+		AF17C0000000000000000002 /* FileTypeIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileTypeIcon.swift; sourceTree = "<group>"; };
+		AF17C0000000000000000004 /* FileIconAssetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileIconAssetTests.swift; sourceTree = "<group>"; };
 		A9A3BDFA7B0949F8BA0B01A6 /* WorkspaceDrawerFeedbackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceDrawerFeedbackTests.swift; sourceTree = "<group>"; };
 		0B53A008218F24CA9A4DB4D1 /* GatewayProtocolTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GatewayProtocolTests.swift; sourceTree = "<group>"; };
 		12863E736F832D8F502B94A0 /* Theme.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
@@ -217,6 +225,7 @@
 				A9FB00000000000000000002 /* GatewayFrameRouter.swift */,
 				A9FC00000000000000000002 /* KMPSharedAdapter.swift */,
 				61A1F439244BA594BF547C92 /* AppStore.swift */,
+                AF18C0000000000000000002 /* WorkspacePreviewCache.swift */,
 				CA11E0000000000000000002 /* ImageAttachmentCache.swift */,
 				CA11E0000000000000000004 /* ImagePreprocessor.swift */,
 				A0C0FFEE0000000000000004 /* ConversationTimeline.swift */,
@@ -236,6 +245,8 @@
 				0B53A008218F24CA9A4DB4D1 /* GatewayProtocolTests.swift */,
 				A9A3BDFA7B0949F8BA0B01A6 /* WorkspaceDrawerFeedbackTests.swift */,
 				81886703A6C3AB2164852990 /* VoiceInputTests.swift */,
+				AF17C0000000000000000004 /* FileIconAssetTests.swift */,
+                AF18C0000000000000000004 /* WorkspacePreviewCacheTests.swift */,
 				CA11E0000000000000000011 /* LocalizationCatalogTests.swift */,
 				FEABDA4B6DAF199B320B1BA1 /* MultiGatewayTests.swift */,
 			);
@@ -320,6 +331,7 @@
 			children = (
 				8B77DEC008C0209D814CD7BE /* VoiceRipplePanel.swift */,
 				FCF581253EBCFEB43865AB51 /* Glass.swift */,
+				AF17C0000000000000000002 /* FileTypeIcon.swift */,
 				A0C0FFEE0000000000000002 /* ConversationViewport.swift */,
 				B0C0FFEE0000000000000002 /* HarnessAnimatedBackground.swift */,
 			);
@@ -593,6 +605,8 @@
 				39FD319C875F4B4A6893D676 /* GatewayProtocolTests.swift in Sources */,
 				3874FCB0CE354690A304E63F /* WorkspaceDrawerFeedbackTests.swift in Sources */,
 				CD86C5C4C6FF6F4BD8D715A6 /* VoiceInputTests.swift in Sources */,
+				AF17C0000000000000000003 /* FileIconAssetTests.swift in Sources */,
+                AF18C0000000000000000003 /* WorkspacePreviewCacheTests.swift in Sources */,
 				CA11E000000000000000000F /* LocalizationCatalogTests.swift in Sources */,
 				75392054CB69B9596796C57A /* MultiGatewayTests.swift in Sources */,
 			);
@@ -620,6 +634,7 @@
 				A9FB00000000000000000001 /* GatewayFrameRouter.swift in Sources */,
 				A9FC00000000000000000001 /* KMPSharedAdapter.swift in Sources */,
 				5ED39F22065A71FC54D755AC /* AppStore.swift in Sources */,
+                AF18C0000000000000000001 /* WorkspacePreviewCache.swift in Sources */,
 				CA11E0000000000000000001 /* ImageAttachmentCache.swift in Sources */,
 				CA11E0000000000000000003 /* ImagePreprocessor.swift in Sources */,
 				A0C0FFEE0000000000000003 /* ConversationTimeline.swift in Sources */,
@@ -628,6 +643,7 @@
 				CA11E0000000000000000009 /* L10n.swift in Sources */,
 				991D4FD90B81F84A0B8B79AD /* Theme.swift in Sources */,
 				E20191A4C7B1C0A8FF57CAC1 /* Glass.swift in Sources */,
+				AF17C0000000000000000001 /* FileTypeIcon.swift in Sources */,
 				A0C0FFEE0000000000000001 /* ConversationViewport.swift in Sources */,
 				B0C0FFEE0000000000000001 /* HarnessAnimatedBackground.swift in Sources */,
 				605DCE79952E970820A95606 /* ConversationView.swift in Sources */,
@@ -681,7 +697,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = "$(LOCAL_BUNDLE_IDENTIFIER).uitests";
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.10;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = DeepSeekHarnessMobile;
 		};
 			name = Debug;
@@ -696,7 +712,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = "$(LOCAL_BUNDLE_IDENTIFIER).uitests";
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.10;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = DeepSeekHarnessMobile;
 		};
 			name = Release;
@@ -747,7 +763,7 @@
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.10;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
@@ -909,7 +925,7 @@
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.10;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
@@ -936,7 +952,7 @@
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.10;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
@@ -967,7 +983,7 @@
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.10;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;

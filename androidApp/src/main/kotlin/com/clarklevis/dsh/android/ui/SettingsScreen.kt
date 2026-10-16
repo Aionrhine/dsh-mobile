@@ -38,6 +38,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
+import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.shared.protocol.GatewayPermissionOption
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.rememberCoroutineScope
@@ -109,11 +110,11 @@ internal fun SettingsScreen(
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("设置", fontSize = 17.sp, fontWeight = FontWeight.SemiBold) },
+                title = { Text(appText("设置"), fontSize = 17.sp, fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
                     TopBarCircleButton(
                         iconRes = R.drawable.ic_back_chevron,
-                        description = "返回",
+                        description = appText("返回"),
                         onClick = onBack,
                         modifier = Modifier.padding(start = 8.dp)
                     )
@@ -134,11 +135,11 @@ internal fun SettingsScreen(
                     verticalArrangement = Arrangement.spacedBy(22.dp)
                 ) {
                     SettingsSection(
-                        title = "新会话默认配置",
-                        footer = "与 WebUI 使用同一份部署级设置。修改只影响之后新建的会话，运行中的会话保持启动时的配置。"
+                        title = appText("新会话默认配置"),
+                        footer = appText("与 WebUI 使用同一份部署级设置。修改只影响之后新建的会话，运行中的会话保持启动时的配置。")
                     ) {
                         SettingsValueRow(
-                            title = "Agent 预设",
+                            title = appText("Agent 预设"),
                             value = selectedPreset(stateHolder),
                             enabled = isConnected(stateHolder),
                             isLoading = stateHolder.defaultConfigurationLoadingKinds.any {
@@ -149,7 +150,7 @@ internal fun SettingsScreen(
                         }
                         SettingsDivider()
                         SettingsValueRow(
-                            title = "默认模型",
+                            title = appText("默认模型"),
                             value = selectedModel(stateHolder),
                             enabled = isConnected(stateHolder),
                             isLoading = stateHolder.defaultConfigurationLoadingKinds.any {
@@ -177,17 +178,17 @@ internal fun SettingsScreen(
                         SettingsDivider()
                         GatewayStatusRow(stateHolder)
                         SettingsDivider()
-                        SettingsActionRow(if (isConnected(stateHolder)) "断开连接" else "连接") {
+                        SettingsActionRow(if (isConnected(stateHolder)) appText("断开连接") else appText("连接")) {
                             if (isConnected(stateHolder)) stateHolder.disconnect() else stateHolder.connect()
                         }
                         SettingsDivider()
-                        SettingsActionRow("Ping 网关", enabled = isConnected(stateHolder), onClick = stateHolder::pingGateway)
+                        SettingsActionRow(appText("Ping 网关"), enabled = isConnected(stateHolder), onClick = stateHolder::pingGateway)
                     }
                     stateHolder.snapshot.hostSnapshot?.let { host ->
                         SettingsSection("DSH Host") {
-                            SettingsValueRow("版本", dshHostVersion(host.dshVersion, host.version))
+                            SettingsValueRow(appText("版本"), dshHostVersion(host.dshVersion, host.version))
                             SettingsDivider()
-                            SettingsValueRow("已连接会话", "${host.attachedSessions ?: 0}")
+                            SettingsValueRow(appText("已连接会话"), "${host.attachedSessions ?: 0}")
                             host.cwd?.let { cwd ->
                                 SettingsDivider()
                                 SettingsValueRow("cwd", cwd)
@@ -195,8 +196,8 @@ internal fun SettingsScreen(
                         }
                     }
                     SettingsSection(
-                        title = "外观",
-                        footer = "语言设置将在重新启动应用后生效。当前仅支持简体中文，其他系统语言将显示中文。"
+                        title = appText("外观"),
+                        footer = appText("语言设置将在重新启动应用后生效。支持简体中文和英文。")
                     ) {
                         InterfaceStyleSettingsRow()
                         SettingsDivider()
@@ -204,30 +205,30 @@ internal fun SettingsScreen(
                         SettingsDivider()
                         FontSizeSettingsRow(onOpenFontSize)
                     }
-                    SettingsSection("关于") {
+                    SettingsSection(appText("关于")) {
                         SettingsValueRow(
-                            title = "当前版本",
+                            title = appText("当前版本"),
                             value = updateModel.currentVersion,
                             enabled = !updateState.busy,
                             isLoading = updateState.busy,
                             onClick = { openRelease("dsh-mobile", updateModel.currentVersion) }
                         )
                         SettingsDivider()
-                        SettingsValueRow("要求网关版本", releaseInfo?.minimumGatewayVersion?.let { "≥ $it" } ?: "未提供") {
+                        SettingsValueRow(appText("要求网关版本"), releaseInfo?.minimumGatewayVersion?.let { "≥ $it" } ?: appText("未提供")) {
                             openRelease("dsh-plugin-mobile-gateway", releaseInfo?.minimumGatewayVersion)
                         }
                         SettingsDivider()
                         SettingsValueRow(
-                            "已连接网关版本",
-                            if (!isConnected(stateHolder)) "未连接" else connectedGatewayVersion ?: "未提供",
+                            appText("已连接网关版本"),
+                            if (!isConnected(stateHolder)) appText("未连接") else connectedGatewayVersion ?: appText("未提供"),
                             isLoading = isConnected(stateHolder) && stateHolder.pluginsLoading
                         ) { openRelease("dsh-plugin-mobile-gateway", connectedGatewayVersion) }
                         SettingsDivider()
-                        SettingsValueRow("本版本新功能", "查看发布说明") { showReleaseNotes = true }
+                        SettingsValueRow(appText("本版本新功能"), appText("查看发布说明")) { showReleaseNotes = true }
                         SettingsDivider()
-                        SettingsActionRow("检查更新", enabled = !updateState.busy, onClick = updateModel::check)
+                        SettingsActionRow(appText("检查更新"), enabled = !updateState.busy, onClick = updateModel::check)
                         SettingsDivider()
-                        SettingsActionRow("隐私政策") {
+                        SettingsActionRow(appText("隐私政策")) {
                             showPrivacyPolicy = true
                         }
                     }
@@ -241,9 +242,9 @@ internal fun SettingsScreen(
     }
     pendingPermission?.let { value ->
         DshAlertDialog(
-            title = "修改全局默认权限？",
-            message = "将新会话的默认权限改为“${stateHolder.snapshot.permissionDefaultOptions.firstOrNull { it.value == value }?.name ?: permissionName(value)}”。这会更新部署级设置，并同步影响 WebUI。",
-            confirmLabel = "确认修改",
+            title = appText("修改全局默认权限？"),
+            message = appText("将新会话的默认权限改为“%1\$s”。这会更新部署级设置，并同步影响 WebUI。", stateHolder.snapshot.permissionDefaultOptions.firstOrNull { it.value == value }?.name ?: permissionName(value)),
+            confirmLabel = appText("确认修改"),
             onDismissRequest = { pendingPermission = null },
             onConfirm = {
                 stateHolder.setDefault("permission", value)
@@ -253,16 +254,16 @@ internal fun SettingsScreen(
     }
     if (showReleaseNotes) {
         DshAlertDialog(
-            title = "本版本新功能 ${updateModel.currentVersion}",
+            title = appText("本版本新功能 %1\$s", updateModel.currentVersion),
             onDismissRequest = { showReleaseNotes = false },
-            dismissLabel = "完成",
-            confirmLabel = "GitHub 发布页",
+            dismissLabel = appText("完成"),
+            confirmLabel = appText("GitHub 发布页"),
             onConfirm = { openRelease("dsh-mobile", null) },
             content = {
                 Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
                     DshMarkdownText(
                         markdown = if (releaseInfo?.version == updateModel.currentVersion) releaseInfo.notes
-                            else "本版本发布说明暂未提供，请查看 GitHub 发布页。",
+                            else appText("本版本发布说明暂未提供，请查看 GitHub 发布页。"),
                         compact = true
                     )
                 }
@@ -288,7 +289,7 @@ internal fun AgentPresetSelectionScreen(
         if (presets.isEmpty()) stateHolder.refreshDefaultConfiguration()
     }
 
-    SettingsSelectionScaffold(title = "Agent 预设", onBack = onBack) {
+    SettingsSelectionScaffold(title = appText("Agent 预设"), onBack = onBack) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(20.dp),
@@ -296,16 +297,16 @@ internal fun AgentPresetSelectionScreen(
         ) {
             item {
                 SettingsSelectionHeader(
-                    title = "Agent 预设",
-                    description = "预设决定 Agent 使用的工具、提示词与能力。选择后只对新建会话生效。"
+                    title = appText("Agent 预设"),
+                    description = appText("预设决定 Agent 使用的工具、提示词与能力。选择后只对新建会话生效。")
                 )
             }
             when {
-                isLoading -> item { SettingsLoadingState("正在读取 Agent 预设…") }
+                isLoading -> item { SettingsLoadingState(appText("正在读取 Agent 预设…")) }
                 presets.isEmpty() -> item {
                     SettingsEmptyState(
-                        title = "没有可用的 Agent 预设",
-                        description = "请确认 Mobile Gateway 已升级到 v0.1.11 并保持连接。"
+                        title = appText("没有可用的 Agent 预设"),
+                        description = appText("请确认 Mobile Gateway 已升级到 v0.1.11 并保持连接。")
                     )
                 }
                 else -> items(presets, key = GatewayAgentPreset::id) { preset ->
@@ -333,9 +334,9 @@ internal fun AgentPresetSelectionScreen(
 
     pendingPreset?.let { preset ->
         DshAlertDialog(
-            title = "设为全局默认预设？",
-            message = "将“${agentPresetDisplayName(preset.id, preset.name)}”设为新会话的默认 Agent 预设。这会更新部署级设置，并同步影响 WebUI。",
-            confirmLabel = "设为默认",
+            title = appText("设为全局默认预设？"),
+            message = appText("将“%1\$s”设为新会话的默认 Agent 预设。这会更新部署级设置，并同步影响 WebUI。", agentPresetDisplayName(preset.id, preset.name)),
+            confirmLabel = appText("设为默认"),
             onDismissRequest = { pendingPreset = null },
             onConfirm = {
                 stateHolder.setDefault("agent-preset", preset.id)
@@ -357,7 +358,7 @@ internal fun DefaultModelSelectionScreen(
     val isBusy = "save-default-model" in stateHolder.defaultConfigurationLoadingKinds
     LaunchedEffect(Unit) { stateHolder.ensureDefaultModelConfiguration() }
 
-    SettingsSelectionScaffold(title = "默认模型", onBack = onBack) {
+    SettingsSelectionScaffold(title = appText("默认模型"), onBack = onBack) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(20.dp),
@@ -365,16 +366,16 @@ internal fun DefaultModelSelectionScreen(
         ) {
             item {
                 SettingsSelectionHeader(
-                    title = "默认模型",
-                    description = "为之后新建的会话设置默认模型与思考等级。这会更新部署级设置，同步影响 WebUI，运行中的会话保持启动时的配置。"
+                    title = appText("默认模型"),
+                    description = appText("为之后新建的会话设置默认模型与思考等级。这会更新部署级设置，同步影响 WebUI，运行中的会话保持启动时的配置。")
                 )
             }
             when {
-                isLoading -> item { SettingsLoadingState("正在读取模型列表…") }
+                isLoading -> item { SettingsLoadingState(appText("正在读取模型列表…")) }
                 groups.isEmpty() -> item {
                     SettingsEmptyState(
-                        title = "暂无可用模型",
-                        description = "未能读取到模型列表，请检查网关连接后重试。"
+                        title = appText("暂无可用模型"),
+                        description = appText("未能读取到模型列表，请检查网关连接后重试。")
                     )
                 }
                 else -> groups.forEach { group ->
@@ -423,9 +424,9 @@ internal fun DefaultModelSelectionScreen(
 
     pendingChange?.let { change ->
         DshAlertDialog(
-            title = "修改默认模型？",
-            message = "将新会话的默认模型改为“${change.summary}”。这会更新部署级设置，并同步影响 WebUI。",
-            confirmLabel = "确认修改",
+            title = appText("修改默认模型？"),
+            message = appText("将新会话的默认模型改为“%1\$s”。这会更新部署级设置，并同步影响 WebUI。", change.summary),
+            confirmLabel = appText("确认修改"),
             onDismissRequest = { pendingChange = null },
             onConfirm = {
                 stateHolder.saveDefaultModel(change.provider, change.model, change.reasoningEffort)
@@ -451,7 +452,7 @@ private fun SettingsSelectionScaffold(
                 navigationIcon = {
                     TopBarCircleButton(
                         iconRes = R.drawable.ic_back_chevron,
-                        description = "返回",
+                        description = appText("返回"),
                         onClick = onBack,
                         modifier = Modifier.padding(start = 8.dp)
                     )
@@ -561,7 +562,7 @@ private fun AgentPresetCard(
         )
         if (preset.broken == true) {
             Text(
-                "⚠ 该预设存在配置错误，暂时不能设为默认值",
+                appText("⚠ 该预设存在配置错误，暂时不能设为默认值"),
                 color = Color(0xFFF08A16),
                 fontSize = 12.sp
             )
@@ -604,7 +605,7 @@ private fun DefaultModelCard(
         if (efforts.isNotEmpty()) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    "思考等级",
+                    appText("思考等级"),
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.52f),
                     fontSize = 12.sp
                 )
@@ -633,7 +634,7 @@ private fun DefaultModelCard(
 @Composable
 private fun CurrentDefaultBadge() {
     Text(
-        "当前使用",
+        appText("当前使用"),
         modifier = Modifier.background(Color.Black, RoundedCornerShape(50))
             .padding(horizontal = 10.dp, vertical = 5.dp),
         color = Color.White,
@@ -674,9 +675,9 @@ internal fun pendingDefaultModelChange(
 
 private fun presetCapabilityText(holder: AndroidSharedStateHolder): String = when {
     holder.agentPresetsAuthorable && holder.agentPresetsHasDocument ->
-        "服务端支持编写自定义预设，并提供预设配置文档。"
-    holder.agentPresetsAuthorable -> "服务端支持编写自定义 Agent 预设。"
-    holder.agentPresetsHasDocument -> "服务端提供 Agent 预设配置文档。"
+        appText("服务端支持编写自定义预设，并提供预设配置文档。")
+    holder.agentPresetsAuthorable -> appText("服务端支持编写自定义 Agent 预设。")
+    holder.agentPresetsHasDocument -> appText("服务端提供 Agent 预设配置文档。")
     else -> ""
 }
 
@@ -758,8 +759,8 @@ private fun SettingsValueRow(
 internal fun FontSizeSettingsRow(onClick: () -> Unit) {
     val appearance = LocalAppearanceSettings.current
     SettingsValueRow(
-        title = "字体大小",
-        value = if (appearance.fontFollowsSystem) "跟随系统" else "${(appearance.fontScale * 100).roundToInt()}%",
+        title = appText("字体大小"),
+        value = if (appearance.fontFollowsSystem) appText("跟随系统") else "${(appearance.fontScale * 100).roundToInt()}%",
         onClick = onClick
     )
 }
@@ -769,7 +770,7 @@ internal fun InterfaceStyleSettingsRow() {
     val appearance = LocalAppearanceSettings.current
     var expanded by remember { mutableStateOf(false) }
     Box {
-        SettingsValueRow("界面", appearance.interfaceStyle.title) { expanded = true }
+        SettingsValueRow(appText("界面"), appearance.interfaceStyle.title) { expanded = true }
         DshSelectionPopup(
             expanded = expanded,
             options = InterfaceStyle.entries.map { DshSelectionOption(it.name, it.title) },
@@ -788,7 +789,7 @@ internal fun LanguageSettingsRow() {
     val appearance = LocalAppearanceSettings.current
     var expanded by remember { mutableStateOf(false) }
     Box {
-        SettingsValueRow("语言", appearance.language.title) { expanded = true }
+        SettingsValueRow(appText("语言"), appearance.language.title) { expanded = true }
         DshSelectionPopup(
             expanded = expanded,
             options = AppLanguage.entries.map { DshSelectionOption(it.name, it.title) },
@@ -814,7 +815,7 @@ private fun PermissionSettingsRow(
 ) {
     Box {
         SettingsValueRow(
-            title = "权限",
+            title = appText("权限"),
             value = value,
             enabled = enabled,
             onClick = { onExpandedChange(true) }
@@ -912,13 +913,13 @@ private fun SettingsActionRow(title: String, enabled: Boolean = true, onClick: (
 private fun isConnected(holder: AndroidSharedStateHolder) = holder.gatewayState.connection == GatewayConnectionState.CONNECTED
 
 private fun selectedPreset(holder: AndroidSharedStateHolder): String {
-    val id = holder.snapshot.agentPresetDefault ?: return "未读取"
+    val id = holder.snapshot.agentPresetDefault ?: return appText("未读取")
     val gatewayName = holder.snapshot.agentPresets.firstOrNull { it.id == id }?.name
     return agentPresetDisplayName(id, gatewayName)
 }
 
 private fun selectedModel(holder: AndroidSharedStateHolder): String {
-    val selection = holder.snapshot.defaultModel ?: return "未读取"
+    val selection = holder.snapshot.defaultModel ?: return appText("未读取")
     val item = holder.snapshot.modelCatalog?.groups?.flatMap { it.models }?.firstOrNull { it.id == selection.model }
     val base = item?.name ?: when (selection.model) {
         "deepseek-chat" -> "DeepSeek Chat"
@@ -928,9 +929,9 @@ private fun selectedModel(holder: AndroidSharedStateHolder): String {
     val effortName = selection.reasoningEffort?.let { effortId ->
         item?.reasoning?.efforts?.firstOrNull { it.id == effortId }?.name
             ?: when (effortId.lowercase()) {
-                "low" -> "低"
-                "medium" -> "中"
-                "high" -> "高"
+                "low" -> appText("低")
+                "medium" -> appText("中")
+                "high" -> appText("高")
                 else -> effortId.replaceFirstChar(Char::uppercase)
             }
     }
@@ -938,19 +939,19 @@ private fun selectedModel(holder: AndroidSharedStateHolder): String {
 }
 
 private fun permissionName(value: String?) = when (value) {
-    "read-only" -> "只读"
-    "workspace-write" -> "工作区写入"
-    "danger-full-access" -> "完全访问"
-    else -> "未读取"
+    "read-only" -> appText("只读")
+    "workspace-write" -> appText("工作区写入")
+    "danger-full-access" -> appText("完全访问")
+    else -> appText("未读取")
 }
 
 private fun connectionLabel(holder: AndroidSharedStateHolder) = when (holder.gatewayState.connection) {
-    GatewayConnectionState.CONNECTED -> "已连接"
-    GatewayConnectionState.CONNECTING, GatewayConnectionState.AUTHENTICATING -> "连接中"
-    GatewayConnectionState.WAITING_FOR_NETWORK -> "等待网络"
-    GatewayConnectionState.FAILED -> "连接失败"
-    GatewayConnectionState.SUSPENDED -> "已挂起"
-    GatewayConnectionState.DISCONNECTED -> "未连接"
+    GatewayConnectionState.CONNECTED -> appText("已连接")
+    GatewayConnectionState.CONNECTING, GatewayConnectionState.AUTHENTICATING -> appText("连接中")
+    GatewayConnectionState.WAITING_FOR_NETWORK -> appText("等待网络")
+    GatewayConnectionState.FAILED -> appText("连接失败")
+    GatewayConnectionState.SUSPENDED -> appText("已挂起")
+    GatewayConnectionState.DISCONNECTED -> appText("未连接")
 }
 
 @Composable

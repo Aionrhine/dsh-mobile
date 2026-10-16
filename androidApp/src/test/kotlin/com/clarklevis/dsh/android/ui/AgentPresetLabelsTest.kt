@@ -1,9 +1,13 @@
 package com.clarklevis.dsh.android.ui
 
+import com.clarklevis.dsh.android.localization.LocaleTestRule
+import org.junit.Rule
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class AgentPresetLabelsTest {
+    @get:Rule val locale = LocaleTestRule()
+
     @Test
     fun builtInPresetIdsUseIosChineseLabels() {
         assertEquals("标准模式", agentPresetDisplayName("standard", "Standard"))

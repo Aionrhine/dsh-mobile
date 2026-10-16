@@ -1,6 +1,7 @@
 package com.clarklevis.dsh.android.ui
 
 import android.content.Context
+import com.clarklevis.dsh.android.localization.appText
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -18,7 +19,7 @@ internal data class AppReleaseInfo(val version: String, val minimumGatewayVersio
 }
 
 internal fun dshHostVersion(dshVersion: String?, legacyVersion: String?): String =
-    listOfNotNull(dshVersion, legacyVersion).firstOrNull { Regex("v?\\d+\\.\\d+.*").matches(it) } ?: "未提供"
+    listOfNotNull(dshVersion, legacyVersion).firstOrNull { Regex("v?\\d+\\.\\d+.*").matches(it) } ?: appText("未提供")
 
 internal fun resolveReleaseUrl(repository: String, version: String?): String {
     val root = "https://github.com/Clarklevis1995/$repository"

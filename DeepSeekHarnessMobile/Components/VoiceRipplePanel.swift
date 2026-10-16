@@ -61,7 +61,7 @@ struct VoiceRipplePanel: View {
     }
 }
 
-/// 深色模式使用低亮度背景与柔和前景，两端使用相同色值。
+/// 浅色模式使用明亮雾蓝与深色前景，深色模式保留柔和亮度；两端色值一致。
 private struct VoiceOverlayPalette {
     let base: Color
     let glow: Color
@@ -70,10 +70,10 @@ private struct VoiceOverlayPalette {
     init(isDark: Bool, cancelling: Bool) {
         let colors: (Int, Int, Int)
         switch (isDark, cancelling) {
-        case (true, true): colors = (0x4C2733, 0x754050, 0xF1D8DE)
-        case (true, false): colors = (0x101F35, 0x1B3B61, 0xD4E1F1)
-        case (false, true): colors = (0xDC8799, 0xF0B1B8, 0x642434)
-        case (false, false): colors = (0x15335C, 0x2C5D9C, 0xFFFFFF)
+        case (true, true): colors = (0x5B3543, 0x895668, 0xFAE5EB)
+        case (true, false): colors = (0x203B5C, 0x39658F, 0xE3F0FF)
+        case (false, true): colors = (0xF0ACBA, 0xFFD6DA, 0x642434)
+        case (false, false): colors = (0x73A9E7, 0xAFD7FA, 0x173C65)
         }
         func color(_ rgb: Int) -> Color {
             Color(red: Double((rgb >> 16) & 255) / 255,
@@ -92,11 +92,11 @@ private struct VoiceOuterHalo: View {
 
     var body: some View {
         Canvas { context, size in
-            let fadeHeight = size.height * 0.6
-            let radiusX = size.width * 0.98
+            let fadeHeight = size.height * 0.78
+            let radiusX = size.width * 1.12
             let gradient = Gradient(stops: (0...32).map { index in
                 let radius = Double(index) / 32
-                let progress = min(1, max(0, (radius - 0.78) / 0.22))
+                let progress = min(1, max(0, (radius - 0.5) / 0.5))
                 let opacity = 1 - progress * progress * (3 - 2 * progress)
                 return .init(color: color.opacity(opacity), location: radius)
             })
@@ -111,19 +111,19 @@ private struct VoiceOuterHalo: View {
 /// 顶部按高度比例平滑过渡到页面背景，下方覆盖底部安全区。
 private struct VoiceEllipticalMask: View {
     @Environment(\.displayScale) private var displayScale
-    // .625 等于视图侧边的归一化半径；渐变在接入下方实色区域时保持完全不透明。
+    // .5 等于视图侧边的归一化半径；加宽羽化范围，接入下方实色区域时仍完全不透明。
     private static let gradient = Gradient(stops: (0...32).map { index in
         let radius = Double(index) / 32
-        let progress = min(1, max(0, (radius - 0.625) / 0.375))
+        let progress = min(1, max(0, (radius - 0.5) / 0.5))
         let opacity = 1 - progress * progress * (3 - 2 * progress)
         return .init(color: .black.opacity(opacity), location: radius)
     })
 
     var body: some View {
         Canvas { context, size in
-            let fadeHeight = floor(size.height * 0.6 * displayScale) / displayScale
+            let fadeHeight = floor(size.height * 0.72 * displayScale) / displayScale
             let solidStart = max(0, fadeHeight - 1 / displayScale)
-            let radiusX = size.width * 0.8
+            let radiusX = size.width
             context.fill(Path(CGRect(x: 0, y: solidStart, width: size.width, height: size.height - solidStart)),
                          with: .color(.black))
             context.translateBy(x: size.width / 2, y: fadeHeight)

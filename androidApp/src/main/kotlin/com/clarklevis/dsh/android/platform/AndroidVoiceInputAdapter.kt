@@ -15,6 +15,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
+import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.shared.facade.SharedVoiceInputStore
 import com.clarklevis.dsh.shared.facade.SharedVoiceInputTransition
 import com.clarklevis.dsh.shared.facade.VoiceAudioFormat
@@ -143,7 +144,7 @@ class AndroidVoiceInputAdapter(
             }
 
             permissionId != null -> {
-                apply(shared.captureFailed(token, "请先完成麦克风授权"))
+                apply(shared.captureFailed(token, appText("请先完成麦克风授权")))
             }
 
             else -> {
@@ -168,7 +169,7 @@ class AndroidVoiceInputAdapter(
                 "showToast" -> {
                     toast?.cancel()
                     context?.applicationContext?.let { ctx ->
-                        toast = Toast.makeText(ctx, effect.message, Toast.LENGTH_SHORT).also { it.show() }
+                        toast = Toast.makeText(ctx, appText(effect.message), Toast.LENGTH_SHORT).also { it.show() }
                     }
                 }
 
@@ -195,7 +196,7 @@ class AndroidVoiceInputAdapter(
                         },
                         level = { apply(shared.level(id = token, rms = it, nowMilliseconds = SystemClock.elapsedRealtime())) },
                         finished = { apply(shared.captureFinished(token, it, SystemClock.elapsedRealtime())) },
-                        failure = { apply(shared.captureFailed(token, "无法录音，请检查麦克风权限或通话状态")) },
+                        failure = { apply(shared.captureFailed(token, appText("无法录音，请检查麦克风权限或通话状态"))) },
                     )
                 }
 

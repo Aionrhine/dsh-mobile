@@ -19,6 +19,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.res.painterResource
+import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.android.R
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -111,7 +112,7 @@ internal fun GatewaySwitcherBar() {
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         HostIcon(hosts.activeProfile?.server == true, Color.White, Modifier.size(15.dp))
-        Text(hosts.activeProfile?.displayName ?: "选择主机", color = Color.White, fontSize = 12.sp, maxLines = 1)
+        Text(hosts.activeProfile?.displayName ?: appText("选择主机"), color = Color.White, fontSize = 12.sp, maxLines = 1)
         val activeOnline = hosts.activeId in hosts.onlineIds
         StatusIndicatorDot(
             color = if (activeOnline) DshColors.Success else Color.Gray,
@@ -153,18 +154,18 @@ internal fun GatewaySwitcherBar() {
                 HostPanelSurface {
                     Column(Modifier.fillMaxWidth().heightIn(min = 360.dp).padding(horizontal = 16.dp)) {
                         HostPanelHeader(
-                            title = "切换主机",
+                            title = appText("切换主机"),
                             action = gatewayDeleteActionLabel(selectedIds.size),
                             onAction = { confirmingDelete = true },
                             onCancel = {
                                 managing = !managing
                                 if (!managing) selectedIds = emptySet()
                             },
-                            leadingText = if (managing) "完成编辑" else "编辑",
+                            leadingText = if (managing) appText("完成编辑") else appText("编辑"),
                             actionColor = Color(0xFFFF3B30)
                         )
                         Text(
-                            "我的主机",
+                            appText("我的主机"),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 15.sp,
                             lineHeight = 20.sp,
@@ -209,7 +210,7 @@ internal fun GatewaySwitcherBar() {
                             if (hosts.profiles.isEmpty()) {
                                 item {
                                     Text(
-                                        "暂无已连接的主机",
+                                        appText("暂无已连接的主机"),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.padding(20.dp)
                                     )
@@ -228,16 +229,16 @@ internal fun GatewaySwitcherBar() {
             AlertDialog(
                 onDismissRequest = { confirmingDelete = false },
                 containerColor = MaterialTheme.colorScheme.surface,
-                title = { Text(if (selectedIds.size == 1) "删除主机？" else "批量删除主机？") },
-                text = { Text("从 App 移除选中的 ${selectedIds.size} 台主机及连接凭证；网关上的会话和工作区不会被删除。再次连接需重新配对。") },
+                title = { Text(if (selectedIds.size == 1) appText("删除主机？") else appText("批量删除主机？")) },
+                text = { Text(appText("从 App 移除选中的 %1\$s 台主机及连接凭证；网关上的会话和工作区不会被删除。再次连接需重新配对。", selectedIds.size)) },
                 confirmButton = {
                     TextButton(onClick = {
                         hosts.remove(hosts.profiles.filter { it.localId in selectedIds })
                         selectedIds = emptySet()
                         confirmingDelete = false
-                    }) { Text("删除", color = Color.Red) }
+                    }) { Text(appText("删除"), color = Color.Red) }
                 },
-                dismissButton = { TextButton(onClick = { confirmingDelete = false }) { Text("取消") } }
+                dismissButton = { TextButton(onClick = { confirmingDelete = false }) { Text(appText("取消")) } }
             )
         }
     }
@@ -299,9 +300,9 @@ private fun GatewayHostRow(
                 if (profile.localId ==
                     hosts.activeId
                 ) {
-                    "当前主机"
+                    appText("当前主机")
                 } else {
-                    "点击连接"
+                    appText("点击连接")
                 },
                 fontSize = 12.sp,
                 lineHeight = 15.sp,
@@ -333,7 +334,7 @@ private fun GatewayHostRow(
             IconButton(onClick = onEdit) {
                 Icon(
                     painter = androidx.compose.ui.res.painterResource(com.clarklevis.dsh.android.R.drawable.ic_pencil_line),
-                    contentDescription = "编辑 ${profile.displayName}",
+                    contentDescription = appText("编辑 %1\$s", profile.displayName),
                     tint = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.size(18.dp)
                 )
@@ -380,12 +381,12 @@ private fun GatewayEditor(hosts: AndroidMultiGatewayStore, profile: GatewayProfi
                     Modifier.fillMaxWidth().heightIn(min = 420.dp)
                         .padding(horizontal = 16.dp).padding(top = 16.dp, bottom = 32.dp)
                 ) {
-                    HostPanelHeader("编辑主机", "保存", {
+                    HostPanelHeader(appText("编辑主机"), appText("保存"), {
                         hosts.edit(profile, alias, server)
                         onDismiss()
                     }, onDismiss)
                     Text(
-                        "留空使用网关提供的名称：${profile.gatewayName}",
+                        appText("留空使用网关提供的名称：%1\$s", profile.gatewayName),
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 22.dp, bottom = 10.dp)
@@ -401,7 +402,7 @@ private fun GatewayEditor(hosts: AndroidMultiGatewayStore, profile: GatewayProfi
                             textStyle = TextStyle(fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurface),
                             cursorBrush = SolidColor(MaterialTheme.colorScheme.onSurface),
                             modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)
-                                .semantics { contentDescription = "本地名称" },
+                                .semantics { contentDescription = appText("本地名称") },
                             decorationBox = { innerTextField ->
                                 Box(Modifier.fillMaxWidth().padding(vertical = 14.dp), contentAlignment = Alignment.CenterStart) {
                                     if (alias.isEmpty()) {
@@ -422,17 +423,17 @@ private fun GatewayEditor(hosts: AndroidMultiGatewayStore, profile: GatewayProfi
                             Modifier.fillMaxWidth().heightIn(min = 52.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("主机类型", fontSize = 17.sp, modifier = Modifier.weight(1f))
+                            Text(appText("主机类型"), fontSize = 17.sp, modifier = Modifier.weight(1f))
                             Box {
                                 Row(
                                     Modifier.heightIn(min = 48.dp).clickable { choosingKind = true }
-                                        .semantics { contentDescription = "主机类型，${if (server) "服务器" else "电脑"}，展开选择" },
+                                        .semantics { contentDescription = appText("主机类型，%1\$s，展开选择", if (server) appText("服务器") else appText("电脑")) },
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
                                     HostIcon(server, MaterialTheme.colorScheme.onSurface, Modifier.size(20.dp))
                                     Text(
-                                        if (server) "服务器" else "电脑",
+                                        if (server) appText("服务器") else appText("电脑"),
                                         fontSize = 17.sp,
                                         style = TextStyle(platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false))
                                     )
@@ -497,7 +498,7 @@ private fun GatewayEditor(hosts: AndroidMultiGatewayStore, profile: GatewayProfi
                                                                 }
                                                             }
                                                             HostIcon(isServer, MaterialTheme.colorScheme.onSurface, Modifier.size(20.dp))
-                                                            Text(if (isServer) "服务器" else "电脑", fontSize = 17.sp)
+                                                            Text(if (isServer) appText("服务器") else appText("电脑"), fontSize = 17.sp)
                                                         }
                                                     }
                                                 }
@@ -520,7 +521,7 @@ private fun HostPanelHeader(
     action: String?,
     onAction: () -> Unit,
     onCancel: (() -> Unit)? = null,
-    leadingText: String = "取消",
+    leadingText: String = appText("取消"),
     actionColor: Color = Color.Unspecified
 ) {
     val buttonBackground = if (isSystemInDarkTheme()) {
@@ -553,8 +554,8 @@ private fun HostPanelHeader(
 
 internal fun gatewayDeleteActionLabel(selectionCount: Int): String? = when (selectionCount) {
     0 -> null
-    1 -> "删除"
-    else -> "批量删除"
+    1 -> appText("删除")
+    else -> appText("批量删除")
 }
 
 internal fun toggleSelection(selectedIds: Set<String>, id: String): Set<String> =
@@ -595,7 +596,7 @@ private fun HostIcon(server: Boolean, color: Color, modifier: Modifier = Modifie
                 com.clarklevis.dsh.android.R.drawable.ic_gateway_pc
             }
         ),
-        contentDescription = if (server) "服务器" else "电脑",
+        contentDescription = if (server) appText("服务器") else appText("电脑"),
         colorFilter =
         androidx.compose.ui.graphics.ColorFilter
             .tint(color),

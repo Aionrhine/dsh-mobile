@@ -93,6 +93,7 @@ data class GatewayFrame(
     val name: String? = null,
     val mediaType: String? = null,
     val size: Long? = null,
+    val modifiedAt: Double? = null,
     val chunkBytes: Int? = null,
     val offset: Long? = null,
     val eof: Boolean? = null,
@@ -519,7 +520,10 @@ data class GatewaySessionStatsSnapshot(
 
 @Serializable data class ToolDelta(val id: String? = null, val name: String? = null, val argumentsDelta: String? = null)
 @Serializable data class ToolCall(val id: String, val name: String, val arguments: JsonValue? = null)
-@Serializable data class FinishInfo(val kind: String? = null)
+@Serializable data class FinishInfo(val kind: String? = null, val failure: JsonValue? = null)
+
+@Serializable
+data class PresentedFile(val path: String, val description: String? = null)
 
 @Serializable
 data class GatewayEvent(
@@ -557,7 +561,16 @@ data class GatewayEvent(
     val error: String? = null,
     val raw: JsonValue? = null,
     val interrupted: Boolean? = null,
-    val stream: JsonValue? = null
+    val stream: JsonValue? = null,
+    val output: String? = null,
+    val outputTruncated: Boolean? = null,
+    val reasonDetails: JsonValue? = null,
+    val retryId: String? = null,
+    val retry: Int? = null,
+    val maxRetries: Int? = null,
+    val delayMs: Double? = null,
+    val failure: JsonValue? = null,
+    val files: List<PresentedFile>? = null
 ) {
     override fun toString(): String =
         "GatewayEvent(type=$type, turn=$turn, step=$step, text=<redacted>, tool=<redacted>, " +
@@ -633,9 +646,20 @@ data class RawSessionEvent(val type: String, val seq: Int, val time: Double, val
                     usage = data["usage"],
                     interrupted = data["interrupted"]?.booleanValue,
                     stream = data["stream"],
+                    finish = data["finish"]?.let { FinishInfo(it["kind"]?.stringValue, it["failure"]) },
                     raw = data
                 )
             }
+            "deliverables/presented" -> GatewayEvent(
+                type = type,
+                turn = turn,
+                callId = data["callId"]?.stringValue,
+                files = data["files"]?.arrayValue.orEmpty().mapNotNull { file ->
+                    val path = file["path"]?.stringValue?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+                    PresentedFile(path, file["description"]?.stringValue)
+                },
+                raw = data
+            )
             "tool/call" -> GatewayEvent(type, turn, step, callId = data["callId"]?.stringValue, name = data["name"]?.stringValue, arguments = data["arguments"], raw = data)
             "tool/result" -> GatewayEvent(
                 type,
@@ -650,6 +674,9 @@ data class RawSessionEvent(val type: String, val seq: Int, val time: Double, val
                         it["type"]?.stringValue == "tool-result" && it["isError"]?.booleanValue == true
                     },
                 preview = toolResultText(data["message"]),
+                output = data["output"]?.stringValue,
+                outputTruncated = data["outputTruncated"]?.booleanValue,
+                error = failureText(data["error"]),
                 raw = data
             )
             "tool/code-dispatch-start", "tool/code-dispatch" -> GatewayEvent(
@@ -663,8 +690,14 @@ data class RawSessionEvent(val type: String, val seq: Int, val time: Double, val
                 subCallId = data["subCallId"]?.stringValue,
                 raw = data
             )
-            "turn/start", "turn/end", "step/start", "step/end" -> GatewayEvent(type, turn, step, reason = data["reason"]?.get("kind")?.stringValue, raw = data)
-            "assistant/attempt" -> GatewayEvent(type, turn, step, stream = data["stream"], raw = data)
+            "turn/start", "turn/end", "step/start", "step/end" -> GatewayEvent(type, turn, step, reason = data["reason"]?.stringValue ?: data["reason"]?.get("kind")?.stringValue,
+                reasonDetails = data["reasonDetails"] ?: data["reason"], raw = data)
+            "assistant/attempt" -> GatewayEvent(type, turn, step, stream = data["stream"],
+                finish = data["finish"]?.let { FinishInfo(it["kind"]?.stringValue, it["failure"]) }, raw = data)
+            "llm/retry", "llm/retry-started" -> GatewayEvent(type, turn, step,
+                retryId = data["retryId"]?.stringValue, retry = data["retry"]?.doubleValue?.toInt(),
+                maxRetries = data["maxRetries"]?.doubleValue?.toInt(), delayMs = data["delayMs"]?.doubleValue,
+                failure = data["failure"], raw = data)
             "session/title" -> GatewayEvent(type, text = data["title"]?.stringValue, raw = data)
             else -> GatewayEvent(
                 type = type,

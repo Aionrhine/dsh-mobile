@@ -638,7 +638,13 @@ private fun mobileConversationLabels(): ConversationProjectionLabels {
             commandCompleted = "已完成",
             commandFailed = "执行失败",
             compactedHistory = "已压缩 {items} 条历史记录（约 {tokens} tokens）",
-            interrupted = "生成已中断"
+            interrupted = "生成已中断",
+            modelAttemptFailed = "模型请求失败",
+            modelRetrying = "正在重试模型请求",
+            modelRetried = "已重试模型请求",
+            generationFailed = "生成失败",
+            generationCancelled = "生成已取消",
+            outputTruncated = "输出已截断，保留开头和末尾"
         )
     } else {
         ConversationProjectionLabels()

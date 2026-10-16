@@ -3,6 +3,10 @@ package com.clarklevis.dsh.android.ui
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.text.Spanned
+import android.text.style.ClickableSpan
+import androidx.compose.runtime.mutableStateOf
+import com.clarklevis.dsh.shared.protocol.PresentedFile
 import android.text.TextPaint
 import android.view.View
 import android.view.ViewGroup
@@ -22,6 +26,35 @@ import org.junit.runner.RunWith
 class DshMarkdownTextDeviceTest {
     @get:Rule
     val compose = createComposeRule()
+
+    @Test
+    fun fileLinksAndKnownCodeUseCurrentCallbackWhileAmbiguousCodeStaysPlain() {
+        var rootView: View? = null
+        val source = mutableStateOf("s1")
+        val opened = mutableListOf<String>()
+        val markdown = "[正文](<build/旅游%20攻略.pdf#L24>) `tutorial.pdf` `report.pdf` `unknown.pdf` [网页](https://example.com)"
+        compose.setContent {
+            rootView = LocalView.current
+            val session = source.value
+            DshTheme {
+                DshLazyMarkdownText(markdown, knownFiles = listOf(
+                    PresentedFile("build/tutorial.pdf"), PresentedFile("a/report.pdf"), PresentedFile("b/report.pdf")
+                ), onOpenFile = { opened += "$session:$it" })
+            }
+        }
+        fun clickFileReferences() {
+            val view = requireNotNull(rootView?.findMarkdownTextView())
+            val text = view.text as Spanned
+            val spans = text.getSpans(0, text.length, ClickableSpan::class.java)
+            val labels = spans.map { text.subSequence(text.getSpanStart(it), text.getSpanEnd(it)).toString() }
+            assertEquals(setOf("正文", "tutorial.pdf", "网页"), labels.toSet())
+            spans.filterIndexed { index, _ -> labels[index] != "网页" }.forEach { it.onClick(view) }
+        }
+        compose.runOnIdle { clickFileReferences(); source.value = "s2" }
+        compose.waitForIdle()
+        compose.runOnIdle { clickFileReferences() }
+        assertEquals(listOf("s1:build/旅游 攻略.pdf", "s1:build/tutorial.pdf", "s2:build/旅游 攻略.pdf", "s2:build/tutorial.pdf"), opened)
+    }
 
     @Test
     fun gfmTableIsRenderedAsTableSpans() {

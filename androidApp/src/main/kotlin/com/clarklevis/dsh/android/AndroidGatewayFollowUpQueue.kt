@@ -1,5 +1,6 @@
 package com.clarklevis.dsh.android
 
+import com.clarklevis.dsh.android.localization.appText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
@@ -29,7 +30,7 @@ internal class AndroidGatewayFollowUpQueue(
 
     fun submit(request: suspend () -> Unit) {
         if (requests.trySend(request).isFailure) {
-            onFailure(IllegalStateException("后续请求队列已满或已关闭，请重新连接后重试。"))
+            onFailure(IllegalStateException(appText("后续请求队列已满或已关闭，请重新连接后重试。")))
         }
     }
 

@@ -39,6 +39,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.android.platform.AndroidVoiceInputAdapter
 import com.clarklevis.dsh.shared.facade.SharedVoiceInputSnapshot
 import com.clarklevis.dsh.shared.facade.VoiceInputInteraction
@@ -76,7 +77,7 @@ fun VoiceInputPanel(
         remember(haloColor) {
             Array(33) { index ->
                 val radius = index / 32f
-                val progress = ((radius - 0.78f) / 0.22f).coerceIn(0f, 1f)
+                val progress = ((radius - 0.5f) / 0.5f).coerceIn(0f, 1f)
                 radius to haloColor.copy(alpha = 1 - progress * progress * (3 - 2 * progress))
             }
         }
@@ -102,7 +103,7 @@ fun VoiceInputPanel(
             }
         }
         Text(
-            state.status,
+            appText(state.status),
             color = ink.copy(alpha = 0.9f),
             fontSize = 17.sp,
             modifier = Modifier.align(Alignment.Center).padding(bottom = 32.dp),
@@ -110,22 +111,23 @@ fun VoiceInputPanel(
     }
 }
 
-/** 深色模式降低背景亮度，保留柔和的文字与粒子对比；两端使用相同色值。 */
+/** 浅色模式使用明亮雾蓝与深色前景，深色模式保留柔和亮度；两端色值一致。 */
 private data class VoiceOverlayPalette(
     val base: Color,
     val glow: Color,
     val ink: Color,
 )
 
+@Suppress("MagicNumber")
 private fun voiceOverlayPalette(
     isDark: Boolean,
     cancelling: Boolean,
 ): VoiceOverlayPalette =
     when {
-        isDark && cancelling -> VoiceOverlayPalette(Color(0xFF4C2733), Color(0xFF754050), Color(0xFFF1D8DE))
-        isDark -> VoiceOverlayPalette(Color(0xFF101F35), Color(0xFF1B3B61), Color(0xFFD4E1F1))
-        cancelling -> VoiceOverlayPalette(Color(0xFFDC8799), Color(0xFFF0B1B8), Color(0xFF642434))
-        else -> VoiceOverlayPalette(Color(0xFF15335C), Color(0xFF2C5D9C), Color.White)
+        isDark && cancelling -> VoiceOverlayPalette(Color(0xFF5B3543), Color(0xFF895668), Color(0xFFFAE5EB))
+        isDark -> VoiceOverlayPalette(Color(0xFF203B5C), Color(0xFF39658F), Color(0xFFE3F0FF))
+        cancelling -> VoiceOverlayPalette(Color(0xFFF0ACBA), Color(0xFFFFD6DA), Color(0xFF642434))
+        else -> VoiceOverlayPalette(Color(0xFF73A9E7), Color(0xFFAFD7FA), Color(0xFF173C65))
     }
 
 private class VoicePanelPresentation(
@@ -163,8 +165,8 @@ private fun DrawScope.drawVoiceBackdrop(
 /** 独立绘制在彩色蒙层后方，避免被内层蒙版裁掉外缘。 */
 @Suppress("MagicNumber")
 private fun DrawScope.drawVoiceOuterHalo(stops: Array<Pair<Float, Color>>) {
-    val fadeHeight = size.height * 0.6f
-    val radiusX = size.width * 0.98f
+    val fadeHeight = size.height * 0.78f
+    val radiusX = size.width * 1.12f
     clipRect(bottom = fadeHeight) {
         withTransform({
             translate(left = size.width / 2, top = fadeHeight)
@@ -179,19 +181,19 @@ private fun DrawScope.drawVoiceOuterHalo(stops: Array<Pair<Float, Color>>) {
     }
 }
 
-// .625 等于视图侧边的归一化半径；保证渐变与下方实色区域无接缝。
+// .5 等于视图侧边的归一化半径；加宽羽化范围，保证与下方实色区域无接缝。
 private val VOICE_EDGE_STOPS =
     Array(33) { index ->
         val radius = index / 32f
-        val progress = ((radius - 0.625f) / 0.375f).coerceIn(0f, 1f)
+        val progress = ((radius - 0.5f) / 0.5f).coerceIn(0f, 1f)
         radius to Color.Black.copy(alpha = 1 - progress * progress * (3 - 2 * progress))
     }
 
 /** 顶部按高度比例平滑过渡到页面背景，下方覆盖导航栏。 */
 @Suppress("MagicNumber")
 private fun DrawScope.drawVoiceEllipticalMask() {
-    val fadeHeight = (size.height * 0.6f).roundToInt().toFloat()
-    val radiusX = size.width * 0.8f
+    val fadeHeight = (size.height * 0.72f).roundToInt().toFloat()
+    val radiusX = size.width
     clipRect(bottom = fadeHeight) {
         withTransform({
             translate(left = size.width / 2, top = fadeHeight)
@@ -272,7 +274,8 @@ fun Modifier.voiceHoldGesture(
                 var holding = false
                 try {
                     var completed = false
-                    withTimeoutOrNull(VoiceInputInteraction.LONG_PRESS_MILLISECONDS) {
+                    // Android 的轻触通常超过 80ms；使用系统长按时长，也尊重无障碍设置。
+                    withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
                         waitForUpOrCancellation(PointerEventPass.Initial)
                         completed = true
                     }

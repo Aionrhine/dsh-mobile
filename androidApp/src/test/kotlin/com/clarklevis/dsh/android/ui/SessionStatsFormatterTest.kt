@@ -1,5 +1,7 @@
 package com.clarklevis.dsh.android.ui
 
+import com.clarklevis.dsh.android.localization.LocaleTestRule
+import org.junit.Rule
 import com.clarklevis.dsh.shared.protocol.GatewaySessionStats
 import com.clarklevis.dsh.shared.protocol.GatewaySessionTokenUsageTotals
 import org.junit.Assert.assertEquals
@@ -7,6 +9,8 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class SessionStatsFormatterTest {
+    @get:Rule val locale = LocaleTestRule()
+
     @Test
     fun `formats execution metrics like iOS`() {
         val stats = GatewaySessionStats(

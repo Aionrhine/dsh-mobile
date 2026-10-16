@@ -87,6 +87,7 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.graphics.shadow.Shadow
+import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.android.AndroidSharedStateHolder
 import com.clarklevis.dsh.android.MobileScheduledTask
 import com.clarklevis.dsh.android.R
@@ -99,8 +100,10 @@ import kotlinx.coroutines.launch
 
 private val scheduleBlue = Color(0xFF0A84FF)
 
-internal enum class ScheduledTaskStatusFilter(val title: String) {
-    ALL("全部"), ACTIVE("已开启"), ENDED("已结束")
+internal enum class ScheduledTaskStatusFilter(private val sourceTitle: String) {
+    ALL("全部"), ACTIVE("已开启"), ENDED("已结束");
+
+    val title: String get() = appText(sourceTitle)
 }
 
 internal fun filteredScheduledTasks(
@@ -146,10 +149,10 @@ internal fun ScheduledTasksScreen(
             .statusBarsPadding().navigationBarsPadding()
     ) {
         Box(Modifier.fillMaxWidth().height(66.dp).padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 12.dp)) {
-            TopBarCircleButton(R.drawable.ic_back_chevron, "返回", onBack,
+            TopBarCircleButton(R.drawable.ic_back_chevron, appText("返回"), onBack,
                 modifier = Modifier.align(Alignment.CenterStart))
             if (!isSearching) {
-                Text("定时任务", fontSize = 20.sp, fontWeight = FontWeight.SemiBold,
+                Text(appText("定时任务"), fontSize = 20.sp, fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier.align(Alignment.Center))
             }
@@ -174,21 +177,21 @@ internal fun ScheduledTasksScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(stateHolder.scheduledTasksError.orEmpty(), color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Button(onClick = stateHolder::refreshScheduledTasks, modifier = Modifier.padding(top = 12.dp)) {
-                            Text("重试")
+                            Text(appText("重试"))
                         }
                     }
                 }
             }
             stateHolder.scheduledTasks.isEmpty() -> {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("暂无定时任务", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(appText("暂无定时任务"), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             visibleTasks.isEmpty() -> {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("没有符合条件的定时任务", fontWeight = FontWeight.SemiBold)
-                        Text(if (searchQuery.isBlank()) "试试其他任务状态" else "试试其他关键词或任务状态",
+                        Text(appText("没有符合条件的定时任务"), fontWeight = FontWeight.SemiBold)
+                        Text(if (searchQuery.isBlank()) appText("试试其他任务状态") else appText("试试其他关键词或任务状态"),
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -233,15 +236,15 @@ internal fun ScheduledTasksScreen(
     deletingTask?.let { task ->
         AlertDialog(
             onDismissRequest = { deletingTask = null },
-            title = { Text("删除定时任务？") },
-            text = { Text("删除后任务及投递记录无法恢复；已进入会话队列的消息不会撤回。") },
+            title = { Text(appText("删除定时任务？")) },
+            text = { Text(appText("删除后任务及投递记录无法恢复；已进入会话队列的消息不会撤回。")) },
             confirmButton = {
                 TextButton(onClick = {
                     stateHolder.deleteScheduledTask(task)
                     deletingTask = null
-                }) { Text("删除任务及投递记录", color = MaterialTheme.colorScheme.error) }
+                }) { Text(appText("删除任务及投递记录"), color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton(onClick = { deletingTask = null }) { Text("取消") } }
+            dismissButton = { TextButton(onClick = { deletingTask = null }) { Text(appText("取消")) } }
         )
     }
     LaunchedEffect(stateHolder.scheduledTaskMutationError) {
@@ -250,9 +253,9 @@ internal fun ScheduledTasksScreen(
     if (showsMutationError) {
         AlertDialog(
             onDismissRequest = { showsMutationError = false },
-            title = { Text("定时任务操作失败") },
-            text = { Text(stateHolder.scheduledTaskMutationError ?: "请稍后重试") },
-            confirmButton = { TextButton(onClick = { showsMutationError = false }) { Text("好") } }
+            title = { Text(appText("定时任务操作失败")) },
+            text = { Text(stateHolder.scheduledTaskMutationError ?: appText("请稍后重试")) },
+            confirmButton = { TextButton(onClick = { showsMutationError = false }) { Text(appText("好")) } }
         )
     }
 }
@@ -298,7 +301,7 @@ private fun ScheduledTaskSearchAndFilter(
                 value = query,
                 onValueChange = onQueryChange,
                 modifier = Modifier.weight(1f).padding(start = 7.dp).focusRequester(focusRequester)
-                    .semantics { contentDescription = "搜索定时任务" },
+                    .semantics { contentDescription = appText("搜索定时任务") },
                 singleLine = true,
                 textStyle = TextStyle(fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurface),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
@@ -306,7 +309,7 @@ private fun ScheduledTaskSearchAndFilter(
                 keyboardActions = KeyboardActions(onSearch = { keyboardController?.hide() }),
                 decorationBox = { innerTextField ->
                     Box(contentAlignment = Alignment.CenterStart) {
-                        if (query.isEmpty()) Text("搜索定时任务", fontSize = 15.sp,
+                        if (query.isEmpty()) Text(appText("搜索定时任务"), fontSize = 15.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                         innerTextField()
                     }
@@ -318,7 +321,7 @@ private fun ScheduledTaskSearchAndFilter(
                     keyboardController?.hide()
                     onQueryChange("")
                     onSearchingChange(false)
-                }.semantics { contentDescription = "关闭搜索" },
+                }.semantics { contentDescription = appText("关闭搜索") },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(painterResource(R.drawable.ic_close), null, Modifier.size(18.dp))
@@ -326,7 +329,7 @@ private fun ScheduledTaskSearchAndFilter(
         } else {
             Box(
                 Modifier.size(46.dp).clickable { onSearchingChange(true) }
-                    .semantics { contentDescription = "搜索定时任务" },
+                    .semantics { contentDescription = appText("搜索定时任务") },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(painterResource(R.drawable.ic_search), null, Modifier.size(20.dp))
@@ -334,7 +337,7 @@ private fun ScheduledTaskSearchAndFilter(
             Box {
                 Box(
                     Modifier.size(46.dp).clickable { filterExpanded = true }
-                        .semantics { contentDescription = "筛选定时任务，当前${status.title}" },
+                        .semantics { contentDescription = appText("筛选定时任务，当前%1\$s", status.title) },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(painterResource(R.drawable.ic_filter_list), null, Modifier.size(21.dp))
@@ -453,7 +456,7 @@ private fun ScheduledTaskCard(
                                 CircleShape
                             )
                     ) {
-                        Icon(painterResource(R.drawable.ic_pencil_line), contentDescription = "编辑${task.title}",
+                        Icon(painterResource(R.drawable.ic_pencil_line), contentDescription = appText("编辑%1\$s", task.title),
                             modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurface)
                     }
                     IconButton(
@@ -461,7 +464,7 @@ private fun ScheduledTaskCard(
                         enabled = progress > 0.95f && !busy,
                         modifier = Modifier.size(50.dp).background(Color(0xFFD65052), CircleShape)
                     ) {
-                        Icon(painterResource(R.drawable.ic_trash), contentDescription = "删除${task.title}",
+                        Icon(painterResource(R.drawable.ic_trash), contentDescription = appText("删除%1\$s", task.title),
                             modifier = Modifier.size(20.dp), tint = Color.White)
                     }
                 }
@@ -534,14 +537,14 @@ private fun ScheduledTaskCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    if (task.status == "active") formatScheduleDate(task.scheduledAt) else "已结束",
+                    if (task.status == "active") formatScheduleDate(task.scheduledAt) else appText("已结束"),
                     color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 15.sp,
                     modifier = Modifier.weight(1f)
                 )
                 Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
                     Icon(
                         painter = painterResource(R.drawable.ic_chevron_up),
-                        contentDescription = if (expanded) "收起任务详情" else "展开任务详情",
+                        contentDescription = if (expanded) appText("收起任务详情") else appText("展开任务详情"),
                         modifier = Modifier.size(18.dp).graphicsLayer { rotationZ = chevronRotation },
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -557,11 +560,11 @@ private fun ScheduledTaskCard(
                         .padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 22.dp),
                     verticalArrangement = Arrangement.spacedBy(13.dp)
                 ) {
-                    ScheduleDetail("执行规则", fullRule(task))
-                    ScheduleDetail("下次计划时间", if (task.status == "active") formatScheduleDate(task.scheduledAt) else "无")
-                    ScheduleDetail("所属会话", sessionTitle)
-                    ScheduleDetail("状态", if (task.status == "active") "运行中" else "已结束")
-                    ScheduleDetail("最近投递", task.lastDelivery?.get("deliveredAt")?.stringValue?.let { "已投递 · ${formatScheduleDate(it)}" } ?: "暂无投递记录")
+                    ScheduleDetail(appText("执行规则"), fullRule(task))
+                    ScheduleDetail(appText("下次计划时间"), if (task.status == "active") formatScheduleDate(task.scheduledAt) else appText("无"))
+                    ScheduleDetail(appText("所属会话"), sessionTitle)
+                    ScheduleDetail(appText("状态"), if (task.status == "active") appText("运行中") else appText("已结束"))
+                    ScheduleDetail(appText("最近投递"), task.lastDelivery?.get("deliveredAt")?.stringValue?.let { appText("已投递 · %1\$s", formatScheduleDate(it)) } ?: appText("暂无投递记录"))
                 }
             }
         }
@@ -579,31 +582,31 @@ private fun ScheduleDetail(label: String, value: String) {
 }
 
 private fun shortRule(task: MobileScheduledTask): String = when (task.kind) {
-    "daily" -> "每天"
-    "weekly" -> "每周"
-    "every" -> "每 ${duration(task.raw["everySeconds"]?.doubleValue?.toInt() ?: 0)}"
+    "daily" -> appText("每天")
+    "weekly" -> appText("每周")
+    "every" -> appText("每 %1\$s", duration(task.raw["everySeconds"]?.doubleValue?.toInt() ?: 0))
     "cron" -> "Cron"
-    else -> "一次"
+    else -> appText("一次")
 }
 
 private fun fullRule(task: MobileScheduledTask): String = when (task.kind) {
-    "daily" -> "每天 ${task.raw["time"]?.stringValue.orEmpty()} · ${task.raw["timeZone"]?.stringValue.orEmpty()}"
+    "daily" -> appText("每天 %1\$s · %2\$s", task.raw["time"]?.stringValue.orEmpty(), task.raw["timeZone"]?.stringValue.orEmpty())
     "weekly" -> {
         val days = task.raw["weekdays"]?.arrayValue.orEmpty().mapNotNull { it.doubleValue?.toInt() }
-        val dayNames = listOf("一", "二", "三", "四", "五", "六", "日")
-        "每周${days.mapNotNull { dayNames.getOrNull(it - 1) }.joinToString("、周")} · ${task.raw["time"]?.stringValue.orEmpty()} · ${task.raw["timeZone"]?.stringValue.orEmpty()}"
+        val dayNames = listOf(appText("一"), appText("二"), appText("三"), appText("四"), appText("五"), appText("六"), appText("日"))
+        appText("每周%1\$s · %2\$s · %3\$s", days.mapNotNull { dayNames.getOrNull(it - 1) }.joinToString(appText("、周")), task.raw["time"]?.stringValue.orEmpty(), task.raw["timeZone"]?.stringValue.orEmpty())
     }
-    "every" -> "每 ${duration(task.raw["everySeconds"]?.doubleValue?.toInt() ?: 0)}执行一次"
+    "every" -> appText("每 %1\$s执行一次", duration(task.raw["everySeconds"]?.doubleValue?.toInt() ?: 0))
     "cron" -> "${task.raw["expression"]?.stringValue.orEmpty()} · ${task.raw["timeZone"]?.stringValue.orEmpty()}"
-    "after" -> "${task.raw["afterSeconds"]?.doubleValue?.toInt() ?: 0} 秒后执行一次"
-    else -> "指定时间执行一次"
+    "after" -> appText("%1\$s 秒后执行一次", task.raw["afterSeconds"]?.doubleValue?.toInt() ?: 0)
+    else -> appText("指定时间执行一次")
 }
 
 private fun duration(seconds: Int): String = when {
-    seconds > 0 && seconds % 86_400 == 0 -> "${seconds / 86_400} 天"
-    seconds > 0 && seconds % 3_600 == 0 -> "${seconds / 3_600} 小时"
-    seconds > 0 && seconds % 60 == 0 -> "${seconds / 60} 分钟"
-    else -> "$seconds 秒"
+    seconds > 0 && seconds % 86_400 == 0 -> appText("%1\$s 天", seconds / 86_400)
+    seconds > 0 && seconds % 3_600 == 0 -> appText("%1\$s 小时", seconds / 3_600)
+    seconds > 0 && seconds % 60 == 0 -> appText("%1\$s 分钟", seconds / 60)
+    else -> appText("%1\$s 秒", seconds)
 }
 
 private fun formatScheduleDate(value: String): String {
@@ -611,5 +614,5 @@ private fun formatScheduleDate(value: String): String {
     val date = input.firstNotNullOfOrNull { pattern ->
         runCatching { SimpleDateFormat(pattern, Locale.US).parse(value) }.getOrNull()
     } ?: return value
-    return SimpleDateFormat("yyyy年M月d日 HH:mm", Locale.CHINA).format(date)
+    return SimpleDateFormat(appText("yyyy年M月d日 HH:mm"), Locale.getDefault()).format(date)
 }

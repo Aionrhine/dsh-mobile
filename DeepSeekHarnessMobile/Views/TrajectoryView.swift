@@ -64,6 +64,7 @@ struct TrajectoryView: View {
                         Color.clear.frame(height: 90)
                     }
                     .padding(.horizontal, 18)
+                    .readableContentWidth()
                 }
             }
         }
@@ -103,6 +104,7 @@ struct TrajectoryView: View {
                 .appFont(.caption2.monospacedDigit()).foregroundStyle(.secondary)
         }
         .padding(.horizontal, 20).padding(.vertical, 12)
+        .readableContentWidth()
         .background(Color(uiColor: .secondarySystemBackground))
         .overlay(alignment: .bottom) {
             Rectangle()

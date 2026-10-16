@@ -1,11 +1,15 @@
 package com.clarklevis.dsh.android.ui
 
+import com.clarklevis.dsh.android.localization.LocaleTestRule
+import org.junit.Rule
 import java.util.Calendar
 import java.util.TimeZone
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class RelativeTimeTest {
+    @get:Rule val locale = LocaleTestRule()
+
     private val timeZone = TimeZone.getTimeZone("Asia/Shanghai")
 
     @Test

@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 
 final class WorkspaceDrawerUITests: XCTestCase {
     private var app: XCUIApplication!
@@ -201,4 +202,68 @@ final class WorkspaceDrawerUITests: XCTestCase {
     }
 
     private var homeSettings: XCUIElement { app.buttons["设置"] }
+}
+
+/// 在 iPad 上检查实际控件边界和旋转后的重排，避免退回手机兼容窗口。
+final class TabletAdaptiveLayoutUITests: XCTestCase {
+    func testTabletWorkspaceRotationAndSecondaryPages() throws {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchArguments += ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        defer { XCUIDevice.shared.orientation = .portrait }
+        let systemAlert = XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.firstMatch
+        if systemAlert.waitForExistence(timeout: 5) { systemAlert.buttons.firstMatch.tap() }
+        let alert = app.alerts.firstMatch
+        if alert.exists { alert.buttons.firstMatch.tap() }
+        XCTAssertTrue(app.buttons["设置"].waitForExistence(timeout: 10))
+        try XCTSkipIf(app.frame.width < 700, "此用例需要 iPad 原生窗口")
+
+        for orientation in [UIDeviceOrientation.portrait, .landscapeLeft, .landscapeRight] {
+            XCUIDevice.shared.orientation = orientation
+            let landscape = orientation != .portrait
+            XCTAssertTrue(NSPredicate { _, _ in
+                (app.frame.width > app.frame.height) == landscape
+            }.evaluateAfterWaiting(timeout: 5))
+            let workspace = app.buttons["选择工作区"]
+            let search = app.textFields.firstMatch
+            XCTAssertTrue(workspace.waitForExistence(timeout: 3))
+            XCTAssertTrue(search.exists)
+            for element in [workspace, search, app.buttons["新建会话"], app.buttons["设置"]] {
+                XCTAssertTrue(element.isHittable, "旋转后控件不可用：\(element)")
+                XCTAssertGreaterThanOrEqual(element.frame.minX, app.frame.minX)
+                XCTAssertLessThanOrEqual(element.frame.maxX, app.frame.maxX)
+            }
+            // 13 英寸横竖屏都应利用原生宽度；横屏两栏的搜索框位于工作区右侧。
+            if landscape {
+                XCTAssertGreaterThan(search.frame.minX, workspace.frame.maxX)
+            }
+            let image = XCTAttachment(screenshot: app.screenshot())
+            image.name = "iPad 首页 \(orientation.rawValue)"
+            image.lifetime = .keepAlways
+            add(image)
+        }
+
+        app.buttons["设置"].tap()
+        let settingsBar = app.navigationBars["设置"]
+        XCTAssertTrue(settingsBar.waitForExistence(timeout: 5))
+        XCTAssertEqual(settingsBar.frame.width, app.frame.width, accuracy: 2)
+        settingsBar.buttons.element(boundBy: 0).tap()
+        app.buttons["打开侧边栏"].tap()
+        app.buttons["插件"].tap()
+        XCTAssertTrue(app.navigationBars["插件"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.navigationBars["插件"].frame.width, app.frame.width, accuracy: 2)
+        app.navigationBars["插件"].buttons.element(boundBy: 0).tap()
+        app.buttons["打开侧边栏"].tap()
+        app.buttons["定时任务"].tap()
+        XCTAssertTrue(app.navigationBars["定时任务"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.navigationBars["定时任务"].frame.width, app.frame.width, accuracy: 2)
+    }
+}
+
+private extension NSPredicate {
+    func evaluateAfterWaiting(timeout: TimeInterval) -> Bool {
+        XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: self, object: nil)], timeout: timeout) == .completed
+    }
 }

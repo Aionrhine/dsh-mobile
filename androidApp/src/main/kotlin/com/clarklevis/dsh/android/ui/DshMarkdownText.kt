@@ -4,6 +4,12 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
+import android.text.SpannableStringBuilder
+import android.text.style.URLSpan
+import android.text.style.ClickableSpan
+import android.view.View
+import com.clarklevis.dsh.shared.facade.ConversationFileReferences
+import com.clarklevis.dsh.shared.protocol.PresentedFile
 import android.text.Layout
 import android.text.Spanned
 import android.text.SpannedString
@@ -214,7 +220,9 @@ private data class PresentedMarkdown(
 @Composable
 internal fun DshLazyMarkdownText(
     markdown: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    knownFiles: List<PresentedFile> = emptyList(),
+    onOpenFile: ((String) -> Unit)? = null
 ) {
     val context = LocalContext.current.applicationContext
     val palette = dshMarkdownPalette(compact = false)
@@ -242,6 +250,8 @@ internal fun DshLazyMarkdownText(
     DshRenderedMarkdownText(
         markdown = presented.source,
         rendered = presented.rendered,
+        knownFiles = knownFiles,
+        onOpenFile = onOpenFile,
         palette = palette,
         textSizeSp = 16f,
         lineSpacingExtra = with(density) { 4.dp.toPx() },
@@ -256,7 +266,9 @@ private fun DshRenderedMarkdownText(
     palette: DshMarkdownPalette,
     textSizeSp: Float,
     lineSpacingExtra: Float,
-    modifier: Modifier
+    modifier: Modifier,
+    knownFiles: List<PresentedFile> = emptyList(),
+    onOpenFile: ((String) -> Unit)? = null
 ) {
     val context = LocalContext.current.applicationContext
     val textSizePx = with(LocalDensity.current) { textSizeSp.sp.toPx() }
@@ -283,7 +295,38 @@ private fun DshRenderedMarkdownText(
             textView.setTextColor(palette.textColor)
             textView.setLinkTextColor(palette.linkColor)
             val nextTag = MarkdownRenderTag(markdown, palette)
-            if (textView.tag != nextTag) {
+            if (onOpenFile != null) {
+                // 每个 TextView 独立持有回调；缓存的 Spanned 不捕获旧会话。
+                val linked = SpannableStringBuilder(rendered)
+                fun addFileSpan(start: Int, end: Int, path: String) {
+                    linked.setSpan(object : ClickableSpan() {
+                        override fun onClick(widget: View) { onOpenFile(path) }
+                        override fun updateDrawState(ds: TextPaint) { ds.color = palette.linkColor }
+                    }, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                }
+                linked.getSpans(0, linked.length, URLSpan::class.java).forEach { span ->
+                    val path = ConversationFileReferences.filePath(span.url)
+                    if (path != null) {
+                        val start = linked.getSpanStart(span)
+                        val end = linked.getSpanEnd(span)
+                        linked.removeSpan(span)
+                        addFileSpan(start, end, path)
+                    }
+                }
+                linked.getSpans(0, linked.length, DshInlineCodeSpan::class.java).forEach { span ->
+                    val start = linked.getSpanStart(span)
+                    val end = linked.getSpanEnd(span)
+                    if (linked.getSpans(start, end, ClickableSpan::class.java).isEmpty()) {
+                        // Markwon 在 Code AST 的字面值两侧各插入一个 NBSP，匹配时只去掉这两个布局字符。
+                        val codeStart = start + if (start < end && linked[start] == '\u00a0') 1 else 0
+                        val codeEnd = end - if (end > codeStart && linked[end - 1] == '\u00a0') 1 else 0
+                        ConversationFileReferences.knownPath(linked.subSequence(codeStart, codeEnd).toString(), knownFiles.map { it.path })
+                            ?.let { addFileSpan(codeStart, codeEnd, it) }
+                    }
+                }
+                markwon.setParsedMarkdown(textView, linked)
+                textView.tag = null
+            } else if (textView.tag != nextTag) {
                 markwon.setParsedMarkdown(textView, rendered)
                 textView.tag = nextTag
             }

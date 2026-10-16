@@ -143,6 +143,47 @@ enum DSHColor {
 
 struct DeepOceanBackground: View {
     var body: some View {
-        HarnessAnimatedBackground()
+        HarnessAnimatedBackground(style: UIDevice.current.userInterfaceIdiom == .pad ? .pad : .phone)
+    }
+}
+
+
+/// 根据当前容器伸缩；不读取设备型号或 UIScreen，分屏和台前调度同样生效。
+enum AdaptiveLayout {
+    static let pageWidth: CGFloat = 1_040
+    static let workspaceWidth: CGFloat = 1_440
+
+    static func workspaceUsesColumns(size: CGSize, accessibilityText: Bool = false) -> Bool {
+        size.width >= 900 && size.height >= 500 && !accessibilityText
+    }
+
+    static func horizontalInset(width: CGFloat, maximumWidth: CGFloat) -> CGFloat {
+        max(0, (width - maximumWidth) / 2)
+    }
+}
+
+extension View {
+    /// 背景和滚动区域铺满窗口，正文保持合适的阅读宽度。
+    func readableContentWidth(_ maximumWidth: CGFloat = AdaptiveLayout.pageWidth) -> some View {
+        frame(maxWidth: maximumWidth)
+            .frame(maxWidth: .infinity)
+    }
+
+    func adaptiveListWidth(_ maximumWidth: CGFloat = AdaptiveLayout.pageWidth) -> some View {
+        modifier(AdaptiveListWidth(maximumWidth: maximumWidth))
+    }
+}
+
+private struct AdaptiveListWidth: ViewModifier {
+    let maximumWidth: CGFloat
+
+    func body(content: Content) -> some View {
+        GeometryReader { geometry in
+            content.contentMargins(
+                .horizontal,
+                AdaptiveLayout.horizontalInset(width: geometry.size.width, maximumWidth: maximumWidth),
+                for: .scrollContent
+            )
+        }
     }
 }

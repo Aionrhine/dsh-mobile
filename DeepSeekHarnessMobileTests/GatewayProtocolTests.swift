@@ -1,4 +1,5 @@
 import XCTest
+import MarkdownUI
 import class DeepSeekHarnessShared.SharedQueueStore
 import UIKit
 import SwiftUI
@@ -7291,5 +7292,66 @@ final class MobilePluginBundleTests: XCTestCase {
         XCTAssertTrue(flagged.experimental)
         XCTAssertFalse(unflagged.experimental)
         XCTAssertFalse(legacy.experimental)
+    }
+}
+
+final class ErrorDetailsGatewayTests: XCTestCase {
+    func testLiveDiagnosticsSurviveSwiftRoundTrip() throws {
+        let source = #"{"kind":"event","sessionId":"s","seq":1,"time":1,"event":{"type":"assistant/attempt","turn":1,"step":0,"finish":{"kind":"error","failure":{"message":"Rate limited","code":"RATE_LIMIT","status":429}}}}"#
+        let frame = try GatewayWireDecoder.decode(Data(source.utf8))
+        XCTAssertEqual(frame.event?.finish?.failure?["status"]?.doubleValue, 429)
+        let encoded = try JSONEncoder().encode(frame)
+        let decoded = try JSONDecoder().decode(GatewayFrame.self, from: encoded)
+        XCTAssertEqual(decoded.event?.finish?.failure?["message"]?.stringValue, "Rate limited")
+    }
+
+    func testHistoricalToolResultRetainsTextOutputAndFailure() throws {
+        let source = #"{"kind":"history","events":[{"type":"tool/result","seq":1,"time":1,"data":{"message":{"toolCallId":"c","isError":true,"content":[{"type":"text","text":"raw stderr"}]},"output":"[stderr]\nOperation not permitted\n[exit code: 1]","outputTruncated":true,"error":{"message":"Permission denied","code":"DENIED"}}}]}"#
+        let frame = try GatewayWireDecoder.decode(Data(source.utf8))
+        let record = try XCTUnwrap(frame.events?.first).normalized(sessionId: "s")
+        XCTAssertEqual(record.event.callId, "c")
+        XCTAssertEqual(record.event.preview, "raw stderr")
+        XCTAssertEqual(record.event.isError, true)
+        XCTAssertEqual(record.event.outputTruncated, true)
+        XCTAssertTrue(record.event.output?.contains("[exit code: 1]") == true)
+        XCTAssertEqual(record.event.error, "Permission denied")
+    }
+
+    func testHistoricalRetryAndTurnErrorRetainStructuredDetails() throws {
+        let source = #"{"kind":"history","events":[{"type":"llm/retry","seq":1,"time":1,"data":{"turn":1,"step":0,"retryId":"r","retry":2,"maxRetries":5,"delayMs":1000,"failure":{"message":"Rate limited","code":"RATE_LIMIT","status":429}}},{"type":"turn/end","seq":2,"time":2,"data":{"turn":1,"reason":{"kind":"error","error":{"message":"Service unavailable","code":"TRANSPORT","status":503}}}}]}"#
+        let frame = try GatewayWireDecoder.decode(Data(source.utf8))
+        let records = try XCTUnwrap(frame.events).map { $0.normalized(sessionId: "s") }
+        XCTAssertEqual(records[0].event.retryId, "r")
+        XCTAssertEqual(records[0].event.retry, 2)
+        XCTAssertEqual(records[0].event.maxRetries, 5)
+        XCTAssertEqual(records[0].event.failure?["status"]?.doubleValue, 429)
+        XCTAssertEqual(records[1].event.reason, "error")
+        XCTAssertEqual(records[1].event.reasonDetails?["error"]?["message"]?.stringValue, "Service unavailable")
+        let bridged = try JSONEncoder().encode(records)
+        XCTAssertTrue(String(decoding: bridged, as: UTF8.self).contains("Service unavailable"))
+    }
+}
+
+@MainActor
+final class ConversationFileReferencesTests: XCTestCase {
+    func testFilesSurviveNativeGatewayAndKMPBridge() throws {
+        let json = #"{"kind":"event","sessionId":"s1","seq":2,"time":1,"event":{"type":"deliverables/presented","turn":1,"callId":"p1","files":[{"path":"build/报告.pdf","description":"8 页"}]}}"#
+        let frame = try JSONDecoder().decode(GatewayFrame.self, from: Data(json.utf8))
+        let adapter = KMPConversationStoreAdapter()
+        try adapter.receive(SessionEvent(sessionId: "s1", seq: 1, time: 1,
+            event: GatewayEvent(type: "assistant/message", turn: 1, step: 1, text: "报告")))
+        try adapter.receive(SessionEvent(sessionId: "s1", seq: 2, time: 1, event: try XCTUnwrap(frame.event)))
+        let file = try XCTUnwrap(adapter.items(for: "s1").first?.files.first)
+        XCTAssertEqual(file.path, "build/报告.pdf")
+        XCTAssertEqual(file.description, "8 页")
+        XCTAssertEqual(adapter.items(for: "s1").first?.knownFiles, [file])
+    }
+
+    func testInlineReferenceTransformationOnlyChangesInlineCodeOutsideLinks() {
+        let document = MarkdownUI.MarkdownContent("`report.pdf` [existing `report.pdf`](https://example.com)\n\n```\nreport.pdf\n```")
+        let html = document.linkingInlineCode(["report.pdf": "dsh-file-reference:///0"]).renderHTML()
+        XCTAssertEqual(html.components(separatedBy: "href=\"dsh-file-reference:///0\"").count - 1, 1)
+        XCTAssertTrue(html.contains("href=\"https://example.com\""))
+        XCTAssertTrue(html.contains("<pre><code>report.pdf"))
     }
 }

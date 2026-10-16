@@ -11,6 +11,7 @@ import android.util.Base64
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
 import androidx.exifinterface.media.ExifInterface
+import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.shared.gateway.GatewayOutgoingImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -39,7 +40,7 @@ class AndroidImagePreprocessor(
         val original = contentResolver.openInputStream(uri)?.use {
             readBytesWithLimit(it, MAXIMUM_INPUT_BYTES)
         }
-            ?: throw IllegalArgumentException("无法读取所选图片")
+            ?: throw IllegalArgumentException(appText("无法读取所选图片"))
         val bounds = decodeBounds(original)
         val transform = runCatching {
             contentResolver.openInputStream(uri)?.use {
@@ -83,7 +84,7 @@ class AndroidImagePreprocessor(
             0,
             original.size,
             BitmapFactory.Options().apply { inSampleSize = sampleSize }
-        ) ?: throw IllegalArgumentException("无法解码所选图片")
+        ) ?: throw IllegalArgumentException(appText("无法解码所选图片"))
         val rotated = applyTransform(decoded, transform)
         if (rotated !== decoded) decoded.recycle()
         try {
@@ -134,14 +135,14 @@ class AndroidImagePreprocessor(
             height = max(1, floor(height * 0.8).toInt())
             if (width == 1 && height == 1) break
         }
-        throw IllegalArgumentException("无法将图片压缩到 DSH 允许的大小")
+        throw IllegalArgumentException(appText("无法将图片压缩到 DSH 允许的大小"))
     }
 
     private fun decodeBounds(bytes: ByteArray): Pair<Int, Int> {
         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
         if (options.outWidth <= 0 || options.outHeight <= 0) {
-            throw IllegalArgumentException("无法解码所选图片")
+            throw IllegalArgumentException(appText("无法解码所选图片"))
         }
         return options.outWidth to options.outHeight
     }

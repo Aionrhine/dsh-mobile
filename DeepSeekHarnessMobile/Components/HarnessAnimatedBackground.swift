@@ -1,10 +1,17 @@
 import SwiftUI
 import UIKit
 
+/// iPhone 保留旧版背景；iPad 的构图和粒子调优独立生效。
+enum HarnessBackgroundStyle {
+    case phone
+    case pad
+}
+
 /// The native counterpart of the DeepSeek Harness landing-page background.
 /// Metal renders the fluid field while Canvas keeps the grid and sampled whale
 /// independent, so each layer can be tuned or disabled without touching UI.
 struct HarnessAnimatedBackground: View {
+    let style: HarnessBackgroundStyle
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
 
@@ -19,9 +26,9 @@ struct HarnessAnimatedBackground: View {
                 : timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 4_096)
 
             ZStack {
-                HarnessFluidLayer(time: elapsed)
-                HarnessTechnicalGrid()
-                HarnessWhaleField(time: elapsed, isStatic: reduceMotion)
+                HarnessFluidLayer(time: elapsed, style: style)
+                HarnessTechnicalGrid(style: style)
+                HarnessWhaleField(time: elapsed, isStatic: reduceMotion, style: style)
                     .blendMode(.screen)
 
                 LinearGradient(
@@ -33,13 +40,38 @@ struct HarnessAnimatedBackground: View {
         }
         .background(DSHColor.navy)
         .ignoresSafeArea()
+        .clipped()
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
 }
 
+/// 平板随窗口宽高比调整构图；手机独立使用旧版尺寸和位置。
+struct HarnessBackgroundComposition {
+    let whaleSize: CGFloat
+    let whaleCenter: CGPoint
+
+    init(size: CGSize, style: HarnessBackgroundStyle) {
+        let width = max(1, size.width)
+        let height = max(1, size.height)
+        if style == .phone {
+            whaleSize = max(width * 1.15, height * 0.48)
+            whaleCenter = CGPoint(x: width * 0.55, y: height * 0.34)
+            return
+        }
+        let aspect = width / height
+        let wideProgress = min(1, max(0, (aspect - 0.65) / 0.75))
+        whaleSize = min(max(width * 1.15, height * 0.48), height * 1.12) * 0.82
+        whaleCenter = CGPoint(
+            x: width * (0.55 + 0.05 * wideProgress),
+            y: height * (0.34 + 0.12 * wideProgress)
+        )
+    }
+}
+
 private struct HarnessFluidLayer: View {
     let time: TimeInterval
+    let style: HarnessBackgroundStyle
 
     var body: some View {
         Rectangle()
@@ -48,7 +80,8 @@ private struct HarnessFluidLayer: View {
                 content.colorEffect(
                     ShaderLibrary.harnessFluid(
                         .float2(proxy.size),
-                        .float(Float(time))
+                        .float(Float(time)),
+                        .float(style == .pad ? 1 : 0)
                     )
                 )
             }
@@ -56,9 +89,13 @@ private struct HarnessFluidLayer: View {
 }
 
 private struct HarnessTechnicalGrid: View {
+    let style: HarnessBackgroundStyle
+
     var body: some View {
         Canvas(rendersAsynchronously: true) { context, size in
-            let spacing: CGFloat = 42
+            let spacing: CGFloat = style == .pad
+                ? min(64, max(42, min(size.width, size.height) / 16))
+                : 42
             var grid = Path()
 
             for x in stride(from: -spacing, through: size.width + spacing, by: spacing) {
@@ -101,24 +138,40 @@ private struct HarnessTechnicalGrid: View {
 private struct HarnessWhaleField: View {
     let time: TimeInterval
     let isStatic: Bool
+    let style: HarnessBackgroundStyle
 
-    private let particles = WhaleParticleMask.particles
+    private let particles: [WhaleParticle]
+
+    init(time: TimeInterval, isStatic: Bool, style: HarnessBackgroundStyle) {
+        self.time = time
+        self.isStatic = isStatic
+        self.style = style
+        particles = WhaleParticleMask.particles(for: style)
+    }
 
     var body: some View {
         Canvas(rendersAsynchronously: true) { context, size in
             guard !particles.isEmpty else { return }
 
-            let square = max(size.width * 1.15, size.height * 0.48)
-            let center = CGPoint(x: size.width * 0.55, y: size.height * 0.34)
-            let baseDot = max(1.45, square / 220)
+            let composition = HarnessBackgroundComposition(size: size, style: style)
+            let square = composition.whaleSize
+            let center = composition.whaleCenter
+            let motionScale: CGFloat = style == .pad ? min(2, max(1, square / 460)) : 1
+            let driftAmplitude = style == .pad
+                ? CGSize(width: 1.8, height: 1.7)
+                : CGSize(width: 2.8, height: 2.6)
+            // 手机沿用原有粒径；平板使用细密粒子并限制最大尺寸。
+            let baseDot = style == .pad
+                ? min(2.4, max(0.8, square / 360))
+                : max(1.45, square / 220)
             let t = isStatic ? 0 : time
 
             for particle in particles {
                 let tail = smoothstep(0.54, 0.94, particle.x)
                 let edgeDrift = 0.35 + 0.65 * particle.edge
-                let driftX = sin(t * 0.50 + particle.phase * 0.53) * 2.8 * edgeDrift
-                let driftY = cos(t * 0.42 + particle.phase * 0.71) * 2.6 * edgeDrift
-                let tailWave = sin(t * 1.10 - particle.x * 7.0) * 7.0 * tail
+                let driftX = sin(t * 0.50 + particle.phase * 0.53) * driftAmplitude.width * edgeDrift * motionScale
+                let driftY = cos(t * 0.42 + particle.phase * 0.71) * driftAmplitude.height * edgeDrift * motionScale
+                let tailWave = sin(t * 1.10 - particle.x * 7.0) * 7.0 * tail * motionScale
                 let shimmer = 0.90 + 0.10 * sin(t * 1.5 + particle.x * 15 + particle.y * 9)
 
                 let point = CGPoint(
@@ -163,9 +216,14 @@ private struct WhaleParticle: Sendable {
 }
 
 private enum WhaleParticleMask {
-    static let particles: [WhaleParticle] = makeParticles()
+    private static let phoneParticles = makeParticles(sampleSize: 60)
+    private static let padParticles = makeParticles(sampleSize: 100)
 
-    private static func makeParticles(sampleSize: Int = 60) -> [WhaleParticle] {
+    static func particles(for style: HarnessBackgroundStyle) -> [WhaleParticle] {
+        style == .pad ? padParticles : phoneParticles
+    }
+
+    private static func makeParticles(sampleSize: Int) -> [WhaleParticle] {
         guard let image = UIImage(named: "HeroWhaleMask") else { return [] }
 
         var pixels = [UInt8](repeating: 0, count: sampleSize * sampleSize * 4)
@@ -206,7 +264,7 @@ private enum WhaleParticleMask {
         }
 
         var result: [WhaleParticle] = []
-        result.reserveCapacity(1_000)
+        result.reserveCapacity(sampleSize * sampleSize / 2)
 
         for y in 0..<sampleSize {
             for x in 0..<sampleSize {

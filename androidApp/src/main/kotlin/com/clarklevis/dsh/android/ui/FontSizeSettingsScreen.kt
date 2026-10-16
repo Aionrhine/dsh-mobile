@@ -46,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.sp
+import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.android.R
 import kotlin.math.roundToInt
 
@@ -59,11 +60,11 @@ internal fun FontSizeSettingsScreen(onBack: () -> Unit) {
         containerColor = background,
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("字体大小", fontSize = 17.sp, fontWeight = FontWeight.SemiBold) },
+                title = { Text(appText("字体大小"), fontSize = 17.sp, fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
                     TopBarCircleButton(
                         iconRes = R.drawable.ic_back_chevron,
-                        description = "返回",
+                        description = appText("返回"),
                         onClick = onBack,
                         modifier = Modifier.padding(start = 8.dp)
                     )
@@ -87,15 +88,15 @@ internal fun FontSizeSettingsScreen(onBack: () -> Unit) {
                 ) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         Text(
-                            "预览文字大小",
+                            appText("预览文字大小"),
                             fontSize = 17.sp,
                             modifier = Modifier.testTag("font-size-preview-title")
                                 .background(bubble, RoundedCornerShape(24.dp, 24.dp, 6.dp, 24.dp))
                                 .padding(horizontal = 18.dp, vertical = 14.dp)
                         )
                     }
-                    Text("你可以拖动滑块来调整字体大小。", fontSize = 17.sp, lineHeight = 28.sp)
-                    DshMarkdownText("调整后的字体大小会应用到所有页面，包括对话、按钮和 `代码`。")
+                    Text(appText("你可以拖动滑块来调整字体大小。"), fontSize = 17.sp, lineHeight = 28.sp)
+                    DshMarkdownText(appText("调整后的字体大小会应用到所有页面，包括对话、按钮和 `代码`。"))
                 }
                 FontSizeControls(Modifier.padding(horizontal = 12.dp).padding(bottom = 20.dp))
             }
@@ -116,12 +117,12 @@ internal fun FontSizeControls(modifier: Modifier = Modifier) {
     val trackColor = foreground.copy(alpha = 0.22f)
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("跟随系统", fontSize = 16.sp, modifier = Modifier.weight(1f))
+            Text(appText("跟随系统"), fontSize = 16.sp, modifier = Modifier.weight(1f))
             Switch(
                 checked = appearance.fontFollowsSystem,
                 onCheckedChange = appearance::selectFontFollowsSystem,
                 colors = dshSwitchColors(),
-                modifier = Modifier.semantics { contentDescription = "跟随系统字体大小" }
+                modifier = Modifier.semantics { contentDescription = appText("跟随系统字体大小") }
             )
         }
         HorizontalDivider(color = foreground.copy(alpha = 0.1f))
@@ -133,8 +134,8 @@ internal fun FontSizeControls(modifier: Modifier = Modifier) {
                 Text("A", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = foreground)
                 Spacer(Modifier.weight(1f))
                 Text(
-                    if (appearance.fontFollowsSystem) "跟随系统"
-                    else if (appearance.fontScale == 1f) "标准"
+                    if (appearance.fontFollowsSystem) appText("跟随系统")
+                    else if (appearance.fontScale == 1f) appText("标准")
                     else "${(appearance.fontScale * 100).roundToInt()}%",
                     fontSize = 14.sp,
                     color = foreground,
@@ -155,7 +156,7 @@ internal fun FontSizeControls(modifier: Modifier = Modifier) {
                     valueRange = 0.8f..1.5f,
                     steps = 13,
                     enabled = !appearance.fontFollowsSystem,
-                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = "字体大小" },
+                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = appText("字体大小") },
                     thumb = {
                         Box(
                             Modifier.size(28.dp).shadow(4.dp, CircleShape)
@@ -179,7 +180,7 @@ internal fun FontSizeControls(modifier: Modifier = Modifier) {
                 enabled = !appearance.fontFollowsSystem,
                 modifier = Modifier.align(Alignment.CenterHorizontally).testTag("font-size-reset")
             ) {
-                Text("恢复默认", fontSize = 13.sp, color = foreground)
+                Text(appText("恢复默认"), fontSize = 13.sp, color = foreground)
             }
         }
     }

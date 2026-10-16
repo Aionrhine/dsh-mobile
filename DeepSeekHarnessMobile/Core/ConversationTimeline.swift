@@ -11,6 +11,8 @@ struct ConversationItem: Identifiable, Sendable {
     let images: [GatewayImageAttachment]
     let isError: Bool
     let date: Date
+    let files: [PresentedFile]
+    let knownFiles: [PresentedFile]
 
     init(
         id: String,
@@ -19,7 +21,9 @@ struct ConversationItem: Identifiable, Sendable {
         text: String,
         images: [GatewayImageAttachment] = [],
         isError: Bool,
-        date: Date
+        date: Date,
+        files: [PresentedFile] = [],
+        knownFiles: [PresentedFile] = []
     ) {
         self.id = id
         self.kind = kind
@@ -27,6 +31,8 @@ struct ConversationItem: Identifiable, Sendable {
         self.text = text
         self.images = images
         self.isError = isError
+        self.files = files
+        self.knownFiles = knownFiles
         self.date = date
     }
 

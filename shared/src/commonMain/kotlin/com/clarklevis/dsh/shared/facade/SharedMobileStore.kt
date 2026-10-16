@@ -602,7 +602,13 @@ class SharedMobileFacade {
         commandCompleted: String,
         commandFailed: String,
         compactedHistory: String,
-        interrupted: String = "Generation interrupted"
+        interrupted: String = "Generation interrupted",
+        modelAttemptFailed: String = "Model request failed",
+        modelRetrying: String = "Retrying model request",
+        modelRetried: String = "Model request retried",
+        generationFailed: String = "Generation failed",
+        generationCancelled: String = "Generation cancelled",
+        outputTruncated: String = "Output truncated; showing the beginning and end"
     ): SharedConversationStore = SharedConversationStore(
         ConversationProjectionLabels(
             userMessage = userMessage,
@@ -619,7 +625,13 @@ class SharedMobileFacade {
             commandCompleted = commandCompleted,
             commandFailed = commandFailed,
             compactedHistory = compactedHistory,
-            interrupted = interrupted
+            interrupted = interrupted,
+            modelAttemptFailed = modelAttemptFailed,
+            modelRetrying = modelRetrying,
+            modelRetried = modelRetried,
+            generationFailed = generationFailed,
+            generationCancelled = generationCancelled,
+            outputTruncated = outputTruncated
         )
     )
 

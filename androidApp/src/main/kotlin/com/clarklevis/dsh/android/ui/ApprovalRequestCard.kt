@@ -43,6 +43,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.android.R
 import com.clarklevis.dsh.shared.facade.SharedApprovalStatusSnapshot
 import com.clarklevis.dsh.shared.protocol.GatewayApprovalOutcome
@@ -64,7 +65,7 @@ internal fun ApprovalRequestCard(
     val busy = status.kind == "submitting" || status.kind == "accepted"
     val shape = RoundedCornerShape(24.dp)
     val reason = request.localizedReason(Locale.getDefault().toLanguageTag())
-        ?: "${request.toolName} 请求执行需要审批的操作"
+        ?: appText("%1\$s 请求执行需要审批的操作", request.toolName)
 
     LaunchedEffect(request.rpcId, status.kind, collapsed, detailsExpanded) {
         Log.i(
@@ -95,7 +96,7 @@ internal fun ApprovalRequestCard(
                 Spacer(Modifier.size(9.dp).background(amber, CircleShape))
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("Agent 正在等待审批", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(appText("Agent 正在等待审批"), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                     Text(
                         reason,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -147,9 +148,9 @@ internal fun ApprovalRequestCard(
                 if (status.kind == "rejected") {
                     Text(
                         status.failureArgument ?: if (status.failureCode == "DISCONNECTED") {
-                            "WebSocket 已断开，重连后再处理审批。"
+                            appText("WebSocket 已断开，重连后再处理审批。")
                         } else {
-                            "审批响应未被服务端接受，请重试。"
+                            appText("审批响应未被服务端接受，请重试。")
                         },
                         color = MaterialTheme.colorScheme.error,
                         fontSize = 12.sp
@@ -165,7 +166,7 @@ internal fun ApprovalRequestCard(
                     OutlinedButton(
                         onClick = { onDecision(GatewayApprovalOutcome.REJECTED) },
                         enabled = !busy
-                    ) { Text("拒绝") }
+                    ) { Text(appText("拒绝")) }
                     Spacer(Modifier.width(10.dp))
                     Button(
                         onClick = { onDecision(GatewayApprovalOutcome.ALLOWED_ONCE) },
@@ -174,7 +175,7 @@ internal fun ApprovalRequestCard(
                             containerColor = MaterialTheme.colorScheme.onSurface,
                             contentColor = MaterialTheme.colorScheme.surface
                         )
-                    ) { Text("允许一次") }
+                    ) { Text(appText("允许一次")) }
                 }
             }
         }
@@ -198,9 +199,9 @@ private fun ApprovalHeader(
     ) {
         Spacer(Modifier.size(9.dp).background(amber, CircleShape))
         Spacer(Modifier.width(10.dp))
-        Text("等待审批", color = amber, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        Text(appText("等待审批"), color = amber, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         if (request.replay) {
-            Text("  ·  已恢复", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+            Text(appText("  ·  已恢复"), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
         }
         Spacer(Modifier.weight(1f))
         if (busy) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -211,7 +212,7 @@ private fun ApprovalHeader(
         ) {
             ApprovalChevron(
                 pointsUp = false,
-                contentDescription = "收起审批卡片"
+                contentDescription = appText("收起审批卡片")
             )
         }
     }
@@ -233,7 +234,7 @@ private fun ApprovalDetailsDisclosure(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "{ }  审批详情",
+                appText("{ }  审批详情"),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold

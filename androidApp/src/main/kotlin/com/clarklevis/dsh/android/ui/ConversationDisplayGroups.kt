@@ -1,5 +1,6 @@
 package com.clarklevis.dsh.android.ui
 
+import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.shared.protocol.GatewayImageAttachment
 import com.clarklevis.dsh.shared.projection.ConversationItem
 import com.clarklevis.dsh.shared.projection.ConversationItemKind
@@ -58,7 +59,8 @@ internal sealed interface ConversationTimelineEntry {
     data class AssistantMarkdown(
         val messageId: String,
         val blockIndex: Int,
-        val markdown: String
+        val markdown: String,
+        val knownFiles: List<com.clarklevis.dsh.shared.protocol.PresentedFile> = emptyList()
     ) : ConversationTimelineEntry {
         override val id: String = "assistant:$messageId:markdown:$blockIndex"
         override val contentType = ConversationDisplayContentType.ASSISTANT_MARKDOWN
@@ -67,7 +69,8 @@ internal sealed interface ConversationTimelineEntry {
 
     data class AssistantFooter(
         val messageId: String,
-        val text: String
+        val text: String,
+        val files: List<com.clarklevis.dsh.shared.protocol.PresentedFile> = emptyList()
     ) : ConversationTimelineEntry {
         override val id: String = "assistant:$messageId:footer"
         override val contentType = ConversationDisplayContentType.ASSISTANT_FOOTER
@@ -83,7 +86,7 @@ internal fun makeConversationTimelineEntries(
         val item = (entry as? ConversationDisplayEntry.Message)?.item
         if (
             item?.kind != ConversationItemKind.ASSISTANT ||
-            item.text.isEmpty()
+            (item.text.isEmpty() && item.files.isEmpty())
         ) {
             add(ConversationTimelineEntry.Display(entry))
             return@forEach
@@ -97,12 +100,13 @@ internal fun makeConversationTimelineEntries(
                 ConversationTimelineEntry.AssistantMarkdown(
                     messageId = item.id,
                     blockIndex = index,
-                    markdown = markdown
+                    markdown = markdown,
+                    knownFiles = item.knownFiles
                 )
             )
         }
-        if (item.id != activeStreamingAssistantMessageId) {
-            add(ConversationTimelineEntry.AssistantFooter(item.id, item.text))
+        if (item.id != activeStreamingAssistantMessageId || item.files.isNotEmpty()) {
+            add(ConversationTimelineEntry.AssistantFooter(item.id, item.text, item.files))
         }
     }
 }
@@ -220,19 +224,19 @@ internal data class ConversationProcessGroup(
                 return if (preview.isEmpty()) it.title else "${it.title} · $preview"
             }
             if (contexts.isNotEmpty() && tools.isEmpty() && reasoningText.isEmpty()) {
-                return if (contexts.size == 1) "上下文" else "${contexts.size} 项上下文"
+                return if (contexts.size == 1) appText("上下文") else appText("%1\$s 项上下文", contexts.size)
             }
             val base = when {
                 durationSeconds >= 60.0 -> {
                     val totalSeconds = durationSeconds.toInt()
-                    "耗时 ${totalSeconds / 60} 分钟 ${totalSeconds % 60} 秒"
+                    appText("耗时 %1\$s 分钟 %2\$s 秒", totalSeconds / 60, totalSeconds % 60)
                 }
-                durationSeconds >= 1.0 -> "耗时 ${durationSeconds.roundToInt()} 秒"
-                else -> "思考过程"
+                durationSeconds >= 1.0 -> appText("耗时 %1\$s 秒", durationSeconds.roundToInt())
+                else -> appText("思考过程")
             }
             val details = buildList {
-                if (contexts.isNotEmpty()) add("${contexts.size} 项上下文")
-                if (tools.isNotEmpty()) add("${tools.size} 次工具调用")
+                if (contexts.isNotEmpty()) add(appText("%1\$s 项上下文", contexts.size))
+                if (tools.isNotEmpty()) add(appText("%1\$s 次工具调用", tools.size))
             }
             return if (details.isEmpty()) base else "$base · ${details.joinToString(" · ")}"
         }

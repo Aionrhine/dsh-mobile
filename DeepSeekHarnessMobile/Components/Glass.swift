@@ -5,6 +5,7 @@ struct GlassSurface: ViewModifier {
     let dark: Bool
     let tint: Color?
     let clear: Bool
+    let shadowOpacity: Double
 
     @ViewBuilder
     func body(content: Content) -> some View {
@@ -37,14 +38,29 @@ struct GlassSurface: ViewModifier {
                         }
                 }
                 .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous).stroke(.white.opacity(dark ? 0.2 : 0.7), lineWidth: 0.8))
-                .shadow(color: DSHColor.navy.opacity(0.18), radius: 16, y: 8)
+                .shadow(color: DSHColor.navy.opacity(shadowOpacity), radius: 16, y: 8)
         }
     }
 }
 
 extension View {
-    func glassSurface(radius: CGFloat = 22, dark: Bool = false, tint: Color? = nil, clear: Bool = false) -> some View {
-        modifier(GlassSurface(radius: radius, dark: dark, tint: tint, clear: clear))
+    func glassSurface(radius: CGFloat = 22, dark: Bool = false, tint: Color? = nil, clear: Bool = false, shadowOpacity: Double = 0.18) -> some View {
+        modifier(GlassSurface(radius: radius, dark: dark, tint: tint, clear: clear, shadowOpacity: shadowOpacity))
+    }
+
+    /// Button 与 Menu 共用原生圆形液态玻璃交互，旧系统沿用材质样式。
+    @ViewBuilder
+    func glassCircleButton() -> some View {
+        if #available(iOS 26.0, *) {
+            self
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
+        } else {
+            self
+                .buttonStyle(.plain)
+                .background(.ultraThinMaterial, in: Circle())
+                .overlay(Circle().stroke(.white.opacity(0.25), lineWidth: 0.8))
+        }
     }
 }
 
@@ -86,7 +102,8 @@ struct HarnessMark: View {
                 .colorInvertIfNeeded(onDarkBackground)
                 .frame(maxWidth: .infinity, maxHeight: 29, alignment: .leading)
         }
-        .frame(width: width, height: 29, alignment: .leading)
+        .frame(maxWidth: width, alignment: .leading)
+        .frame(height: 29)
         .accessibilityLabel("Whaleness Harness")
     }
 }

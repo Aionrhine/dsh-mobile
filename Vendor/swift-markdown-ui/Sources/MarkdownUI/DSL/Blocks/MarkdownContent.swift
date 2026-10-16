@@ -114,3 +114,29 @@ public struct MarkdownContent: Equatable, MarkdownContentProtocol {
     self.blocks.renderHTML()
   }
 }
+
+// 将应用提供的已知行内代码引用转换为链接，不扫描 Markdown 源文本。
+extension MarkdownContent {
+  public func linkingInlineCode(_ destinations: [String: String]) -> MarkdownContent {
+    guard !destinations.isEmpty else { return self }
+    let generated = Set(destinations.values)
+    let rewritten = self.blocks.rewrite { (inline: InlineNode) -> [InlineNode] in
+      switch inline {
+      case .code(let value):
+        guard let destination = destinations[value] else { return [inline] }
+        return [.link(destination: destination, children: [inline])]
+      case .link(let destination, let children), .image(let destination, let children):
+        // 已处于链接内的代码保留原目的地，避免生成嵌套链接。
+        let restored = children.rewrite { (child: InlineNode) -> [InlineNode] in
+          if case .link(let target, let content) = child, generated.contains(target) { return content }
+          return [child]
+        }
+        if case .image = inline { return [.image(source: destination, children: restored)] }
+        return [.link(destination: destination, children: restored)]
+      default:
+        return [inline]
+      }
+    }
+    return MarkdownContent(blocks: rewritten)
+  }
+}

@@ -3,6 +3,7 @@ package com.clarklevis.dsh.android.ui
 import android.content.Context
 import android.content.SharedPreferences
 import android.content.res.Configuration
+import android.content.res.Resources
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -10,10 +11,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalContext
+import com.clarklevis.dsh.android.localization.appText
 import java.util.Locale
 
-internal enum class InterfaceStyle(val title: String) {
+internal enum class InterfaceStyle(private val sourceTitle: String) {
     SYSTEM("跟随系统"), LIGHT("浅色"), DARK("深色");
+
+    val title: String get() = appText(sourceTitle)
 
     fun isDark(systemDark: Boolean): Boolean = when (this) {
         SYSTEM -> systemDark
@@ -22,8 +26,20 @@ internal enum class InterfaceStyle(val title: String) {
     }
 }
 
-internal enum class AppLanguage(val title: String) {
-    SYSTEM("跟随系统"), SIMPLIFIED_CHINESE("简体中文");
+internal enum class AppLanguage {
+    SYSTEM, SIMPLIFIED_CHINESE, ENGLISH;
+
+    val title: String get() = when (this) {
+        SYSTEM -> appText("跟随系统")
+        SIMPLIFIED_CHINESE -> "简体中文"
+        ENGLISH -> "English"
+    }
+}
+
+internal fun appLocale(language: AppLanguage, systemLocale: Locale): Locale = when (language) {
+    AppLanguage.SYSTEM -> systemLocale.takeIf { it.language in setOf("zh", "en") } ?: Locale.ENGLISH
+    AppLanguage.SIMPLIFIED_CHINESE -> Locale.SIMPLIFIED_CHINESE
+    AppLanguage.ENGLISH -> Locale.ENGLISH
 }
 
 internal class AppearanceSettings(private val preferences: SharedPreferences) {
@@ -78,13 +94,9 @@ internal class AppearanceSettings(private val preferences: SharedPreferences) {
             context: Context,
             language: AppLanguage = AppearanceSettings(preferences(context)).language
         ): Context {
-            if (language == AppLanguage.SYSTEM) {
-                Locale.setDefault(context.resources.configuration.locales[0])
-                return context
-            }
-            val locale = Locale.SIMPLIFIED_CHINESE
+            val locale = appLocale(language, Resources.getSystem().configuration.locales[0])
             Locale.setDefault(locale)
-            return context.createConfigurationContext(Configuration().apply {
+            return context.createConfigurationContext(Configuration(context.resources.configuration).apply {
                 setLocale(locale)
             })
         }

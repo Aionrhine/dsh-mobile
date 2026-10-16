@@ -52,6 +52,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.android.R
 
 private const val PRIVACY_POLICY_URL = "https://clarklevis1995.github.io/dsh-mobile/privacy/"
@@ -97,7 +98,7 @@ internal fun PrivacyPolicyBottomSheet(onDismiss: () -> Unit) {
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    "隐私政策",
+                    appText("隐私政策"),
                     modifier = Modifier.fillMaxWidth().padding(horizontal = titleSidePadding),
                     fontSize = 17.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -111,7 +112,7 @@ internal fun PrivacyPolicyBottomSheet(onDismiss: () -> Unit) {
                     shadowElevation = 2.dp
                 ) {
                     Box(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), contentAlignment = Alignment.Center) {
-                        Text("完成", fontSize = 16.sp)
+                        Text(appText("完成"), fontSize = 16.sp)
                     }
                 }
             }
@@ -201,12 +202,12 @@ internal fun PrivacyPolicyBottomSheet(onDismiss: () -> Unit) {
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
-                        Text("无法打开隐私政策")
+                        Text(appText("无法打开隐私政策"))
                         TextButton(onClick = {
                             loadFailed = false
                             isLoading = true
                             reloadKey++
-                        }) { Text("重试") }
+                        }) { Text(appText("重试")) }
                     }
                 }
             }

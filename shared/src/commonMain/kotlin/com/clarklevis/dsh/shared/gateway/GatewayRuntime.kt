@@ -796,7 +796,7 @@ class GatewayRuntime(
             "question-response", "approval-response" -> request.correlationId == frame.rpcId
             "speech-catalog", "speech-subscribed", "speech-unsubscribed", "speech-preparing",
             "speech-preparation-cancelled", "speech-transcript", "speech-cancelled",
-            "session-created", "session-agent-preset", "select-agent-preset", "file-list", "file-download-opened" -> request.correlationId == frame.requestId
+            "session-created", "session-agent-preset", "select-agent-preset", "file-resolved", "file-list", "file-download-opened" -> request.correlationId == frame.requestId
             "file-download-chunk", "file-download-cancelled" -> request.correlationId == frame.transferId
             "command-options", "command-selected" -> request.correlationId == frame.command?.stringValue
             else -> true
@@ -813,7 +813,7 @@ class GatewayRuntime(
             "question-response", "approval-response" -> frame.rpcId
             "speech-catalog", "speech-subscribed", "speech-unsubscribed", "speech-preparing",
             "speech-preparation-cancelled", "speech-transcript", "speech-cancelled",
-            "session-created", "session-agent-preset", "select-agent-preset", "file-list", "file-download-opened" -> frame.requestId
+            "session-created", "session-agent-preset", "select-agent-preset", "file-resolved", "file-list", "file-download-opened" -> frame.requestId
             "file-download-chunk", "file-download-cancelled" -> frame.transferId
             "command-options", "command-selected" -> frame.command?.stringValue
             else -> null
@@ -1347,7 +1347,7 @@ class GatewayRuntime(
         )
         private val RESPONSE_KINDS_REQUIRING_ACTIVE_REQUEST = setOf(
             "history", "attachment", "sent", "question-response", "approval-response",
-            "file-list", "file-download-opened", "file-download-chunk", "file-download-cancelled",
+            "file-resolved", "file-list", "file-download-opened", "file-download-chunk", "file-download-cancelled",
             "session-cancelled", "session-created", "queue-item-updated",
             "session-agent-preset", "select-agent-preset",
             "speech-catalog", "speech-subscribed", "speech-unsubscribed", "speech-preparing",

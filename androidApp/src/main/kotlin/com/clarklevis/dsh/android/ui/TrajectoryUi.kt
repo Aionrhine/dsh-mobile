@@ -53,6 +53,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.android.R
 import com.clarklevis.dsh.shared.projection.TrajectoryNode
 import com.clarklevis.dsh.shared.projection.TrajectoryNodeKind
@@ -222,7 +223,7 @@ internal fun TrajectoryPage(
                             strokeWidth = 2.dp
                         )
                         Text(
-                            "正在生成轨迹…",
+                            appText("正在生成轨迹…"),
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
                             fontSize = 12.sp
                         )
@@ -359,7 +360,7 @@ private fun TimelineOverviewCanvas(
                 }
                 TrajectoryUiProjection.nearestEntry(entries, fraction, lane)?.let(onSelect)
             }
-        }.semantics { contentDescription = "轨迹耗时概览" }
+        }.semantics { contentDescription = appText("轨迹耗时概览") }
     ) {
         val lanePositions = listOf(6.dp.toPx(), 25.dp.toPx(), 44.dp.toPx())
         lanePositions.forEach { y ->
@@ -430,8 +431,8 @@ private fun TrajectoryRow(
                         role = Role.Button
                     ) { row.request?.let(onRequest) }
                     .semantics {
-                        contentDescription = row.request?.request?.number?.let { "打开 Request #$it" }
-                            ?: "${trajectoryLabel(node.kind)} 轨迹节点"
+                        contentDescription = row.request?.request?.number?.let { appText("打开 Request #%1\$s", it) }
+                            ?: appText("%1\$s 轨迹节点", trajectoryLabel(node.kind))
                     },
                 contentAlignment = Alignment.Center
             ) {
@@ -453,7 +454,7 @@ private fun TrajectoryRow(
         Row(
             modifier = Modifier.weight(1f).height(20.dp)
                 .clickable(role = Role.Button, onClick = onSelect)
-                .semantics { contentDescription = "打开 ${trajectoryLabel(node.kind)} #${node.startSequence}" },
+                .semantics { contentDescription = appText("打开 %1\$s #%2\$s", trajectoryLabel(node.kind), node.startSequence) },
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {

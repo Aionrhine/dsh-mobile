@@ -8,6 +8,7 @@ import android.os.SystemClock
 import android.util.Log
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewTreeObserver
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -21,13 +22,13 @@ import org.junit.Rule
 import org.junit.Test
 import java.util.concurrent.atomic.AtomicLong
 
-/** 使用真实 MotionEvent 和系统时钟测量，权限回调保持等待，不打开麦克风或远端连接。 */
+/** 使用真实 MotionEvent 和受控 Compose 时钟验证系统长按阈值，不打开麦克风或远端连接。 */
 class VoiceInputLatencyDeviceTest {
     @get:Rule
     val compose = createComposeRule()
 
     @Test
-    fun touchToLongPressIsFastButPendingPermissionCannotShowRecording() {
+    fun voiceHoldWaitsForSystemTimeoutAndPendingPermissionCannotShowRecording() {
         val shared = SharedVoiceInputStore()
         shared.open("latency", "")
         val request = shared.connectionChanged(true, true).requests.first { it.requestType == "speech-catalog" }
@@ -105,19 +106,24 @@ class VoiceInputLatencyDeviceTest {
             }
         }
         try {
+            compose.mainClock.autoAdvance = false
             send(MotionEvent.ACTION_DOWN)
-            compose.waitUntil(2_000) { permissionAt.get() > 0 }
+            val longPressTimeout = ViewConfiguration.getLongPressTimeout().toLong()
+            compose.mainClock.advanceTimeBy(longPressTimeout - 32)
+            assertTrue("系统长按阈值前不得请求录音权限", permissionAt.get() == 0L)
+            compose.mainClock.advanceTimeBy(64)
+            compose.waitUntil(longPressTimeout + 2_000) { permissionAt.get() > 0 }
             compose.onNodeWithTag("voice-recording-overlay").assertDoesNotExist()
             val recognized = permissionAt.get() - downAt
             Log.i(
                 "VoiceInputLatency",
                 "touchToPermission=${recognized}ms overlayVisible=${voice.state.overlayVisible} permissionStillPending=${voice.state.phase}",
             )
-            assertTrue("长按识别不应等待一秒：${recognized}ms", recognized in 60..350)
             assertTrue("未收到首批音频不能显示录音蒙层", drawAt.get() == 0L)
             assertTrue(voice.state.phase == "authorizing")
         } finally {
             send(MotionEvent.ACTION_UP)
+            compose.mainClock.autoAdvance = true
             compose.runOnIdle {
                 view.viewTreeObserver.removeOnDrawListener(drawListener)
                 holder.close()

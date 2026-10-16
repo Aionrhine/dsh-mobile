@@ -45,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.shared.SharedModuleInfo
 import com.clarklevis.dsh.shared.domain.SessionSummary
 import com.clarklevis.dsh.shared.facade.SharedMobileSnapshot
@@ -100,9 +101,9 @@ fun DeepSeekHarnessAndroidApp() {
             hosts.error?.let { message ->
                 androidx.compose.material3.AlertDialog(
                     onDismissRequest = { hosts.error = null },
-                    title = { Text("主机连接") },
-                    text = { Text(message) },
-                    confirmButton = { androidx.compose.material3.TextButton(onClick = { hosts.error = null }) { Text("好") } }
+                    title = { Text(appText("主机连接")) },
+                    text = { Text(appText(message)) },
+                    confirmButton = { androidx.compose.material3.TextButton(onClick = { hosts.error = null }) { Text(appText("好")) } }
                 )
             }
         }
@@ -169,7 +170,7 @@ internal fun SharedLogicScreen(
             Column(modifier = Modifier.padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("DeepSeek Harness", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                 Text(
-                    "Android 原生 Compose · ${SharedModuleInfo.summary()}",
+                    appText("Android 原生 Compose · %1\$s", SharedModuleInfo.summary()),
                     color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -178,8 +179,8 @@ internal fun SharedLogicScreen(
 
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onLoadFixture) { Text("加载共享 Fixture") }
-                OutlinedButton(onClick = onReset) { Text("重置") }
+                Button(onClick = onLoadFixture) { Text(appText("加载共享 Fixture")) }
+                OutlinedButton(onClick = onReset) { Text(appText("重置")) }
             }
         }
 
@@ -204,7 +205,7 @@ internal fun SharedLogicScreen(
         item { StatusCard(snapshot) }
 
         if (snapshot.sessions.isNotEmpty()) {
-            item { SectionTitle("共享 Session State") }
+            item { SectionTitle(appText("共享 Session State")) }
             items(snapshot.sessions, key = { "session:${it.id}" }) { session ->
                 SessionRow(
                     session = session,
@@ -215,7 +216,7 @@ internal fun SharedLogicScreen(
         }
 
         if (snapshot.conversation.isNotEmpty()) {
-            item { SectionTitle("共享 Conversation 投影") }
+            item { SectionTitle(appText("共享 Conversation 投影")) }
             items(snapshot.conversation, key = { conversationItemKey(it.id) }) { item ->
                 ConversationRow(
                     item,
@@ -226,14 +227,14 @@ internal fun SharedLogicScreen(
             }
         }
 
-        item { SectionTitle("真实 Gateway 消息/附件冒烟") }
+        item { SectionTitle(appText("真实 Gateway 消息/附件冒烟")) }
         item {
             OutlinedTextField(
                 value = messageDraft,
                 onValueChange = onMessageDraftChange,
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 2,
-                label = { Text("消息") }
+                label = { Text(appText("消息")) }
             )
         }
         if (preparedImages.isNotEmpty()) {
@@ -245,18 +246,18 @@ internal fun SharedLogicScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("${image.width}×${image.height} · ${image.byteCount} bytes")
-                    OutlinedButton(onClick = { onRemoveImage(index) }) { Text("移除") }
+                    OutlinedButton(onClick = { onRemoveImage(index) }) { Text(appText("移除")) }
                 }
             }
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onPickImage) { Text("选择图片") }
-                Button(onClick = onSendMessage, enabled = canSend) { Text("发送") }
+                OutlinedButton(onClick = onPickImage) { Text(appText("选择图片")) }
+                Button(onClick = onSendMessage, enabled = canSend) { Text(appText("发送")) }
             }
         }
 
-        item { SectionTitle("Gateway JSON 手动注入") }
+        item { SectionTitle(appText("Gateway JSON 手动注入")) }
         item {
             OutlinedTextField(
                 value = wirePayload,
@@ -269,7 +270,7 @@ internal fun SharedLogicScreen(
         }
         item {
             Button(onClick = onSubmitWirePayload, modifier = Modifier.fillMaxWidth()) {
-                Text("交给 KMP decoder / reducer")
+                Text(appText("交给 KMP decoder / reducer"))
             }
         }
         item { HorizontalDivider(modifier = Modifier.padding(bottom = 20.dp)) }
@@ -293,31 +294,31 @@ private fun GatewaySmokeCard(
             modifier = Modifier.fillMaxWidth().padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text("Android Gateway 开发冒烟入口", fontWeight = FontWeight.SemiBold)
+            Text(appText("Android Gateway 开发冒烟入口"), fontWeight = FontWeight.SemiBold)
             Text(
-                "状态：${gatewayState.connection} · 网络：${if (gatewayState.networkAvailable) "可用" else "不可用"}"
+                appText("状态：%1\$s · 网络：%2\$s", gatewayState.connection, if (gatewayState.networkAvailable) appText("可用") else appText("不可用"))
             )
             OutlinedTextField(
                 value = endpoint,
                 onValueChange = onEndpointChange,
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
-                label = { Text("ws:// 或 wss:// endpoint") }
+                label = { Text(appText("ws:// 或 wss:// endpoint")) }
             )
             OutlinedTextField(
                 value = pairingPayload,
                 onValueChange = onPairingPayloadChange,
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 2,
-                label = { Text("WebUI Base64URL 配对字符串") }
+                label = { Text(appText("WebUI Base64URL 配对字符串")) }
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onConnect) { Text("连接") }
-                Button(onClick = onPair, enabled = pairingPayload.isNotBlank()) { Text("配对") }
-                OutlinedButton(onClick = onDisconnect) { Text("断开") }
+                Button(onClick = onConnect) { Text(appText("连接")) }
+                Button(onClick = onPair, enabled = pairingPayload.isNotBlank()) { Text(appText("配对")) }
+                OutlinedButton(onClick = onDisconnect) { Text(appText("断开")) }
             }
             if (gatewayState.connection == GatewayConnectionState.CONNECTED) {
-                OutlinedButton(onClick = onRefreshSessions) { Text("刷新会话") }
+                OutlinedButton(onClick = onRefreshSessions) { Text(appText("刷新会话")) }
             }
         }
     }
@@ -327,10 +328,10 @@ private fun GatewaySmokeCard(
 private fun StatusCard(snapshot: SharedMobileSnapshot) {
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
         Column(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("共享状态", fontWeight = FontWeight.SemiBold)
-            Text("最后 frame：${snapshot.lastFrameKind ?: "尚未接收"}")
-            Text("待回答 Human Question：${snapshot.pendingQuestionCount}")
-            snapshot.lastError?.let { Text("错误：$it", color = MaterialTheme.colorScheme.error) }
+            Text(appText("共享状态"), fontWeight = FontWeight.SemiBold)
+            Text(appText("最后 frame：%1\$s", snapshot.lastFrameKind ?: appText("尚未接收")))
+            Text(appText("待回答 Human Question：%1\$s", snapshot.pendingQuestionCount))
+            snapshot.lastError?.let { Text(appText("错误：%1\$s", it), color = MaterialTheme.colorScheme.error) }
         }
     }
 }
@@ -351,7 +352,7 @@ private fun SessionRow(session: SessionSummary, selected: Boolean, onClick: () -
             Text(session.title, fontWeight = FontWeight.SemiBold)
             Text(session.id, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
         }
-        Text(if (session.isRunning) "运行中" else if (session.hasUnread) "未读" else "空闲")
+        Text(if (session.isRunning) appText("运行中") else if (session.hasUnread) appText("未读") else appText("空闲"))
     }
 }
 
@@ -365,13 +366,13 @@ private fun ConversationRow(
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(item.title, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-            Text(item.text.ifEmpty { "（纯附件消息）" })
+            Text(item.text.ifEmpty { appText("（纯附件消息）") })
             item.images.forEach { attachment ->
                 val bitmap = attachmentThumbnails[attachment.attachmentId]
                 if (bitmap != null) {
                     Image(
                         bitmap = bitmap,
-                        contentDescription = attachment.name ?: "会话附件",
+                        contentDescription = attachment.name ?: appText("会话附件"),
                         modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp)
                     )
                 } else {
@@ -387,16 +388,16 @@ private fun ConversationRow(
                         ) {
                             val deferred = attachmentStates[attachment.attachmentId] == AttachmentLoadState.DEFERRED
                             Text(
-                                if (deferred) "附件已从内存缩略图缓存淘汰：$label" else "附件加载失败：$label",
+                                if (deferred) appText("附件已从内存缩略图缓存淘汰：%1\$s", label) else appText("附件加载失败：%1\$s", label),
                                 color = if (deferred) MaterialTheme.colorScheme.onSurfaceVariant
                                 else MaterialTheme.colorScheme.error
                             )
                             OutlinedButton(onClick = { onRetryAttachment(attachment.attachmentId) }) {
-                                Text("重试")
+                                Text(appText("重试"))
                             }
                         }
                     } else {
-                        Text("附件加载中：$label")
+                        Text(appText("附件加载中：%1\$s", label))
                     }
                 }
             }

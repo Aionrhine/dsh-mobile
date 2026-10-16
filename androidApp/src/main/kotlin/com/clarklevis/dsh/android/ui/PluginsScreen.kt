@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.android.AndroidSharedStateHolder
 import com.clarklevis.dsh.android.MobileOfficialPlugin
 import com.clarklevis.dsh.android.MobilePluginBundle
@@ -81,7 +82,7 @@ internal fun PluginsScreen(
             stateHolder.refreshPlugins()
         }
     }
-    PluginPage("插件", onBack, onRefresh = stateHolder::refreshPlugins) {
+    PluginPage(appText("插件"), onBack, onRefresh = stateHolder::refreshPlugins) {
         PluginCatalogContent(stateHolder, onOpenBundle, onOpenOfficial) {
             confirmGatewayDisable = true
         }
@@ -102,7 +103,7 @@ internal fun PluginBundleDetailScreen(
         if (stateHolder.pluginCatalog == null) stateHolder.refreshPlugins()
     }
     val bundle = stateHolder.pluginCatalog?.bundles?.firstOrNull { it.name == bundleName }
-    PluginPage("插件详情", onBack) {
+    PluginPage(appText("插件详情"), onBack) {
         if (bundle != null) {
             PluginBundleDetail(stateHolder, bundle) { confirmGatewayDisable = true }
         } else {
@@ -124,7 +125,7 @@ internal fun OfficialPluginDetailScreen(
         if (stateHolder.pluginCatalog == null) stateHolder.refreshPlugins()
     }
     val official = stateHolder.pluginCatalog?.officialItems?.firstOrNull { it.id == pluginId }
-    PluginPage("插件详情", onBack) {
+    PluginPage(appText("插件详情"), onBack) {
         if (official != null) OfficialPluginDetail(official)
         else PluginDetailUnavailable(stateHolder)
     }
@@ -145,12 +146,12 @@ private fun PluginPage(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            TopBarCircleButton(R.drawable.ic_back_chevron, "返回", onBack)
+            TopBarCircleButton(R.drawable.ic_back_chevron, appText("返回"), onBack)
             Spacer(Modifier.weight(1f))
             Text(title, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.weight(1f))
             if (onRefresh != null) {
-                TopBarCircleButton(R.drawable.ic_refresh, "刷新插件", onRefresh)
+                TopBarCircleButton(R.drawable.ic_refresh, appText("刷新插件"), onRefresh)
             } else {
                 Spacer(Modifier.size(46.dp))
             }
@@ -163,7 +164,7 @@ private fun PluginPage(
 private fun PluginDetailUnavailable(stateHolder: AndroidSharedStateHolder) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         if (stateHolder.pluginsLoading) CircularProgressIndicator()
-        else Text("插件详情暂不可用", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        else Text(appText("插件详情暂不可用"), color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -171,15 +172,15 @@ private fun PluginDetailUnavailable(stateHolder: AndroidSharedStateHolder) {
 private fun PluginGatewayDisableDialog(stateHolder: AndroidSharedStateHolder, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("停用移动网关？") },
-        text = { Text("停用后手机会断开连接。只能从 DSH Web 或 CLI 重新开启此插件。") },
+        title = { Text(appText("停用移动网关？")) },
+        text = { Text(appText("停用后手机会断开连接。只能从 DSH Web 或 CLI 重新开启此插件。")) },
         confirmButton = {
             TextButton(onClick = {
                 onDismiss()
                 stateHolder.setPluginEnabled("dsh-plugin-mobile-gateway", false)
-            }) { Text("停用", color = MaterialTheme.colorScheme.error) }
+            }) { Text(appText("停用"), color = MaterialTheme.colorScheme.error) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(appText("取消")) } }
     )
 }
 
@@ -194,9 +195,9 @@ private fun PluginCatalogContent(
     LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(
         start = 20.dp, end = 20.dp, top = 12.dp, bottom = 32.dp
     ), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item { Text("安装、启用和配置插件", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        item { Text(appText("安装、启用和配置插件"), color = MaterialTheme.colorScheme.onSurfaceVariant) }
         if (stateHolder.gatewayState.connection != GatewayConnectionState.CONNECTED) {
-            item { Text("网关已断开，插件状态待重新连接确认", color = MaterialTheme.colorScheme.tertiary) }
+            item { Text(appText("网关已断开，插件状态待重新连接确认"), color = MaterialTheme.colorScheme.tertiary) }
         }
         stateHolder.pluginNotice?.let { notice ->
             item { Text(notice, color = MaterialTheme.colorScheme.tertiary) }
@@ -210,7 +211,7 @@ private fun PluginCatalogContent(
             } }
         }
         if (catalog?.managementAvailable == true) {
-            item { PluginSectionHeader("官方", catalog.officialBundles.size + catalog.officialItems.size) }
+            item { PluginSectionHeader(appText("官方"), catalog.officialBundles.size + catalog.officialItems.size) }
             items(catalog.officialBundles, key = { "bundle:${it.name}" }) { bundle ->
                 PluginBundleRow(stateHolder, bundle, onBundle, onGatewayDisable)
             }
@@ -218,7 +219,7 @@ private fun PluginCatalogContent(
                 PluginLine(null, item.id, item.title, item.description,
                     Modifier.fillMaxWidth().clickable { onOfficial(item.id) }, experimental = false)
             }
-            item { Spacer(Modifier.height(10.dp)); PluginSectionHeader("已安装", catalog.installedBundles.size) }
+            item { Spacer(Modifier.height(10.dp)); PluginSectionHeader(appText("已安装"), catalog.installedBundles.size) }
             items(catalog.installedBundles, key = { "bundle:${it.name}" }) { bundle ->
                 PluginBundleRow(stateHolder, bundle, onBundle, onGatewayDisable)
             }
@@ -295,11 +296,11 @@ private fun PluginBundleDetail(
                 bundle.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 stateHolder.pluginNotice?.let { Text(it, color = MaterialTheme.colorScheme.tertiary) }
                 if (stateHolder.gatewayState.connection != GatewayConnectionState.CONNECTED) {
-                    Text("网关已断开，插件状态待重新连接确认", color = MaterialTheme.colorScheme.tertiary)
+                    Text(appText("网关已断开，插件状态待重新连接确认"), color = MaterialTheme.colorScheme.tertiary)
                 }
             }
         }
-        item { Text("包含的组件  共 ${entries.size} 个 · ${entries.count { it.enabled && it.phase == "active" }} 运行中",
+        item { Text(appText("包含的组件  共 %1\$s 个 · %2\$s 运行中", entries.size, entries.count { it.enabled && it.phase == "active" }),
             fontSize = 17.sp, fontWeight = FontWeight.SemiBold) }
         items(entries, key = { it.rowId }) { entry ->
             Row(Modifier.fillMaxWidth().heightIn(min = 60.dp).clickable { selectedEntry = entry },
@@ -325,7 +326,7 @@ private fun PluginBundleDetail(
                         entry.readOnlyReason == null && stateHolder.pluginPendingName == null)
                 }
                 IconButton(onClick = { selectedEntry = entry }, modifier = Modifier.size(40.dp)) {
-                    Icon(painterResource(R.drawable.ic_chevron_right), "查看${entry.name}详情",
+                    Icon(painterResource(R.drawable.ic_chevron_right), appText("查看%1\$s详情", entry.name),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -361,10 +362,10 @@ private fun PluginComponentSheet(entry: MobilePluginRow, onDismiss: () -> Unit) 
                 else -> MaterialTheme.colorScheme.onSurfaceVariant
             })
             if (entry.description.isNotBlank()) Text(entry.description)
-            ComponentField("组件 ID", entry.rowId)
-            if (entry.moduleName.isNotBlank()) ComponentField("模块", entry.moduleName)
-            entry.entryId?.let { ComponentField("运行条目 ID", it) }
-            entry.readOnlyReason?.let { ComponentField("不可修改原因", it) }
+            ComponentField(appText("组件 ID"), entry.rowId)
+            if (entry.moduleName.isNotBlank()) ComponentField(appText("模块"), entry.moduleName)
+            entry.entryId?.let { ComponentField(appText("运行条目 ID"), it) }
+            entry.readOnlyReason?.let { ComponentField(appText("不可修改原因"), it) }
         }
     }
 }
@@ -383,7 +384,7 @@ private fun OfficialPluginDetail(item: MobileOfficialPlugin) {
         PluginIcon(null, item.id, Modifier.size(60.dp))
         Text(item.title, fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Text(item.description, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("配置项", fontWeight = FontWeight.SemiBold)
+        Text(appText("配置项"), fontWeight = FontWeight.SemiBold)
         item.namespaces.forEach { Text(it, fontFamily = FontFamily.Monospace,
             color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
@@ -414,7 +415,7 @@ private fun PluginLine(
 @Composable
 private fun ExperimentalPluginBadge() {
     val dark = isSystemInDarkTheme()
-    Text("实验性", modifier = Modifier.background(
+    Text(appText("实验性"), modifier = Modifier.background(
         if (dark) Color(0xFF233451) else Color(0xFFEAF0FF), RoundedCornerShape(100.dp)
     ).padding(horizontal = 8.dp, vertical = 3.dp), fontSize = 12.sp,
         fontWeight = FontWeight.Medium, color = if (dark) Color(0xFF8DADFF) else Color(0xFF356FF0))

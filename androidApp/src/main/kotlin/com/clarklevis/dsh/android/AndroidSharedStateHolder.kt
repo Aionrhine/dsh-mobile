@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.android.platform.AndroidGatewayPreferences
 import com.clarklevis.dsh.android.platform.GatewayDiagnosticAction
 import com.clarklevis.dsh.android.platform.AndroidImagePreprocessor
@@ -69,7 +70,7 @@ class AndroidSharedStateHolder(
         val appGraph = graph ?: return
         appGraph.gatewayScope.launch {
             if (!appGraph.gatewayRuntime.sendRequest(request)) withContext(Dispatchers.Main.immediate) {
-                voiceInput.requestFailed(request.correlationId, "语音请求未发送，请检查连接")
+                voiceInput.requestFailed(request.correlationId, appText("语音请求未发送，请检查连接"))
             }
         }
     }
@@ -80,7 +81,7 @@ class AndroidSharedStateHolder(
     private var runtimeCollection: Job? = null
     private val gatewayFollowUps = graph?.let { appGraph ->
         AndroidGatewayFollowUpQueue(appGraph.gatewayScope, onFailure = { error ->
-            scope?.launch { platformError = error.message ?: "后续请求提交失败" }
+            scope?.launch { platformError = error.message ?: appText("后续请求提交失败") }
         })
     }
     private val projectionActor = AndroidProjectionActor(
@@ -119,6 +120,7 @@ class AndroidSharedStateHolder(
     private var pendingDirectoryCreationParentPath: String? = null
     private var workspaceFileOutput: FileOutputStream? = null
     private var workspaceFileTemporaryFile: File? = null
+    @Volatile private var workspaceFileOperationId = UUID.randomUUID()
     private var recentlyCreatedWorkspace: GatewayWorkspace? by mutableStateOf(null)
     private var inputGeneration = 0L
     private var pendingSelectedSessionId: String? = null
@@ -194,6 +196,8 @@ class AndroidSharedStateHolder(
         private set
     var workspaceFileDownloadPurpose: String? by mutableStateOf(null)
         private set
+    var conversationFileIsOpening: Boolean by mutableStateOf(false)
+        private set
     var completedWorkspaceFile: AndroidWorkspaceLocalFile? by mutableStateOf(null)
         private set
     var slashCommands: SharedSlashCommandSnapshot by mutableStateOf(slashCommandStore.snapshot())
@@ -264,7 +268,7 @@ class AndroidSharedStateHolder(
         appGraph.gatewayScope.launch {
             val sent = appGraph.gatewayRuntime.sendRequest(request)
             if (!sent) withContext(Dispatchers.Main.immediate) {
-                queueState = queueStore.failPending("队列操作未发送，请重试")
+                queueState = queueStore.failPending(appText("队列操作未发送，请重试"))
                 platformError = queueState.lastError
             }
         }
@@ -344,14 +348,19 @@ class AndroidSharedStateHolder(
                             }
                             if (state.connection != GatewayConnectionState.CONNECTED && pluginToggleRequestId != null) {
                                 pluginNotice = if (pluginPendingName == "dsh-plugin-mobile-gateway") {
-                                    "网关连接已断开，停用结果待重连确认。若已停用，请从 DSH Web 或 CLI 重新开启。"
-                                } else "连接已断开，操作结果待重连确认"
+                                    appText("网关连接已断开，停用结果待重连确认。若已停用，请从 DSH Web 或 CLI 重新开启。")
+                                } else appText("连接已断开，操作结果待重连确认")
                                 pluginToggleRequestId = null
                                 pluginPendingName = null
                             }
                             lastObservedConnection = state.connection
                         }
-                        if (state.connection != GatewayConnectionState.CONNECTED) projectionActor.disconnected()
+                        if (state.connection != GatewayConnectionState.CONNECTED) {
+                            withContext(Dispatchers.Main.immediate) { conversationFileIsOpening = false }
+                            workspaceFileOperationId = UUID.randomUUID()
+                            applyWorkspaceFileTransition(appGraph, workspaceFileStore.cancel())
+                            projectionActor.disconnected()
+                        }
                         // 订阅只补发重连后的实时事件。重新拉取 latest history，按 seq 与
                         // 本地 live tail 合并，补齐应用在后台断线期间由其他端发送的用户消息。
                         if (shouldCatchUpSelectedHistory) {
@@ -404,7 +413,7 @@ class AndroidSharedStateHolder(
                                             "schedule-changed" -> refreshScheduledTasks()
                                             "error" -> if (event.frame.requestType == "schedule-catalog") {
                                                 scheduledTasksLoading = false
-                                                scheduledTasksError = event.frame.message ?: "定时任务加载失败"
+                                                scheduledTasksError = event.frame.message ?: appText("定时任务加载失败")
                                             }
                                         }
                                         if (event.frame.kind == "sent") {
@@ -515,16 +524,16 @@ class AndroidSharedStateHolder(
                                     if (event.requestType == scheduledTaskMutationKind &&
                                         event.correlationId == scheduledTaskMutationRequestId
                                     ) withContext(Dispatchers.Main.immediate) {
-                                        finishScheduledTaskMutation("操作已取消，请刷新任务后重试")
+                                        finishScheduledTaskMutation(appText("操作已取消，请刷新任务后重试"))
                                     }
                                     withContext(Dispatchers.Main.immediate) {
                                         applySessionAgentPresetTransition(sessionAgentPresetStore.requestFailed(
-                                            event.requestType, event.targetSessionId, event.correlationId, "请求未完成，请重试"
+                                            event.requestType, event.targetSessionId, event.correlationId, appText("请求未完成，请重试")
                                         ))
                                         handleSessionCancellationFailure(event.requestType, event.targetSessionId)
                                         if (event.requestType == "message") pendingMessageSubmission = null
                                         if (event.requestType == "queue-update") {
-                                            queueState = queueStore.failPending("队列操作未完成，请检查最新状态后重试")
+                                            queueState = queueStore.failPending(appText("队列操作未完成，请检查最新状态后重试"))
                                             platformError = queueState.lastError
                                         }
                                     }
@@ -576,27 +585,27 @@ class AndroidSharedStateHolder(
                                 }
                                 is GatewayRuntimeEvent.RequestTimedOut -> {
                                     if (event.requestType.startsWith("speech-")) withContext(Dispatchers.Main.immediate) {
-                                        voiceInput.requestFailed(event.correlationId, "语音服务请求超时，请重试")
+                                        voiceInput.requestFailed(event.correlationId, appText("语音服务请求超时，请重试"))
                                     }
                                     if (event.requestType == scheduledTaskMutationKind &&
                                         event.correlationId == scheduledTaskMutationRequestId
                                     ) withContext(Dispatchers.Main.immediate) {
-                                        finishScheduledTaskMutation("操作超时，请刷新任务后重试")
+                                        finishScheduledTaskMutation(appText("操作超时，请刷新任务后重试"))
                                     }
                                     if (event.requestType == "schedule-catalog") {
                                         withContext(Dispatchers.Main.immediate) {
                                             scheduledTasksLoading = false
-                                            scheduledTasksError = "定时任务请求超时，请重试"
+                                            scheduledTasksError = appText("定时任务请求超时，请重试")
                                         }
                                     }
                                     withContext(Dispatchers.Main.immediate) {
                                         applySessionAgentPresetTransition(sessionAgentPresetStore.requestFailed(
-                                            event.requestType, event.targetSessionId, event.correlationId, "请求未完成，请重试"
+                                            event.requestType, event.targetSessionId, event.correlationId, appText("请求未完成，请重试")
                                         ))
                                         handleSessionCancellationFailure(event.requestType, event.targetSessionId)
                                         if (event.requestType == "message") pendingMessageSubmission = null
                                         if (event.requestType == "queue-update") {
-                                            queueState = queueStore.failPending("队列操作未完成，请检查最新状态后重试")
+                                            queueState = queueStore.failPending(appText("队列操作未完成，请检查最新状态后重试"))
                                             platformError = queueState.lastError
                                         }
                                     }
@@ -649,21 +658,21 @@ class AndroidSharedStateHolder(
                                 }
                                 is GatewayRuntimeEvent.RequestRejected -> {
                                     if (event.requestType.startsWith("speech-")) withContext(Dispatchers.Main.immediate) {
-                                        voiceInput.requestFailed(event.correlationId, "语音请求未完成，请重试")
+                                        voiceInput.requestFailed(event.correlationId, appText("语音请求未完成，请重试"))
                                     }
                                     if (event.requestType == scheduledTaskMutationKind &&
                                         event.correlationId == scheduledTaskMutationRequestId
                                     ) withContext(Dispatchers.Main.immediate) {
-                                        finishScheduledTaskMutation("操作未被接受，请刷新任务后重试")
+                                        finishScheduledTaskMutation(appText("操作未被接受，请刷新任务后重试"))
                                     }
                                     withContext(Dispatchers.Main.immediate) {
                                         applySessionAgentPresetTransition(sessionAgentPresetStore.requestFailed(
-                                            event.requestType, event.targetSessionId, event.correlationId, "请求未完成，请重试"
+                                            event.requestType, event.targetSessionId, event.correlationId, appText("请求未完成，请重试")
                                         ))
                                         handleSessionCancellationFailure(event.requestType, event.targetSessionId)
                                         if (event.requestType == "message") pendingMessageSubmission = null
                                         if (event.requestType == "queue-update") {
-                                            queueState = queueStore.failPending("队列操作未完成，请检查最新状态后重试")
+                                            queueState = queueStore.failPending(appText("队列操作未完成，请检查最新状态后重试"))
                                             platformError = queueState.lastError
                                         }
                                     }
@@ -779,6 +788,10 @@ class AndroidSharedStateHolder(
     }
 
     fun selectSession(sessionId: String) {
+        if (sessionId != snapshot.selectedSessionId) {
+            cancelWorkspaceFileDownload()
+            completedWorkspaceFile = null
+        }
         graph?.diagnostics?.intent(GatewayDiagnosticAction.SELECT_SESSION, hasSession = true)
         applySessionAgentPresetTransition(sessionAgentPresetStore.leave())
         pendingSelectedSessionId = sessionId
@@ -815,7 +828,7 @@ class AndroidSharedStateHolder(
         val appGraph = graph
         if (appGraph == null || gatewayState.connection != GatewayConnectionState.CONNECTED) {
             scheduledTasksLoading = false
-            scheduledTasksError = "连接网关后可查看定时任务"
+            scheduledTasksError = appText("连接网关后可查看定时任务")
             return
         }
         scheduledTasksLoading = true
@@ -824,7 +837,7 @@ class AndroidSharedStateHolder(
             val sent = appGraph.gatewayRuntime.sendRequest(GatewayRequests.scheduleCatalog())
             if (!sent) withContext(Dispatchers.Main.immediate) {
                 scheduledTasksLoading = false
-                scheduledTasksError = "定时任务请求未发送，请重试"
+                scheduledTasksError = appText("定时任务请求未发送，请重试")
             }
         }
     }
@@ -834,7 +847,7 @@ class AndroidSharedStateHolder(
         val appGraph = graph
         if (appGraph == null || gatewayState.connection != GatewayConnectionState.CONNECTED) {
             pluginsLoading = false
-            pluginsError = "连接网关后可查看插件"
+            pluginsError = appText("连接网关后可查看插件")
             return
         }
         val requestId = UUID.randomUUID().toString()
@@ -846,7 +859,7 @@ class AndroidSharedStateHolder(
             if (!sent) withContext(Dispatchers.Main.immediate) {
                 if (pluginCatalogRequestId == requestId) {
                     pluginsLoading = false
-                    pluginsError = "插件目录请求未发送，请重试"
+                    pluginsError = appText("插件目录请求未发送，请重试")
                 }
             }
         }
@@ -854,7 +867,7 @@ class AndroidSharedStateHolder(
             delay(12000)
             if (pluginCatalogRequestId == requestId && pluginsLoading) {
                 pluginsLoading = false
-                pluginsError = "插件目录请求超时，请重试"
+                pluginsError = appText("插件目录请求超时，请重试")
             }
         }
     }
@@ -876,7 +889,7 @@ class AndroidSharedStateHolder(
                 if (pluginToggleRequestId == requestId) {
                     pluginToggleRequestId = null
                     pluginPendingName = null
-                    pluginNotice = "操作未发送，请重试"
+                    pluginNotice = appText("操作未发送，请重试")
                 }
             }
         }
@@ -885,7 +898,7 @@ class AndroidSharedStateHolder(
             if (pluginToggleRequestId == requestId) {
                 pluginToggleRequestId = null
                 pluginPendingName = null
-                pluginNotice = "操作结果待确认，请刷新插件目录"
+                pluginNotice = appText("操作结果待确认，请刷新插件目录")
                 refreshPlugins()
             }
         }
@@ -904,7 +917,7 @@ class AndroidSharedStateHolder(
                     officialItems = frame.officialItems.orEmpty().map(::MobileOfficialPlugin)
                 )
                 pluginsLoading = false
-                pluginsError = if (frame.managementAvailable == true) null else "当前 Host 不支持插件管理"
+                pluginsError = if (frame.managementAvailable == true) null else appText("当前 Host 不支持插件管理")
             }
             // The matching mutation response refreshes the catalog once.
             frame.kind == "plugins-changed" && pluginPageVisited && pluginToggleRequestId == null -> refreshPlugins()
@@ -913,9 +926,9 @@ class AndroidSharedStateHolder(
                 val application = frame.result?.get("application")?.stringValue
                 pluginNotice = when (application) {
                     "applied" -> null
-                    "restart-required" -> "设置已保存，请重启 DSH Web 后刷新目录"
-                    "overridden" -> "插件状态被其他配置覆盖，请检查 Host 配置"
-                    else -> frame.result?.get("error")?.stringValue ?: "插件操作未生效"
+                    "restart-required" -> appText("设置已保存，请重启 DSH Web 后刷新目录")
+                    "overridden" -> appText("插件状态被其他配置覆盖，请检查 Host 配置")
+                    else -> frame.result?.get("error")?.stringValue ?: appText("插件操作未生效")
                 }
                 pluginToggleRequestId = null
                 pluginPendingName = null
@@ -924,14 +937,14 @@ class AndroidSharedStateHolder(
             frame.kind == "error" && frame.requestType == "plugin-catalog" &&
                 frame.requestId == pluginCatalogRequestId -> {
                 pluginsLoading = false
-                pluginsError = frame.message ?: "插件目录加载失败"
+                pluginsError = frame.message ?: appText("插件目录加载失败")
             }
             frame.kind == "error" && frame.requestType in setOf(
                 "plugin-bundle-set-enabled", "plugin-entry-set-enabled"
             ) && frame.requestId == pluginToggleRequestId -> {
                 pluginToggleRequestId = null
                 pluginPendingName = null
-                pluginNotice = frame.message ?: "插件操作失败"
+                pluginNotice = frame.message ?: appText("插件操作失败")
                 refreshPlugins()
             }
         }
@@ -951,7 +964,7 @@ class AndroidSharedStateHolder(
                 title = title.trim(), prompt = prompt.trim(), change = change, requestId = requestId
             ))
             if (!sent) withContext(Dispatchers.Main.immediate) {
-                if (scheduledTaskMutationRequestId == requestId) finishScheduledTaskMutation("操作未发送，请重试")
+                if (scheduledTaskMutationRequestId == requestId) finishScheduledTaskMutation(appText("操作未发送，请重试"))
             }
         }
         return requestId
@@ -965,7 +978,7 @@ class AndroidSharedStateHolder(
                 task.sessionId, task.id, requestId
             ))
             if (!sent) withContext(Dispatchers.Main.immediate) {
-                if (scheduledTaskMutationRequestId == requestId) finishScheduledTaskMutation("操作未发送，请重试")
+                if (scheduledTaskMutationRequestId == requestId) finishScheduledTaskMutation(appText("操作未发送，请重试"))
             }
         }
         return requestId
@@ -973,12 +986,12 @@ class AndroidSharedStateHolder(
 
     private fun beginScheduledTaskMutation(task: MobileScheduledTask, kind: String): String? {
         if (gatewayState.connection != GatewayConnectionState.CONNECTED) {
-            scheduledTaskMutationError = "连接网关后才能修改定时任务"
+            scheduledTaskMutationError = appText("连接网关后才能修改定时任务")
             return null
         }
         if (scheduledTaskPendingId != null) return null
         if (scheduledTasks.firstOrNull { it.id == task.id && it.sessionId == task.sessionId }?.raw != task.raw) {
-            scheduledTaskMutationError = "任务已变化，列表已刷新，请重新操作"
+            scheduledTaskMutationError = appText("任务已变化，列表已刷新，请重新操作")
             refreshScheduledTasks()
             return null
         }
@@ -1000,10 +1013,10 @@ class AndroidSharedStateHolder(
     }
 
     private fun scheduledTaskFailureMessage(code: String?, message: String?): String = when (code) {
-        "schedule_conflict" -> "任务已被其他设备修改，列表已刷新，请重新打开编辑"
-        "schedule_ended" -> "任务已结束，无法再编辑"
-        "schedule_not_found" -> "任务已不存在，列表已刷新"
-        else -> message ?: "操作失败，请稍后重试"
+        "schedule_conflict" -> appText("任务已被其他设备修改，列表已刷新，请重新打开编辑")
+        "schedule_ended" -> appText("任务已结束，无法再编辑")
+        "schedule_not_found" -> appText("任务已不存在，列表已刷新")
+        else -> message ?: appText("操作失败，请稍后重试")
     }
 
     private var preparingNewSession = false
@@ -1012,11 +1025,11 @@ class AndroidSharedStateHolder(
         if (preparingNewSession) return false
         val appGraph = graph ?: return false
         if (gatewayState.connection != GatewayConnectionState.CONNECTED) {
-            platformError = "请先连接 DeepSeek Harness"
+            platformError = appText("请先连接 DeepSeek Harness")
             return false
         }
         if ("session-create" !in gatewayState.capabilities) {
-            platformError = "请更新并重启 Mobile Gateway，以支持发送消息前配置新会话"
+            platformError = appText("请更新并重启 Mobile Gateway，以支持发送消息前配置新会话")
             return false
         }
         preparingNewSession = true
@@ -1040,7 +1053,7 @@ class AndroidSharedStateHolder(
             val frame = (event as? GatewayRuntimeEvent.Frame)?.frame
             val sessionId = frame?.sessionId?.takeIf(String::isNotBlank)
             if (frame?.kind != "session-created" || sessionId == null) {
-                platformError = frame?.message ?: "创建会话失败，请检查连接后重试"
+                platformError = frame?.message ?: appText("创建会话失败，请检查连接后重试")
                 return false
             }
             pendingSelectedSessionId = sessionId
@@ -1060,7 +1073,7 @@ class AndroidSharedStateHolder(
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            platformError = error.message ?: "创建会话失败"
+            platformError = error.message ?: appText("创建会话失败")
             return false
         } finally {
             preparingNewSession = false
@@ -1105,7 +1118,7 @@ class AndroidSharedStateHolder(
     fun browseDirectories(path: String? = null) {
         val appGraph = graph ?: return
         if (gatewayState.connection != GatewayConnectionState.CONNECTED) {
-            platformError = "请先连接 DeepSeek Harness"
+            platformError = appText("请先连接 DeepSeek Harness")
             return
         }
         directoryIsLoading = true
@@ -1113,7 +1126,7 @@ class AndroidSharedStateHolder(
             val accepted = appGraph.gatewayRuntime.sendRequest(GatewayRequests.directories(path))
             if (!accepted) withContext(Dispatchers.Main.immediate) {
                 directoryIsLoading = false
-                platformError = "目录请求正在处理中，请稍后重试"
+                platformError = appText("目录请求正在处理中，请稍后重试")
             }
         }
     }
@@ -1121,12 +1134,12 @@ class AndroidSharedStateHolder(
     fun createDirectory(parentPath: String, name: String) {
         val appGraph = graph ?: return
         if (gatewayState.connection != GatewayConnectionState.CONNECTED) {
-            platformError = "请先连接 DeepSeek Harness"
+            platformError = appText("请先连接 DeepSeek Harness")
             return
         }
         val normalizedName = name.trim()
         if (normalizedName.isEmpty()) {
-            platformError = "文件夹名称不能为空"
+            platformError = appText("文件夹名称不能为空")
             return
         }
         pendingDirectoryCreationParentPath = parentPath
@@ -1138,7 +1151,7 @@ class AndroidSharedStateHolder(
             if (!accepted) withContext(Dispatchers.Main.immediate) {
                 pendingDirectoryCreationParentPath = null
                 directoryCreationIsLoading = false
-                platformError = "文件夹创建请求正在处理中，请稍后重试"
+                platformError = appText("文件夹创建请求正在处理中，请稍后重试")
             }
         }
     }
@@ -1150,7 +1163,7 @@ class AndroidSharedStateHolder(
     fun createWorkspace(path: String) {
         val appGraph = graph ?: return
         if (gatewayState.connection != GatewayConnectionState.CONNECTED) {
-            platformError = "请先连接 DeepSeek Harness"
+            platformError = appText("请先连接 DeepSeek Harness")
             return
         }
         workspaceCreationCompletedPath = null
@@ -1159,7 +1172,7 @@ class AndroidSharedStateHolder(
             val accepted = appGraph.gatewayRuntime.sendRequest(GatewayRequests.createWorkspace(path))
             if (!accepted) withContext(Dispatchers.Main.immediate) {
                 workspaceCreationIsLoading = false
-                platformError = "工作区创建请求正在处理中，请稍后重试"
+                platformError = appText("工作区创建请求正在处理中，请稍后重试")
             }
         }
     }
@@ -1172,15 +1185,15 @@ class AndroidSharedStateHolder(
         val appGraph = graph ?: return
         val sessionId = snapshot.selectedSessionId
         if (sessionId == null) {
-            platformError = "请先打开一个已有会话"
+            platformError = appText("请先打开一个已有会话")
             return
         }
         if (gatewayState.connection != GatewayConnectionState.CONNECTED) {
-            platformError = "请先连接 DeepSeek Harness"
+            platformError = appText("请先连接 DeepSeek Harness")
             return
         }
         if ("file-downloads" !in gatewayState.capabilities) {
-            platformError = "当前 Mobile Gateway 不支持文件下载，请升级并重启网关。"
+            platformError = appText("当前 Mobile Gateway 不支持文件下载，请升级并重启网关。")
             return
         }
         appGraph.gatewayScope.launch {
@@ -1197,19 +1210,52 @@ class AndroidSharedStateHolder(
         if (entry.kind != "file") return
         completedWorkspaceFile = null
         appGraph.gatewayScope.launch {
-            applyWorkspaceFileTransition(
+            if (purpose == "preview" && !entry.name.endsWith(".apk", ignoreCase = true)) {
+                beginWorkspaceFileTransition(appGraph, workspaceFileStore.resolve(
+                    sessionId, entry.path, UUID.randomUUID().toString(),
+                    "file-references-v1" in gatewayState.capabilities, useCache = true
+                ))
+                return@launch
+            }
+            beginWorkspaceFileTransition(
                 appGraph,
                 workspaceFileStore.download(
                     sessionId,
                     entry.path,
                     UUID.randomUUID().toString(),
-                    purpose
+                    if (purpose == "preview" && entry.name.endsWith(".apk", ignoreCase = true)) "install" else purpose
                 )
             )
         }
     }
 
+    fun openConversationFile(gatewayId: String, sessionId: String, path: String) {
+        val appGraph = graph ?: return
+        if (gatewayId != gatewayLocalId || sessionId != snapshot.selectedSessionId) return
+        // 后台准备预览时忽略重复点击，避免弹出非必要的 download-busy 提示。
+        if (conversationFileIsOpening) return
+        if (gatewayState.connection != GatewayConnectionState.CONNECTED) {
+            platformError = appText("请先连接 DeepSeek Harness")
+            return
+        }
+        if ("file-downloads" !in gatewayState.capabilities) {
+            platformError = appText("当前网关不支持文件下载，请升级网关。")
+            return
+        }
+        completedWorkspaceFile = null
+        conversationFileIsOpening = true
+        appGraph.gatewayScope.launch {
+            if (sessionId != snapshot.selectedSessionId) return@launch
+            beginWorkspaceFileTransition(appGraph, workspaceFileStore.resolve(
+                sessionId, path, UUID.randomUUID().toString(),
+                "file-references-v1" in gatewayState.capabilities, useCache = true
+            ))
+        }
+    }
+
     fun cancelWorkspaceFileDownload() {
+        workspaceFileOperationId = UUID.randomUUID()
+        conversationFileIsOpening = false
         val appGraph = graph ?: return
         appGraph.gatewayScope.launch {
             applyWorkspaceFileTransition(appGraph, workspaceFileStore.cancel())
@@ -1457,7 +1503,7 @@ class AndroidSharedStateHolder(
                 if (!appGraph.gatewayRuntime.sendRequest(request)) {
                     withContext(Dispatchers.Main.immediate) {
                         applySessionAgentPresetTransition(sessionAgentPresetStore.requestFailed(
-                            request.requestType, request.targetSessionId, request.correlationId, "请求发送失败，请重试"
+                            request.requestType, request.targetSessionId, request.correlationId, appText("请求发送失败，请重试")
                         ))
                     }
                 }
@@ -1526,11 +1572,11 @@ class AndroidSharedStateHolder(
         if (sessionId == null || goal == null) return
         if (goal.phase.lowercase() == "complete") return
         if (gatewayState.connection != GatewayConnectionState.CONNECTED) {
-            platformError = "请先连接 DeepSeek Harness"
+            platformError = appText("请先连接 DeepSeek Harness")
             return
         }
         if ("goals" !in gatewayState.capabilities) {
-            platformError = "当前 Mobile Gateway 不支持目标管理，请升级并重启网关。"
+            platformError = appText("当前 Mobile Gateway 不支持目标管理，请升级并重启网关。")
             return
         }
         if (goalMutationKind != null) return
@@ -1539,7 +1585,7 @@ class AndroidSharedStateHolder(
             val accepted = appGraph.gatewayRuntime.sendRequest(request(sessionId, goal.ref))
             if (!accepted) withContext(Dispatchers.Main.immediate) {
                 goalMutationKind = null
-                platformError = "目标操作正在处理中，请稍后重试。"
+                platformError = appText("目标操作正在处理中，请稍后重试。")
             }
         }
     }
@@ -1554,9 +1600,9 @@ class AndroidSharedStateHolder(
         withContext(Dispatchers.Main.immediate) {
             goalMutationKind = null
             platformError = if (reason == "request-timeout") {
-                "目标操作超时，已刷新当前目标后可重试。"
+                appText("目标操作超时，已刷新当前目标后可重试。")
             } else {
-                "目标操作未完成，已刷新当前目标后可重试。"
+                appText("目标操作未完成，已刷新当前目标后可重试。")
             }
         }
         sessionId?.let {
@@ -1654,9 +1700,9 @@ class AndroidSharedStateHolder(
                     if (pairingPayload == payload) pairingPayload = ""
                 } else {
                     val message = if (result.exceptionOrNull() is GatewayPairingPayloadException) {
-                        result.exceptionOrNull()?.message ?: "配对信息无效"
+                        result.exceptionOrNull()?.message ?: appText("配对信息无效")
                     } else {
-                        "无法提交配对信息，请稍后重试。"
+                        appText("无法提交配对信息，请稍后重试。")
                     }
                     if (reportFailureGlobally) platformError = message
                     onFailure(message)
@@ -1666,6 +1712,8 @@ class AndroidSharedStateHolder(
     }
 
     fun disconnect() {
+        cancelWorkspaceFileDownload()
+        completedWorkspaceFile = null
         graph?.let { appGraph ->
             appGraph.diagnostics.intent(GatewayDiagnosticAction.DISCONNECT)
             appGraph.gatewayScope.launch { appGraph.gatewayRuntime.disconnect() }
@@ -1747,7 +1795,7 @@ class AndroidSharedStateHolder(
                 if (submission.images.isNotEmpty() && !commandExecution.allowsImages) {
                     withContext(Dispatchers.Main.immediate) {
                         pendingMessageSubmission = null
-                        platformError = "此命令不支持图片"
+                        platformError = appText("此命令不支持图片")
                     }
                     return@launch
                 }
@@ -1948,7 +1996,7 @@ class AndroidSharedStateHolder(
         when {
             frame.kind == "session-cancelled" && frame.accepted != true -> {
                 cancellingSessionIds = cancellingSessionIds - sessionId
-                platformError = "停止请求未被服务端接受"
+                platformError = appText("停止请求未被服务端接受")
             }
             frame.kind == "event" && frame.event?.type == "turn/end" -> {
                 cancellingSessionIds = cancellingSessionIds - sessionId
@@ -2078,17 +2126,17 @@ class AndroidSharedStateHolder(
         if (succeeded) {
             pendingCommandSubmission?.let { applyMessageSendResult(it, true) }
         } else {
-            platformError = detail ?: frame.message ?: "命令执行失败"
+            platformError = detail ?: frame.message ?: appText("命令执行失败")
         }
         pendingCommandSubmission = null
     }
 
     private fun slashCommandErrorMessage(code: String): String = when (code) {
         "command-frame-invalid", "command-catalog-invalid", "command-options-invalid",
-        "command-selection-invalid" -> "斜杠命令协议响应无效"
-        "request-timeout" -> "斜杠命令请求超时"
-        "request-busy" -> "斜杠命令请求正在处理中"
-        else -> "斜杠命令操作失败：$code"
+        "command-selection-invalid" -> appText("斜杠命令协议响应无效")
+        "request-timeout" -> appText("斜杠命令请求超时")
+        "request-busy" -> appText("斜杠命令请求正在处理中")
+        else -> appText("斜杠命令操作失败：%1\$s", code)
     }
 
     /**
@@ -2154,7 +2202,7 @@ class AndroidSharedStateHolder(
                 workspaceCreationIsLoading = false
                 val workspace = frame.workspace
                 if (workspace == null) {
-                    platformError = "Gateway 未返回创建后的工作区"
+                    platformError = appText("Gateway 未返回创建后的工作区")
                     return
                 }
                 recentlyCreatedWorkspace = workspace
@@ -2165,16 +2213,36 @@ class AndroidSharedStateHolder(
             "error" -> {
                 clearWorkspaceRequestLoading(frame.requestType)
                 if (frame.requestType in WORKSPACE_REQUEST_TYPES) {
-                    platformError = frame.message ?: "工作区请求失败"
+                    platformError = frame.message ?: appText("工作区请求失败")
                 }
             }
         }
     }
 
-    private suspend fun applyWorkspaceFileTransition(
+    private suspend fun beginWorkspaceFileTransition(
         appGraph: AndroidAppGraph,
         transition: SharedWorkspaceFileTransition
     ) {
+        if (transition.request != null && transition.snapshot.lastError == null) {
+            workspaceFileOperationId = UUID.randomUUID()
+        }
+        applyWorkspaceFileTransition(appGraph, transition)
+    }
+
+    private suspend fun applyWorkspaceFileTransition(
+        appGraph: AndroidAppGraph,
+        transition: SharedWorkspaceFileTransition,
+        cachedFile: File? = null
+    ) {
+        val cache = AndroidWorkspacePreviewCache(File(appGraph.application.cacheDir, "workspace-previews"), gatewayLocalId)
+        transition.cacheLookup?.let { lookup ->
+            val operationId = workspaceFileOperationId
+            val file = withContext(Dispatchers.IO) { cache.find(lookup) }
+            if (operationId != workspaceFileOperationId) return
+            val next = workspaceFileStore.completeCacheLookup(lookup.requestId, file != null)
+            applyWorkspaceFileTransition(appGraph, next, file)
+            return
+        }
         if (transition.discardTransferId != null) closeWorkspaceTemporaryFile(remove = true)
         val snapshot = transition.snapshot
         try {
@@ -2192,7 +2260,8 @@ class AndroidSharedStateHolder(
                 workspaceFileDownloadProgress = null
                 workspaceFileDownloadPath = null
                 workspaceFileDownloadPurpose = null
-                platformError = "写入下载文件失败"
+                platformError = appText("写入下载文件失败")
+                conversationFileIsOpening = false
             }
             cancelled.request?.let { request ->
                 gatewayFollowUps?.submit { appGraph.gatewayRuntime.sendRequest(request) }
@@ -2200,7 +2269,12 @@ class AndroidSharedStateHolder(
             return
         }
 
-        var completed: AndroidWorkspaceLocalFile? = null
+        var completed: AndroidWorkspaceLocalFile? = transition.cacheHit?.let { hit ->
+            cachedFile?.let { file -> AndroidWorkspaceLocalFile(
+                file, hit.sessionId, hit.path, hit.name, hit.mediaType, "preview"
+            ) }
+        }
+        val operationId = workspaceFileOperationId
         transition.completion?.let { completion ->
             workspaceFileOutput?.fd?.sync()
             closeWorkspaceTemporaryFile(remove = false)
@@ -2209,12 +2283,26 @@ class AndroidSharedStateHolder(
                 file?.delete()
                 workspaceFileTemporaryFile = null
                 withContext(Dispatchers.Main.immediate) {
-                    platformError = "下载文件的本地大小校验失败"
+                    platformError = appText("下载文件的本地大小校验失败")
+                    conversationFileIsOpening = false
+                }
+                return
+            }
+            workspaceFileTemporaryFile = null
+            val saved = withContext(Dispatchers.IO) { cache.store(file, completion) }
+            if (saved != null) {
+                file.delete()
+                file.parentFile?.delete()
+            }
+            if (operationId != workspaceFileOperationId) {
+                if (saved == null) {
+                    file.delete()
+                    file.parentFile?.delete()
                 }
                 return
             }
             completed = AndroidWorkspaceLocalFile(
-                file = file,
+                file = saved ?: file,
                 sessionId = completion.sessionId,
                 remotePath = completion.path,
                 name = completion.name,
@@ -2233,8 +2321,18 @@ class AndroidSharedStateHolder(
             }
             workspaceFileDownloadPath = snapshot.activeDownload?.path
             workspaceFileDownloadPurpose = snapshot.activeDownload?.purpose
-            snapshot.lastError?.let { platformError = workspaceFileErrorMessage(it) }
-            completed?.let { completedWorkspaceFile = it }
+            snapshot.lastError?.let {
+                platformError = workspaceFileErrorMessage(it)
+                conversationFileIsOpening = false
+            }
+            completed?.let {
+                conversationFileIsOpening = false
+                if (it.sessionId == this@AndroidSharedStateHolder.snapshot.selectedSessionId) completedWorkspaceFile = it
+                else if (it.file.parentFile?.parentFile?.name == "workspace-files") {
+                    it.file.delete()
+                    it.file.parentFile?.delete()
+                }
+            }
         }
         transition.request?.let { request ->
             gatewayFollowUps?.submit { appGraph.gatewayRuntime.sendRequest(request) }
@@ -2265,10 +2363,11 @@ class AndroidSharedStateHolder(
     }
 
     private fun workspaceFileErrorMessage(code: String): String = when (code) {
-        "file-download-integrity-failed" -> "文件完整性校验失败，请重新下载。"
-        "download-busy" -> "已有文件正在下载，请稍后再试。"
-        "file-download-offset-mismatch" -> "文件分块顺序异常，下载已取消。"
-        else -> "工作区文件请求失败：$code"
+        "file-references-upgrade-required" -> appText("此文件需要新版网关解析，请升级 Mobile Gateway。")
+        "file-download-integrity-failed" -> appText("文件完整性校验失败，请重新下载。")
+        "download-busy" -> appText("已有文件正在下载，请稍后再试。")
+        "file-download-offset-mismatch" -> appText("文件分块顺序异常，下载已取消。")
+        else -> appText("工作区文件请求失败：%1\$s", code)
     }
 
     private fun applyWorkspaceSelection(workspaceId: String, persist: Boolean) {
@@ -2475,10 +2574,10 @@ class AndroidSharedStateHolder(
         )
         private val GOAL_MUTATION_RESPONSE_KINDS = GOAL_MUTATION_REQUEST_TYPES
         private val WORKSPACE_FILE_FRAME_KINDS = setOf(
-            "file-list", "file-download-opened", "file-download-chunk", "file-download-cancelled"
+            "file-resolved", "file-list", "file-download-opened", "file-download-chunk", "file-download-cancelled"
         )
         private val WORKSPACE_FILE_REQUEST_TYPES = setOf(
-            "file-list", "file-download-open", "file-download-read", "file-download-cancel"
+            "file-resolve", "file-list", "file-download-open", "file-download-read", "file-download-cancel"
         )
         private const val MAXIMUM_THUMBNAIL_BYTES = 16L * 1_024 * 1_024
         private const val MAXIMUM_STATUS_COUNT = 256L

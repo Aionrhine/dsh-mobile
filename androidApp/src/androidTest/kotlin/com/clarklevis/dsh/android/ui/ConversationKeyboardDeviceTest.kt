@@ -10,6 +10,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotFocused
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithText
@@ -183,7 +184,7 @@ class ConversationKeyboardDeviceTest {
             val editor = compose.onNodeWithTag("composer-input")
             editor.performTouchInput {
                 down(center)
-                advanceEventTime(70)
+                advanceEventTime(180)
                 up()
             }
             editor.assertIsFocused().performTextInput("短按编辑")
@@ -205,7 +206,7 @@ class ConversationKeyboardDeviceTest {
         val editor = compose.onNodeWithTag("composer-input")
         editor.performTouchInput {
             down(center)
-            advanceEventTime(160)
+            advanceEventTime(700)
             up()
         }
         compose.onNodeWithText("语音输入暂不可用").assertIsDisplayed()
@@ -215,6 +216,65 @@ class ConversationKeyboardDeviceTest {
         editor.assertIsFocused().performTextInput("继续编辑")
         editor.assertTextContains("继续编辑", substring = true)
         fixture.holder.close()
+    }
+
+    @Test
+    fun approvalArrivalWhileViewingTrajectoryReturnsToVisibleActions() {
+        val fixture = showConversation()
+        try {
+            compose.onNodeWithText("轨迹").performClick()
+            compose.waitForIdle()
+            compose.onNodeWithTag("composer-input").assertIsNotDisplayed()
+            compose.runOnIdle {
+                fixture.holder.wirePayload =
+                    """{"kind":"approval-requested","rpcId":"approval-rpc","sessionId":"keyboard-session","approvalId":"approval-id","toolName":"Bash","reason":"需要确认命令"}"""
+                fixture.holder.submitWirePayload()
+            }
+            compose.onNodeWithText("允许一次").assertIsDisplayed()
+            compose.onNodeWithText("拒绝").assertIsDisplayed()
+        } finally {
+            fixture.holder.close()
+        }
+    }
+
+    @Test
+    fun approvalArrivalWhileEditingHidesKeyboardAndShowsActions() {
+        val fixture = showConversation()
+        try {
+            compose.onNodeWithTag("composer-input").performClick().assertIsFocused()
+            waitForIme(fixture.view, visible = true)
+            compose.runOnIdle {
+                fixture.holder.wirePayload =
+                    """{"kind":"approval-requested","rpcId":"approval-rpc","sessionId":"keyboard-session","approvalId":"approval-id","toolName":"Bash","reason":"需要确认命令"}"""
+                fixture.holder.submitWirePayload()
+            }
+            waitForIme(fixture.view, visible = false)
+            compose.onNodeWithText("允许一次").assertIsDisplayed()
+            compose.onNodeWithText("拒绝").assertIsDisplayed()
+        } finally {
+            fixture.holder.close()
+        }
+    }
+
+    @Test
+    fun anotherSessionsApprovalDoesNotInterruptTrajectoryAndAppearsOnSelection() {
+        val fixture = showConversation()
+        try {
+            compose.onNodeWithText("轨迹").performClick()
+            compose.waitForIdle()
+            compose.runOnIdle {
+                fixture.holder.wirePayload =
+                    """{"kind":"approval-requested","rpcId":"other-rpc","sessionId":"other-session","approvalId":"other-id","toolName":"Bash","reason":"另一个会话的审批","replay":true}"""
+                fixture.holder.submitWirePayload()
+            }
+            compose.onNodeWithTag("composer-input").assertIsNotDisplayed()
+            compose.onNodeWithText("允许一次").assertDoesNotExist()
+            compose.runOnIdle { fixture.holder.selectSession("other-session") }
+            compose.onNodeWithText("另一个会话的审批").assertIsDisplayed()
+            compose.onNodeWithText("允许一次").assertIsDisplayed()
+        } finally {
+            fixture.holder.close()
+        }
     }
 
     @Test
