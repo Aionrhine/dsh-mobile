@@ -91,7 +91,7 @@ final class VoiceInputTests: XCTestCase {
         adapter.keyboardChanged(true)
         adapter.keyboardChanged(false)
         XCTAssertEqual(updates, 2)
-        XCTAssertEqual(adapter.state.hint, "输入内容或按住说话")
+        XCTAssertEqual(adapter.state.hint, "描述你想要构建的内容")
         withExtendedLifetime(observation) {}
     }
 
@@ -116,7 +116,7 @@ final class VoiceInputTests: XCTestCase {
     }
 
     @MainActor
-    func testSlowMicrophoneCannotPretendToBeReadyAndCancellationRemainsResponsive() async throws {
+    func testSlowMicrophoneShowsOverlayImmediatelyAndCancellationRemainsResponsive() async throws {
         let shared = SharedVoiceInputStore()
         _ = shared.open(context: "latency", currentDraft: "")
         let opening = shared.connectionChanged(connected: true, supported: true)
@@ -126,35 +126,40 @@ final class VoiceInputTests: XCTestCase {
         """)
         let startupFinished = expectation(description: "slow hardware completed")
         let hardwareStopped = expectation(description: "cancelled hardware cleaned up")
-        let overlayAppeared = expectation(description: "硬件尚未启动不能显示录音蒙层")
-        overlayAppeared.isInverted = true
+        let overlayAppeared = expectation(description: "蒙层不等待麦克风启动即可显示")
         let recorder = SlowVoiceRecorder(startupFinished: startupFinished, stopped: hardwareStopped)
         let voice = VoiceInputAdapter(shared: shared, recorder: recorder, requestPermission: { $0(true) })
         let controller = UIHostingController(rootView: VoiceLatencyHarness(voice: voice, appeared: { overlayAppeared.fulfill() }))
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
         window.rootViewController = controller
         window.makeKeyAndVisible()
         defer { window.isHidden = true; voice.leave() }
         controller.view.layoutIfNeeded()
         try await Task.sleep(for: .milliseconds(100))
         let began = ProcessInfo.processInfo.systemUptime
+        voice.setVoiceMode(true)
         voice.press()
+        XCTAssertTrue(voice.state.overlayVisible)
         await fulfillment(of: [overlayAppeared], timeout: 0.15)
         try await Task.sleep(for: .milliseconds(60))
         let elapsed = ProcessInfo.processInfo.systemUptime - began
         XCTAssertLessThan(elapsed, 0.35, "蒙层与主线程不能等待耗时一秒的麦克风启动")
         XCTAssertEqual(voice.state.phase, "starting")
-        XCTAssertFalse(voice.state.overlayVisible)
+        XCTAssertTrue(voice.state.overlayVisible)
+        XCTAssertEqual(voice.state.status, "正在开启麦克风")
         XCTAssertFalse(recorder.startedOnMain)
-        let image = UIGraphicsImageRenderer(size: window.bounds.size).image { context in
-            controller.view.layer.render(in: context.cgContext)
+        let image = UIGraphicsImageRenderer(size: window.bounds.size).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
         }
         let attachment = XCTAttachment(image: image)
-        attachment.name = "等待硬件启动时不显示录音蒙层"
+        attachment.name = "等待硬件启动时立即显示语音蒙层"
         attachment.lifetime = .keepAlways
         add(attachment)
         voice.cancel()
         XCTAssertEqual(voice.state.phase, "idle")
+        XCTAssertFalse(voice.state.overlayVisible)
         await fulfillment(of: [startupFinished, hardwareStopped], timeout: 2)
         try await Task.sleep(for: .milliseconds(50))
         XCTAssertEqual(voice.state.phase, "idle", "迟到的启动结果不能恢复已取消的录音")
@@ -197,6 +202,7 @@ final class VoiceInputTests: XCTestCase {
         let voice = VoiceInputAdapter(shared: shared, recorder: recorder, permissionGranted: { true })
         defer { recorder.finishPreparation() }
         voice.open(context: "queued-start", draft: "")
+        voice.setVoiceMode(true)
         await fulfillment(of: [preparing], timeout: 0.5)
         voice.touchDown()
         voice.touchFinished()
@@ -219,6 +225,7 @@ final class VoiceInputTests: XCTestCase {
         await fulfillment(of: [began], timeout: 0.5)
         recorder.hardwareStarted()
         try await Task.sleep(for: .milliseconds(40))
+        voice.setVoiceMode(true)
         voice.press()
         XCTAssertEqual(voice.state.phase, "recording")
         XCTAssertTrue(voice.state.overlayVisible)
@@ -272,6 +279,7 @@ final class VoiceInputTests: XCTestCase {
         _ = shared.acceptJson(json: """
         {"kind":"speech-catalog","requestId":"\(catalog)","available":true,"selection":{"providerId":"p","language":"zh"},"providers":[{"id":"p","preparation":{"phase":"ready"}}]}
         """)
+        _ = shared.setVoiceMode(enabled: true)
         let token = try XCTUnwrap(shared.press(nowMilliseconds: 1000).effects.first { $0.action == "permission" }?.recordingId)
         _ = shared.permissionResult(id: token, granted: true, nowMilliseconds: 1001)
         _ = shared.captureStarted(id: token, nowMilliseconds: 1002)
@@ -378,6 +386,111 @@ final class VoiceInputTests: XCTestCase {
     }
 
     @MainActor
+    func testComposerSeparatesNativeTextEditingFromHoldToSpeak() async throws {
+        let voice = VoiceInputAdapter()
+        let fixture = VoiceEditorFixture(voice: voice)
+        fixture.draft = ""
+        let controller = UIHostingController(rootView: VoiceEditorHarness(fixture: fixture))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 180)
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; voice.leave() }
+        controller.view.frame = window.bounds
+        controller.view.layoutIfNeeded()
+        let editor = try XCTUnwrap(voiceTextView(in: controller.view))
+        XCTAssertFalse((editor.gestureRecognizers ?? []).contains { $0 is VoiceHoldGestureRecognizer })
+        voice.touchDown()
+        voice.press()
+        XCTAssertFalse(voice.state.active, "文字态不能启动录音")
+        voice.setVoiceMode(true)
+        try await Task.sleep(for: .milliseconds(100))
+        controller.view.layoutIfNeeded()
+        XCTAssertNil(voiceTextView(in: controller.view))
+        func holdLabel(in view: UIView) -> UILabel? {
+            if let label = view as? UILabel, label.accessibilityIdentifier == "composer-voice-hold" { return label }
+            return view.subviews.lazy.compactMap { holdLabel(in: $0) }.first
+        }
+        let label = try XCTUnwrap(holdLabel(in: controller.view))
+        XCTAssertEqual(label.text, String(localized: "按住说话"))
+        let gesture = try XCTUnwrap(label.gestureRecognizers?.compactMap { $0 as? VoiceHoldGestureRecognizer }.first)
+        XCTAssertEqual(gesture.minimumPressDuration, Double(VoiceInputInteraction.shared.LONG_PRESS_MILLISECONDS) / 1000)
+        XCTAssertFalse(voice.state.active, "切换输入方式不能直接录音")
+        let image = UIGraphicsImageRenderer(size: window.bounds.size).image { context in
+            controller.view.layer.render(in: context.cgContext)
+        }
+        let attachment = XCTAttachment(image: image)
+        attachment.name = "voice-mode-input"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        voice.setVoiceMode(false)
+        try await Task.sleep(for: .milliseconds(100))
+        controller.view.layoutIfNeeded()
+        XCTAssertNotNil(voiceTextView(in: controller.view))
+    }
+
+    @MainActor
+    func testConversationVoiceModeKeepsComposerCompactAcrossWindowSizes() async throws {
+        let suiteName = "VoiceComposerLayout.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preferences = UserDefaultsAppPreferences(userDefaults: defaults)
+        preferences.automaticallyConnect = false
+        let session = SessionSummary(id: "voice-layout-session", title: "语音输入布局回归",
+            lastActivity: Date(timeIntervalSince1970: 1), isRunning: false, hasUnread: false)
+        preferences.saveSessions([session])
+        let voice = VoiceInputAdapter()
+        let appStore = AppStore(preferences: preferences, gatewayLocalID: suiteName, voiceInput: voice)
+        defer { appStore.deactivateGateway() }
+        let prepared = await appStore.prepareConversation(for: session)
+        XCTAssertTrue(prepared)
+        let controller = UIHostingController(rootView: ConversationView().environmentObject(appStore))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        for size in [CGSize(width: 390, height: 844), CGSize(width: 844, height: 390), CGSize(width: 834, height: 1210)] {
+            voice.setVoiceMode(false)
+            window.frame = CGRect(origin: .zero, size: size)
+            controller.view.frame = window.bounds
+            controller.view.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(180))
+            let editor = try XCTUnwrap(voiceTextView(in: controller.view))
+            let textRect = editor.convert(editor.bounds, to: window)
+            voice.setVoiceMode(true)
+            try await Task.sleep(for: .milliseconds(180))
+            controller.view.layoutIfNeeded()
+            let hold = try XCTUnwrap(voiceHoldLabel(in: controller.view))
+            let voiceRect = hold.convert(hold.bounds, to: window)
+            let expectedHeight = max(38, ceil(hold.font.lineHeight))
+            // 两种输入区沿用相同的顶部留白；扣除语音文字的 4pt 居中偏移后，
+            // 顶边必须重合，防止底部卡片因分割线增高而向上移动。
+            XCTAssertEqual(voiceRect.minY + 4, textRect.minY, accuracy: 1,
+                "增加分割线和切换语音态不能改变输入框默认高度：\(size)")
+            print("VoiceComposerTop size=\(size) text=\(textRect.minY) voice=\(voiceRect.minY + 4)")
+            XCTAssertEqual(voiceRect.height, expectedHeight, accuracy: 1,
+                "语音区必须按内容测量高度，不能占满会话页面：\(size)")
+            XCTAssertGreaterThan(voiceRect.width, size.width * 0.5, "整行应可按住说话")
+            XCTAssertEqual(voiceRect.midY, textRect.midY, accuracy: 12,
+                "切换后输入区应保持在底部，不能推高输入卡片：\(size)")
+            if size.width == 390 {
+                let image = UIGraphicsImageRenderer(size: window.bounds.size).image { _ in
+                    window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+                }
+                let attachment = XCTAttachment(image: image)
+                attachment.name = "voice-mode-full-conversation-compact"
+                attachment.lifetime = .keepAlways
+                add(attachment)
+            }
+            voice.setVoiceMode(false)
+            try await Task.sleep(for: .milliseconds(100))
+            XCTAssertNotNil(voiceTextView(in: controller.view))
+        }
+    }
+
+    @MainActor
     func testConversationPageKeepsTranscriptEditableAfterLateKeyboardHide() async throws {
         let suiteName = "VoiceConversationFocus.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -403,7 +516,6 @@ final class VoiceInputTests: XCTestCase {
         controller.view.frame = window.bounds
         controller.view.layoutIfNeeded()
         try await Task.sleep(for: .milliseconds(150))
-        let editor = try XCTUnwrap(voiceTextView(in: controller.view))
         // 真实页面和回调，不开启硬件、不连接远端；共享状态机产生合法的转写请求 ID。
         _ = shared.open(context: session.id, currentDraft: "")
         let opening = shared.connectionChanged(connected: true, supported: true)
@@ -411,6 +523,7 @@ final class VoiceInputTests: XCTestCase {
         _ = shared.acceptJson(json: """
         {"kind":"speech-catalog","requestId":"\(catalogID)","available":true,"selection":{"providerId":"p"},"providers":[{"id":"p","preparation":{"phase":"ready"}}]}
         """)
+        _ = shared.setVoiceMode(enabled: true)
         let token = try XCTUnwrap(shared.press(nowMilliseconds: 1000).effects.first { $0.action == "permission" }?.recordingId)
         _ = shared.permissionResult(id: token, granted: true, nowMilliseconds: 1001)
         _ = shared.captureStarted(id: token, nowMilliseconds: 1002)
@@ -422,6 +535,7 @@ final class VoiceInputTests: XCTestCase {
         {"kind":"speech-transcript","requestId":"\(token)","text":"语音转写内容"}
         """)
         try await Task.sleep(for: .milliseconds(120))
+        let editor = try XCTUnwrap(voiceTextView(in: controller.view))
         XCTAssertEqual(editor.text, "语音转写内容")
         XCTAssertFalse(editor.isFirstResponder, "ASR 回填不得主动聚焦或弹出键盘")
         XCTAssertFalse(voice.state.keyboardVisible)
@@ -451,26 +565,29 @@ final class VoiceInputTests: XCTestCase {
     }
 
     @MainActor
-    func testTranscriptKeepsSameNativeEditorAndAllowsMarkedTextEditing() async throws {
+    func testTranscriptReturnsToNativeEditorAndAllowsMarkedTextEditing() async throws {
         let (shared, token) = try recordingStore()
         _ = shared.release(nowMilliseconds: 1500)
         _ = shared.captureFinished(id: token, pcmBase64: Data(repeating: 0, count: 16000).base64EncodedString(), nowMilliseconds: 1501)
         let voice = VoiceInputAdapter(shared: shared)
         let fixture = VoiceEditorFixture(voice: voice)
         let controller = UIHostingController(rootView: VoiceEditorHarness(fixture: fixture))
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
         window.rootViewController = controller
         window.makeKeyAndVisible()
         defer { window.isHidden = true }
         controller.view.frame = window.bounds
         controller.view.layoutIfNeeded()
-        let editor = try XCTUnwrap(voiceTextView(in: controller.view))
+        XCTAssertNil(voiceTextView(in: controller.view))
         voice.accept("""
         {"kind":"speech-transcript","requestId":"\(token)","text":"语音文字"}
         """)
         try await Task.sleep(for: .milliseconds(100))
         controller.view.layoutIfNeeded()
-        XCTAssertTrue(editor === voiceTextView(in: controller.view))
+        let editor = try XCTUnwrap(voiceTextView(in: controller.view))
+        XCTAssertFalse(voice.state.voiceMode)
         XCTAssertFalse(editor.isFirstResponder, "回填后等待用户点选，不请求焦点")
         XCTAssertFalse(fixture.focused)
         XCTAssertEqual(editor.text, "原草稿\n语音文字")
@@ -500,11 +617,22 @@ private final class VoiceEditorFixture: ObservableObject {
 
 private struct VoiceEditorHarness: View {
     @ObservedObject var fixture: VoiceEditorFixture
+    @ObservedObject var voice: VoiceInputAdapter
+    init(fixture: VoiceEditorFixture) {
+        self.fixture = fixture
+        self.voice = fixture.voice
+    }
     var body: some View {
         VoiceComposerTextInput(text: $fixture.draft, isFocused: $fixture.focused, presentation: nil,
-            state: fixture.voice.state, voice: fixture.voice)
+            state: voice.state, voice: voice)
             .frame(width: 350, height: 120)
     }
+}
+
+@MainActor
+private func voiceHoldLabel(in view: UIView) -> UILabel? {
+    if let label = view as? UILabel, label.accessibilityIdentifier == "composer-voice-hold" { return label }
+    return view.subviews.lazy.compactMap { voiceHoldLabel(in: $0) }.first
 }
 
 @MainActor
@@ -524,7 +652,7 @@ private struct VoiceLatencyHarness: View {
             if voice.state.overlayVisible {
                 VoiceRipplePanel(state: voice.state)
                     .frame(height: 844 * VoiceInputInteraction.shared.OVERLAY_HEIGHT_FRACTION)
-                    .transition(.opacity)
+                    .transition(voiceOverlayTransition())
                     .onAppear(perform: appeared)
                     .onDisappear(perform: disappeared)
             }

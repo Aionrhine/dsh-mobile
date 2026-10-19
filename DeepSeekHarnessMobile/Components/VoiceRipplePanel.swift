@@ -1,6 +1,13 @@
 import SwiftUI
 import DeepSeekHarnessShared
 
+func voiceOverlayTransition(reduceMotion: Bool = false) -> AnyTransition {
+    .asymmetric(
+        insertion: reduceMotion ? .opacity : .opacity.combined(with: .offset(
+            y: CGFloat(VoiceInputInteraction.shared.OVERLAY_ENTER_OFFSET))),
+        removal: .opacity)
+}
+
 /// 入场先快速显现，再平滑收尾；不等待麦克风启动。
 func voiceOverlayAnimation(active: Bool, reduceMotion: Bool = false) -> Animation {
     if reduceMotion { return .linear(duration: 0.08) }

@@ -127,6 +127,7 @@ class VoiceCaptureReadinessDeviceTest {
     private fun readyStore(): SharedVoiceInputStore =
         SharedVoiceInputStore().apply {
             open("capture", "")
+            setVoiceMode(true)
             val catalog = connectionChanged(true, true).requests.first { it.requestType == "speech-catalog" }.correlationId
             acceptJson(
                 """{"kind":"speech-catalog","requestId":"$catalog","available":true,"selection":{"providerId":"p"},"providers":[{"id":"p","preparation":{"phase":"ready"}}]}""",

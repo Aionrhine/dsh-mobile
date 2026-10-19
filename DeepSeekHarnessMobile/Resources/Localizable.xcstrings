@@ -1,102 +1,6 @@
 {
   "sourceLanguage" : "zh-Hans",
   "strings" : {
-    "assistant.modelAttemptFailed" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Model request failed"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "模型请求失败"
-          }
-        }
-      }
-    },
-    "assistant.modelRetrying" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Retrying model request"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在重试模型请求"
-          }
-        }
-      }
-    },
-    "assistant.modelRetried" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Model request retried"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已重试模型请求"
-          }
-        }
-      }
-    },
-    "assistant.generationFailed" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Generation failed"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "生成失败"
-          }
-        }
-      }
-    },
-    "assistant.generationCancelled" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Generation cancelled"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "生成已取消"
-          }
-        }
-      }
-    },
-    "assistant.outputTruncated" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Output truncated; showing the beginning and end"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "输出已截断，保留开头和末尾"
-          }
-        }
-      }
-    },
     " 等工具" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -702,6 +606,40 @@
         }
       }
     },
+    "assistant.generationCancelled" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Generation cancelled"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成已取消"
+          }
+        }
+      }
+    },
+    "assistant.generationFailed" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Generation failed"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成失败"
+          }
+        }
+      }
+    },
     "assistant.interrupted" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -715,6 +653,74 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "生成已中断"
+          }
+        }
+      }
+    },
+    "assistant.modelAttemptFailed" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Model request failed"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "模型请求失败"
+          }
+        }
+      }
+    },
+    "assistant.modelRetried" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Model request retried"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已重试模型请求"
+          }
+        }
+      }
+    },
+    "assistant.modelRetrying" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retrying model request"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在重试模型请求"
+          }
+        }
+      }
+    },
+    "assistant.outputTruncated" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Output truncated; showing the beginning and end"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "输出已截断，保留开头和末尾"
           }
         }
       }
@@ -4066,6 +4072,40 @@
         }
       }
     },
+    "切换到文字输入" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch to text input"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "切换到文字输入"
+          }
+        }
+      }
+    },
+    "切换到语音输入" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch to voice input"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "切换到语音输入"
+          }
+        }
+      }
+    },
     "创建" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5515,6 +5555,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Run once at the scheduled time"
+          }
+        }
+      }
+    },
+    "按住说话" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hold to speak"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按住说话"
           }
         }
       }
@@ -7017,6 +7074,22 @@
         }
       }
     },
+    "源码" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Source"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "源码"
+          }
+        }
+      }
+    },
     "点击连接" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8364,7 +8437,6 @@
       }
     },
     "预览" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {

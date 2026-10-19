@@ -27,6 +27,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.scaleIn
@@ -117,6 +118,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.draw.drawWithContent
@@ -649,7 +651,11 @@ private fun ConversationPage(
             visible = stateHolder.voiceInput.state.overlayVisible,
             modifier = Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth().height(adaptiveWindowSize().height * VoiceInputInteraction.OVERLAY_HEIGHT_FRACTION.toFloat()).zIndex(3f),
-            enter = fadeIn(tween(VoiceInputInteraction.OVERLAY_FADE_IN_MILLISECONDS, easing = LinearOutSlowInEasing)),
+            enter = fadeIn(tween(VoiceInputInteraction.OVERLAY_FADE_IN_MILLISECONDS, easing = LinearOutSlowInEasing)) +
+                slideInVertically(
+                    animationSpec = tween(VoiceInputInteraction.OVERLAY_FADE_IN_MILLISECONDS, easing = LinearOutSlowInEasing),
+                    initialOffsetY = { with(density) { VoiceInputInteraction.OVERLAY_ENTER_OFFSET.dp.roundToPx() } }
+                ),
             exit = fadeOut(tween(VoiceInputInteraction.OVERLAY_FADE_OUT_MILLISECONDS))
         ) {
             VoiceInputPanel(
@@ -1344,9 +1350,16 @@ private fun Composer(
 ) {
     val voice = stateHolder.voiceInput
     val hapticView = LocalView.current
-    val density = LocalDensity.current
+    val modeSwitchFeedback = remember(hapticView) { ClickHapticFeedback(hapticView) }
     val keyboardController = LocalSoftwareKeyboardController.current
     val queueEditFocusRequester = remember { FocusRequester() }
+    var requestTextFocus by remember { mutableStateOf(false) }
+    LaunchedEffect(requestTextFocus, voice.state.voiceMode) {
+        if (requestTextFocus && !voice.state.voiceMode) {
+            queueEditFocusRequester.requestFocus()
+            requestTextFocus = false
+        }
+    }
     val focusManager = LocalFocusManager.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val microphonePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { voice.permissionResult(it) }
@@ -1375,8 +1388,8 @@ private fun Composer(
             voice.onHapticFeedback = null
         }
     }
-    LaunchedEffect(voice.state.inputBlocked) {
-        if (voice.state.inputBlocked) {
+    LaunchedEffect(voice.state.inputBlocked, voice.state.voiceMode) {
+        if (voice.state.inputBlocked || voice.state.voiceMode) {
             focusManager.clearFocus(force = true)
             keyboardController?.hide()
         }
@@ -1391,10 +1404,15 @@ private fun Composer(
     val shadowColor = dshFloatingSurfaceShadow(isDark)
     val glassEdge = dshGlassEdge(isDark)
     val composerHasContent = stateHolder.messageDraft.trim().isNotEmpty() || stateHolder.preparedImages.isNotEmpty()
+    val voiceDividerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+    LaunchedEffect(stateHolder.preparedImages.isNotEmpty()) {
+        if (stateHolder.preparedImages.isNotEmpty()) voice.setVoiceMode(false)
+    }
     var observedQueueEditCount by remember { mutableStateOf(stateHolder.queueDraftRestoreCount) }
     LaunchedEffect(stateHolder.queueDraftRestoreCount) {
         if (stateHolder.queueDraftRestoreCount > observedQueueEditCount) {
             observedQueueEditCount = stateHolder.queueDraftRestoreCount
+            voice.setVoiceMode(false)
             queueEditFocusRequester.requestFocus()
         }
     }
@@ -1470,9 +1488,9 @@ private fun Composer(
                 }
                 val commandToken = stateHolder.slashCommands.commandToken
                 val commandHint = stateHolder.slashCommands.argumentHint
-                Box(Modifier.fillMaxWidth().voiceHoldGesture(
-                    voice, voice.state.inputBlocked || voice.state.touchPending || (!voice.state.active && !voice.state.keyboardVisible), density.density,
-                )) {
+                if (voice.state.voiceMode) {
+                    VoiceHoldInput(voice, Modifier.offset(y = (-4.5).dp))
+                } else {
                 BasicTextField(
                     enabled = !voice.state.inputBlocked,
                     value = inputValue,
@@ -1535,11 +1553,17 @@ private fun Composer(
                     }
                 }
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().drawBehind {
+                        if (voice.state.voiceMode) {
+                            // 在原有 10dp 间隔中绘制，不参与高度测量。
+                            val y = -5.dp.toPx()
+                            drawLine(voiceDividerColor, Offset(0f, y), Offset(size.width, y), strokeWidth = 0.5.dp.toPx())
+                        }
+                    },
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(7.dp)
                 ) {
-                    ComposerIconButton(R.drawable.ic_photo_stack, appText("添加图片"), onPickImage)
+                    ComposerIconButton(R.drawable.ic_composer_image, appText("添加图片"), onPickImage)
                     PermissionControl(stateHolder, Modifier.width(82.dp))
                     Spacer(Modifier.width(2.dp))
                     ModelControl(
@@ -1552,7 +1576,7 @@ private fun Composer(
                             .alpha(
                                 if (stateHolder.showsSessionStopButton) {
                                     if (stateHolder.canCancelSelectedSession) 1f else 0.66f
-                                } else if (composerHasContent) 1f else 0.48f
+                                } else 1f
                             )
                             .clip(CircleShape)
                             .background(DshColors.Ocean)
@@ -1560,21 +1584,38 @@ private fun Composer(
                                 enabled = if (stateHolder.showsSessionStopButton) {
                                     stateHolder.canCancelSelectedSession
                                 } else {
-                                    stateHolder.canSend
+                                    !composerHasContent || stateHolder.canSend
                                 },
                                 onClick = if (stateHolder.showsSessionStopButton) {
                                     stateHolder::cancelSelectedSession
-                                } else {
+                                } else if (composerHasContent) {
                                     { stateHolder.sendMessage() }
+                                } else {
+                                    {
+                                        modeSwitchFeedback.perform()
+                                        val enteringVoice = !voice.state.voiceMode
+                                        voice.setVoiceMode(enteringVoice)
+                                        if (enteringVoice) {
+                                            focusManager.clearFocus(force = true)
+                                            keyboardController?.hide()
+                                        } else {
+                                            // 先让文字输入框重新挂载，再请求焦点。
+                                            requestTextFocus = true
+                                        }
+                                    }
                                 }
                             )
                             .semantics {
                                 contentDescription = if (stateHolder.showsSessionStopButton) {
                                     appText("停止生成")
-                                } else {
+                                } else if (composerHasContent) {
                                     appText("发送")
+                                } else if (voice.state.voiceMode) {
+                                    appText("切换到文字输入")
+                                } else {
+                                    appText("切换到语音输入")
                                 }
-                            },
+                            }.testTag("composer-action"),
                         contentAlignment = Alignment.Center
                     ) {
                         if (stateHolder.showsSessionStopButton) {
@@ -1585,7 +1626,11 @@ private fun Composer(
                             )
                         } else {
                             Icon(
-                                painter = painterResource(R.drawable.ic_arrow_up),
+                                painter = painterResource(
+                                    if (composerHasContent) R.drawable.ic_arrow_up
+                                    else if (voice.state.voiceMode) R.drawable.ic_composer_keyboard
+                                    else R.drawable.ic_voice_waveform
+                                ),
                                 contentDescription = null,
                                 modifier = Modifier.size(24.dp),
                                 tint = Color.White

@@ -1,9 +1,5 @@
 package com.clarklevis.dsh.android.ui
 
-import android.graphics.BitmapFactory
-import android.graphics.Color as AndroidColor
-import android.util.Base64
-import android.webkit.WebView
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -57,6 +53,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
@@ -65,7 +62,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.android.AndroidSharedStateHolder
 import com.clarklevis.dsh.android.MobileOfficialPlugin
@@ -435,52 +431,23 @@ private fun ExperimentalPluginBadge() {
 }
 
 @Composable
-private fun PluginIcon(
+internal fun PluginIcon(
     dataURL: String?,
     fallback: String,
     modifier: Modifier = Modifier,
     artworkOffsetY: Dp = 0.dp
 ) {
     val context = LocalContext.current
-    val source = remember(dataURL, fallback) {
-        dataURL?.takeIf { it.length < 256_000 && IMAGE_DATA_URL.matches(it) }
-            ?: runCatching {
-                val assetName = when (fallback) {
-                    "shell", "agent-loop", "subagent", "web-search" -> fallback
-                    else -> "default"
-                }
-                val bytes = context.assets.open("plugin-artwork/$assetName.svg").use { it.readBytes() }
-                "data:image/svg+xml;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP)
-            }.getOrNull()
+    val cache = remember(context) { PluginIconImageCache.shared(context) }
+    var bitmap by remember(dataURL, fallback) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(cache, dataURL, fallback) {
+        bitmap = cache.load(dataURL, fallback)?.asImageBitmap()
     }
-    val bitmap = remember(source) {
-        source?.takeUnless { it.startsWith("data:image/svg+xml;base64,") }?.substringAfter(',')?.let {
-            runCatching { Base64.decode(it, Base64.DEFAULT) }.getOrNull()
-        }?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }?.asImageBitmap()
-    }
+    val image = bitmap
     Box(modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(13.dp))
         .padding(8.dp), contentAlignment = Alignment.Center) {
         when {
-            bitmap != null -> Image(bitmap, null, Modifier.fillMaxSize().offset(y = artworkOffsetY))
-            source?.startsWith("data:image/svg+xml;base64,") == true -> {
-                AndroidView(factory = { context -> WebView(context).apply {
-                    settings.javaScriptEnabled = false
-                    settings.blockNetworkLoads = true
-                    settings.allowFileAccess = false
-                    setBackgroundColor(AndroidColor.TRANSPARENT)
-                    isVerticalScrollBarEnabled = false
-                    isHorizontalScrollBarEnabled = false
-                } }, update = { view ->
-                    if (view.tag != source) {
-                        view.tag = source
-                        view.loadDataWithBaseURL(null,
-                            "<html><head><meta name='viewport' content='width=device-width,initial-scale=1'></head>" +
-                                "<body style='margin:0;height:100vh;display:grid;place-items:center;background:transparent'>" +
-                                "<img style='max-width:100%;max-height:100%' src='$source'></body></html>",
-                            "text/html", "UTF-8", null)
-                    }
-                }, modifier = Modifier.fillMaxSize().offset(y = artworkOffsetY))
-            }
+            image != null -> Image(image, null, Modifier.fillMaxSize().offset(y = artworkOffsetY))
             else -> {
                 val resource = when (fallback) {
                     "shell" -> R.drawable.ic_dsh_bash
@@ -495,5 +462,3 @@ private fun PluginIcon(
         }
     }
 }
-
-private val IMAGE_DATA_URL = Regex("^data:image/(?:png|jpeg|gif|webp|svg\\+xml);base64,[A-Za-z0-9+/=]+$")

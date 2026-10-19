@@ -15,6 +15,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -36,6 +38,7 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -43,12 +46,31 @@ import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.android.platform.AndroidVoiceInputAdapter
 import com.clarklevis.dsh.shared.facade.SharedVoiceInputSnapshot
 import com.clarklevis.dsh.shared.facade.VoiceInputInteraction
-import kotlinx.coroutines.CancellationException
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.roundToInt
 import kotlin.math.sin
+import kotlinx.coroutines.CancellationException
+
+/** 独立的语音输入区，文字输入框不会安装录音手势。 */
+@Suppress("ktlint:standard:function-naming", "FunctionNaming", "MagicNumber")
+@Composable
+internal fun VoiceHoldInput(voice: AndroidVoiceInputAdapter, modifier: Modifier = Modifier) {
+    val state = voice.state
+    Box(
+        modifier.fillMaxWidth().heightIn(min = 38.dp)
+            .testTag("composer-voice-hold")
+            .voiceHoldGesture(
+                voice,
+                state.voiceMode && (!state.active || state.inputBlocked || state.touchPending),
+                LocalDensity.current.density
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(appText("按住说话"), style = MaterialTheme.typography.bodyLarge)
+    }
+}
 
 /** 底部遮罩的固定几何比例；粒子收束与柱高只使用共享层提供的真实音量。 */
 @Suppress("ktlint:standard:function-naming", "FunctionNaming", "MagicNumber")
@@ -258,7 +280,7 @@ private fun DrawScope.drawVoiceParticle(
     drawCircle(ink.copy(alpha = alpha), radius, Offset(x, y))
 }
 
-/** 不消费短按：编辑和输入法仍走原文本控件；只有长按识别成功后接管触摸。 */
+/** 仅挂在语音态的按住说话区域；短按丢弃预采集，达到共享阈值后接管触摸。 */
 fun Modifier.voiceHoldGesture(
     voice: AndroidVoiceInputAdapter,
     enabled: Boolean,
@@ -274,8 +296,7 @@ fun Modifier.voiceHoldGesture(
                 var holding = false
                 try {
                     var completed = false
-                    // Android 的轻触通常超过 80ms；使用系统长按时长，也尊重无障碍设置。
-                    withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                    withTimeoutOrNull(VoiceInputInteraction.LONG_PRESS_MILLISECONDS) {
                         waitForUpOrCancellation(PointerEventPass.Initial)
                         completed = true
                     }

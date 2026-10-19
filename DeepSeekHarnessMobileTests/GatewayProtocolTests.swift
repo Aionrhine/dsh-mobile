@@ -3,6 +3,7 @@ import MarkdownUI
 import class DeepSeekHarnessShared.SharedQueueStore
 import UIKit
 import SwiftUI
+import WebKit
 import ChatLayout
 import ImageIO
 import UniformTypeIdentifiers
@@ -505,11 +506,267 @@ final class WorkspaceCodeTextKitPerformanceTests: XCTestCase {
         XCTAssertEqual(textView.attributedText.length, (source as NSString).length)
         XCTAssertFalse(textView.textContainer.widthTracksTextView)
         XCTAssertTrue(textView.isSelectable)
+        let scrollView = try XCTUnwrap(firstDescendant(of: UIScrollView.self, in: view))
         let initialLineNumberY = lineNumberLabel.frame.minY
-        textView.contentOffset = CGPoint(x: 80, y: 120)
-        view.scrollViewDidScroll(textView)
+        scrollView.contentOffset = CGPoint(x: 80, y: 120)
+        view.scrollViewDidScroll(scrollView)
         XCTAssertEqual(lineNumberLabel.frame.minY, initialLineNumberY - 120, accuracy: 0.5)
         XCTAssertLessThan(elapsed, 1.0, "TextKit 预览配置耗时异常：\(elapsed)s")
+    }
+
+    @MainActor
+    func testLongLinesScrollHorizontallyWithFixedGutterAndSurviveResize() throws {
+        let source = (1...80).map { "第\($0)行 " + String(repeating: "long_value_", count: 45) }.joined(separator: "\n")
+        let document = WorkspaceCodePreviewSupport.shared.prepare(source: source, name: "long.swift", mediaType: nil)
+        let view = WorkspaceCodeTextKitContainer(frame: CGRect(x: 0, y: 0, width: 390, height: 600))
+        view.configure(document: document, isDark: false)
+        view.layoutIfNeeded()
+        let scrollView = try XCTUnwrap(firstDescendant(of: UIScrollView.self, in: view))
+        let textView = try XCTUnwrap(firstDescendant(of: UITextView.self, in: view))
+        let gutter = try XCTUnwrap(firstDescendant(of: UILabel.self, in: view))
+        XCTAssertGreaterThan(scrollView.contentSize.width, scrollView.bounds.width + 1_000)
+        XCTAssertGreaterThan(scrollView.contentSize.height, scrollView.bounds.height)
+        XCTAssertTrue(scrollView.panGestureRecognizer.isEnabled)
+        let originalX = textView.convert(.zero, to: view).x
+        let gutterX = gutter.convert(.zero, to: view).x
+        scrollView.contentOffset = CGPoint(x: 400, y: 120)
+        view.scrollViewDidScroll(scrollView)
+        view.layoutIfNeeded()
+        XCTAssertEqual(textView.convert(.zero, to: view).x, originalX - 400, accuracy: 1)
+        XCTAssertEqual(gutter.convert(.zero, to: view).x, gutterX, accuracy: 1)
+        XCTAssertEqual(gutter.frame.minY, 14 - 120, accuracy: 1)
+        XCTAssertEqual(textView.text, source)
+
+        view.frame.size.width = 1_024
+        view.layoutIfNeeded()
+        XCTAssertEqual(scrollView.contentOffset.x, 400, accuracy: 1)
+        view.configure(document: WorkspaceCodePreviewSupport.shared.prepare(source: "short", name: "short.txt", mediaType: nil), isDark: true)
+        view.layoutIfNeeded()
+        XCTAssertEqual(scrollView.contentOffset, .zero)
+        XCTAssertEqual(scrollView.contentSize.width, scrollView.bounds.width, accuracy: 1)
+    }
+
+    @MainActor
+    func testMarkdownSwitchRendersDocumentAndPreservesSourceScroll() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("preview-\(UUID().uuidString).md")
+        try ("# 预览标题\n\n**强调内容**\n\n| 列 | 值 |\n|---|---|\n| A | B |\n\n" +
+             (1...70).map { "- 项目 \($0) " + String(repeating: "长文本", count: 40) }.joined(separator: "\n"))
+            .write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let file = WorkspaceLocalFile(url: url, sessionID: "test", remotePath: url.lastPathComponent,
+                                      name: url.lastPathComponent, mediaType: "text/markdown", purpose: "preview")
+        let host = UIHostingController(rootView: WorkspaceCodePreview(file: file, onOpenSystem: {}))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil; previous?.makeKeyAndVisible() }
+        for _ in 0..<100 {
+            if firstDescendant(of: UISegmentedControl.self, in: host.view) != nil { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        host.view.layoutIfNeeded()
+        let picker = try XCTUnwrap(firstDescendant(of: UISegmentedControl.self, in: host.view))
+        let source = try XCTUnwrap(firstDescendant(of: WorkspaceCodeTextKitContainer.self, in: host.view))
+        let scroll = try XCTUnwrap(firstDescendant(of: UIScrollView.self, in: source))
+        func scrollCount(in view: UIView) -> Int {
+            (view is UIScrollView ? 1 : 0) + view.subviews.reduce(0) { $0 + scrollCount(in: $1) }
+        }
+        let sourceScrollCount = scrollCount(in: host.view)
+        scroll.contentOffset = CGPoint(x: 150, y: 120)
+        for (index, mode) in [1, 0, 1, 0].enumerated() {
+            picker.selectedSegmentIndex = mode
+            picker.sendActions(for: .valueChanged)
+            try await Task.sleep(for: .milliseconds(350))
+            host.view.layoutIfNeeded()
+            let code = try XCTUnwrap(firstDescendant(of: UITextView.self, in: source))
+            if mode == 0 {
+                XCTAssertGreaterThan(code.layoutManager.usedRect(for: code.textContainer).height, 500,
+                                     "切换后源码仍须有实际文本布局，不能只保留空白滚动区域")
+            }
+            XCTAssertEqual(picker.selectedSegmentIndex, mode)
+            XCTAssertEqual(scroll.contentOffset.x, 150, accuracy: 1)
+            XCTAssertEqual(scroll.contentOffset.y, 120, accuracy: 1)
+            if mode == 1 {
+                XCTAssertGreaterThan(scrollCount(in: host.view), sourceScrollCount,
+                                     "切换后应创建独立的 Markdown 滚动预览，不能只改变选择器")
+            }
+            if index < 2 {
+                let attachment = XCTAttachment(image: UIGraphicsImageRenderer(size: window.bounds.size).image { _ in
+                    window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+                })
+                attachment.name = mode == 1 ? "Markdown 渲染预览" : "Markdown 源码"
+                attachment.lifetime = .keepAlways
+                add(attachment)
+            }
+        }
+    }
+}
+
+@MainActor
+final class ConversationHistoryPrependTests: XCTestCase {
+    func testLoadingMoreWithButtonRemainingKeepsFirstMessageAtSamePosition() async throws {
+        try await assertPrependPreservesReadingPosition(removesButton: false, offset: 0)
+    }
+
+    func testFinalHistoryPageRemovingButtonKeepsFirstMessageAtSamePosition() async throws {
+        try await assertPrependPreservesReadingPosition(removesButton: true, offset: 0)
+    }
+
+    func testPrependingVariableHeightHistoryKeepsPartiallyVisibleMessageStable() async throws {
+        try await assertPrependPreservesReadingPosition(removesButton: false, offset: 180)
+    }
+
+    func testRemovingLoadMoreAfterEmptyPageKeepsReadingPosition() async throws {
+        try await assertPrependPreservesReadingPosition(removesButton: true, offset: 180, olderCount: 0)
+    }
+
+    func testLoadingHistoryKeepsMainQueueResponsiveBeforeCommittingNewRows() async throws {
+        try await assertPrependPreservesReadingPosition(
+            removesButton: false, offset: 180, olderCount: 60, checksResponsiveness: true
+        )
+    }
+
+    func testDraggingWhileHistoryIsPreparingKeepsLatestReadingPosition() async throws {
+        try await assertPrependPreservesReadingPosition(
+            removesButton: false, offset: 180, olderCount: 60, scrollsDuringPreparation: true
+        )
+    }
+
+    func testLatestHistoryRequestReplacesPendingRequest() async throws {
+        try await assertPrependPreservesReadingPosition(
+            removesButton: false, offset: 180, olderCount: 60, coalescesRequests: true
+        )
+    }
+
+    func testChangingSessionCancelsPendingHistoryPreparation() async throws {
+        try await assertPrependPreservesReadingPosition(
+            removesButton: false, offset: 180, olderCount: 60, switchesSession: true
+        )
+    }
+
+    private func assertPrependPreservesReadingPosition(
+        removesButton: Bool, offset: CGFloat, olderCount: Int = 15,
+        checksResponsiveness: Bool = false, scrollsDuringPreparation: Bool = false,
+        coalescesRequests: Bool = false, switchesSession: Bool = false
+    ) async throws {
+        let controller = ConversationViewportController(
+            onContentAvailabilityChanged: { _, _ in }, onPinnedToBottomChanged: { _ in },
+            onBottomAlignmentCompleted: {}, onApproachingTop: {}
+        )
+        controller.loadViewIfNeeded()
+        controller.view.frame = CGRect(x: 0, y: 0, width: 390, height: 320)
+        controller.view.layoutIfNeeded()
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        window.frame = controller.view.frame
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil; previous?.makeKeyAndVisible() }
+        var measuredHistoryIDs = Set<Int>()
+        let measurementYield = checksResponsiveness ? expectation(description: "测量分批执行，主队列可以穿插响应") : nil
+        func rows(_ prefix: String, count: Int) -> [ConversationViewportEntry] {
+            (0..<count).map { index in
+                let height = CGFloat(44 + index % 3 * 40)
+                let content: AnyView
+                if checksResponsiveness, prefix == "older" {
+                    content = AnyView(HistoryHeightProbe(height: height) {
+                        let isFirstMeasurement = measuredHistoryIDs.insert(index).inserted
+                        if isFirstMeasurement, measuredHistoryIDs.count == 1 {
+                            DispatchQueue.main.async {
+                                XCTAssertLessThan(measuredHistoryIDs.count, count,
+                                                  "不能只把整页同步测量延迟到下一个主线程调用")
+                                measurementYield?.fulfill()
+                            }
+                        }
+                    })
+                } else {
+                    content = AnyView(Text("\(prefix) \(index)").frame(height: height))
+                }
+                return .init(id: "\(prefix)-\(index)", revision: 0, content: content)
+            }
+        }
+        let button = ConversationViewportEntry(id: "history-more", revision: 0,
+            content: AnyView(Button("加载更早记录") {}.frame(height: 40)), allowsScrollAnchoring: false)
+        let existing = rows("existing", count: 18)
+        controller.apply(entries: [button] + existing, revision: 1, bottomInset: 0, hasConversationContent: true)
+        try await Task.sleep(for: .milliseconds(150))
+        controller.view.layoutIfNeeded()
+        let list = try XCTUnwrap(firstDescendant(of: UICollectionView.self, in: controller.view))
+        list.setContentOffset(CGPoint(x: 0, y: offset), animated: false)
+        controller.scrollViewDidScroll(list)
+        list.layoutIfNeeded()
+        let oldPath = try XCTUnwrap(list.indexPathsForVisibleItems.sorted().first { $0.item > 0 })
+        let oldFrame = try XCTUnwrap(list.layoutAttributesForItem(at: oldPath)).frame
+        var originalY = oldFrame.minY - list.contentOffset.y
+        var older = rows("older", count: olderCount)
+        controller.apply(entries: (removesButton ? [] : [button]) + older + existing,
+                         revision: 2, bottomInset: 0, hasConversationContent: true)
+        if switchesSession {
+            controller.setSessionID("replacement-session")
+            controller.apply(entries: rows("replacement", count: 1), revision: 1,
+                             bottomInset: 0, hasConversationContent: true)
+            try await Task.sleep(for: .milliseconds(400))
+            XCTAssertEqual(list.numberOfItems(inSection: 0), 1,
+                           "旧会话准备完成后不能把历史页提交到新会话")
+            return
+        }
+        if coalescesRequests {
+            older = rows("older", count: olderCount + 3)
+            controller.apply(entries: [button] + older + existing, revision: 3,
+                             bottomInset: 0, hasConversationContent: true)
+        }
+        if scrollsDuringPreparation {
+            controller.scrollViewWillBeginDragging(list)
+            list.setContentOffset(CGPoint(x: 0, y: offset + 20), animated: false)
+            controller.scrollViewDidScroll(list)
+            originalY = oldFrame.minY - list.contentOffset.y
+            try await Task.sleep(for: .milliseconds(80))
+            XCTAssertEqual(list.numberOfItems(inSection: 0), existing.count + 1,
+                           "拖动期间应保持旧列表，不能改变手指下的内容")
+            controller.scrollViewDidEndDragging(list, willDecelerate: false)
+        }
+        if checksResponsiveness {
+            XCTAssertEqual(list.numberOfItems(inSection: 0), existing.count + 1,
+                           "准备历史消息时保留旧列表，不能同步测量整页并提交")
+            await withCheckedContinuation { continuation in
+                DispatchQueue.main.async {
+                    XCTAssertEqual(list.numberOfItems(inSection: 0), existing.count + 1,
+                                   "整页测量完成前，主队列应能继续响应其他事件")
+                    continuation.resume()
+                }
+            }
+        }
+        let expectedCount = older.count + existing.count + (removesButton ? 0 : 1)
+        for _ in 0..<300 {
+            if list.numberOfItems(inSection: 0) == expectedCount { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(list.numberOfItems(inSection: 0), expectedCount)
+        if let measurementYield { await fulfillment(of: [measurementYield], timeout: 3) }
+        for _ in 0..<4 {
+            try await Task.sleep(for: .milliseconds(80))
+            list.layoutIfNeeded()
+            let newItem = oldPath.item - 1 + older.count + (removesButton ? 0 : 1)
+            let newFrame = try XCTUnwrap(list.layoutAttributesForItem(at: IndexPath(item: newItem, section: 0))).frame
+            XCTAssertEqual(newFrame.minY - list.contentOffset.y, originalY, accuracy: 1,
+                           "加载历史后应保留原消息的屏幕位置，不能跳到新列表顶部")
+        }
+        if olderCount > 0 { XCTAssertGreaterThan(list.contentOffset.y, offset + 500) }
+    }
+}
+
+private struct HistoryHeightProbe: UIViewRepresentable {
+    let height: CGFloat
+    let onMeasure: () -> Void
+
+    func makeUIView(context: Context) -> UIView { UIView() }
+    func updateUIView(_ uiView: UIView, context: Context) {}
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UIView, context: Context) -> CGSize? {
+        onMeasure()
+        return CGSize(width: proposal.width ?? 390, height: height)
     }
 }
 
@@ -7404,6 +7661,120 @@ final class SessionHistoryVisibilityTests: XCTestCase {
         blank.hasConversation = false
         let restored = try JSONDecoder().decode(SessionSummary.self, from: JSONEncoder().encode(blank))
         XCTAssertFalse(restored.isVisibleInHistory)
+    }
+}
+
+@MainActor
+final class PluginIconRenderingTests: XCTestCase {
+    static let svg = "data:image/svg+xml;base64," + Data(
+        "<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><circle cx='32' cy='32' r='28' fill='#2e6be6'/></svg>".utf8
+    ).base64EncodedString()
+
+    func testSVGCacheCoalescesRequestsAndPreservesArtwork() async throws {
+        let cache = PluginIconImageCache()
+        let request = PluginIconImageCache.Request(dataURL: Self.svg, isDark: false)
+        async let first = cache.image(for: request)
+        async let second = cache.image(for: request)
+        let (a, b) = await (first, second)
+        let image = try XCTUnwrap(a)
+        XCTAssertTrue(image === b, "并发请求相同图标应复用同一次渲染")
+        let cached = await cache.image(for: request)
+        XCTAssertTrue(image === cached, "再次显示图标应直接命中缓存")
+        let pixel = try centerPixel(image)
+        XCTAssertGreaterThan(pixel[2], pixel[0] + 80, "SVG 中的蓝色圆形必须正确显示，不能缓存空白截图")
+        XCTAssertGreaterThan(pixel[3], 240)
+        XCTAssertEqual(try self.pixel(image, at: CGPoint(x: 0, y: 0))[3], 0, "图标背景应保持透明")
+    }
+
+    func testDifferentSVGRequestsAreSerializedWithoutMixingArtwork() async throws {
+        let cache = PluginIconImageCache()
+        let redSVG = "data:image/svg+xml;base64," + Data(
+            "<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><rect width='64' height='64' fill='#ff0000'/></svg>".utf8
+        ).base64EncodedString()
+        async let blue = cache.image(for: .init(dataURL: Self.svg, isDark: false))
+        async let red = cache.image(for: .init(dataURL: redSVG, isDark: true))
+        let (a, b) = await (blue, red)
+        let bluePixel = try centerPixel(XCTUnwrap(a))
+        let redPixel = try centerPixel(XCTUnwrap(b))
+        XCTAssertGreaterThan(bluePixel[2], bluePixel[0] + 80)
+        XCTAssertGreaterThan(redPixel[0], redPixel[2] + 80)
+    }
+
+    func testBitmapAndInvalidIconsDoNotNeedSVGRendering() async throws {
+        let cache = PluginIconImageCache()
+        let png = UIGraphicsImageRenderer(size: CGSize(width: 512, height: 256)).image { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 512, height: 256))
+        }
+        let source = "data:image/png;base64," + (try XCTUnwrap(png.pngData())).base64EncodedString()
+        let result = await cache.image(for: .init(dataURL: source, isDark: false))
+        let image = try XCTUnwrap(result)
+        XCTAssertLessThanOrEqual(try XCTUnwrap(image.cgImage).width, 256)
+        XCTAssertEqual(image.size.width / image.size.height, 2, accuracy: 0.01)
+        for invalid in ["invalid", "data:image/png;base64,???", "data:image/svg+xml;base64," + Data("invalid".utf8).base64EncodedString()] {
+            let result = await cache.image(for: .init(dataURL: invalid, isDark: false))
+            XCTAssertNil(result)
+        }
+    }
+
+    func testSVGColorSchemeIsPartOfTheCacheKey() async throws {
+        let cache = PluginIconImageCache()
+        let svg = "data:image/svg+xml;base64," + Data("""
+        <svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'>
+        <style>rect{fill:#ff0000}@media(prefers-color-scheme:dark){rect{fill:#0000ff}}</style>
+        <rect width='64' height='64'/></svg>
+        """.utf8).base64EncodedString()
+        let light = await cache.image(for: .init(dataURL: svg, isDark: false))
+        let lightPixel = try centerPixel(XCTUnwrap(light))
+        let dark = await cache.image(for: .init(dataURL: svg, isDark: true))
+        let darkPixel = try centerPixel(XCTUnwrap(dark))
+        XCTAssertGreaterThan(lightPixel[0], lightPixel[2] + 80)
+        XCTAssertGreaterThan(darkPixel[2], darkPixel[0] + 80)
+        XCTAssertEqual(try centerPixel(XCTUnwrap(light)), lightPixel, "复用渲染器不能改变已经缓存的图片")
+    }
+
+    private func centerPixel(_ image: UIImage) throws -> [Int] {
+        try pixel(image, at: CGPoint(x: image.size.width / 2, y: image.size.height / 2))
+    }
+
+    private func pixel(_ image: UIImage, at point: CGPoint) throws -> [Int] {
+        var bytes = [UInt8](repeating: 0, count: 4)
+        let context = try XCTUnwrap(CGContext(data: &bytes, width: 1, height: 1, bitsPerComponent: 8,
+            bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.translateBy(x: -point.x, y: -point.y)
+        context.draw(try XCTUnwrap(image.cgImage), in: CGRect(origin: .zero, size: image.size))
+        return bytes.map(Int.init)
+    }
+
+    func testScrollingIconsDoesNotEmbedWebViewsInRows() async throws {
+        let host = UIHostingController(rootView: ScrollView {
+            VStack(spacing: 16) {
+                ForEach(0..<24) { _ in PluginIcon(dataURL: Self.svg, fallback: "shell").frame(width: 48, height: 48) }
+            }
+        })
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = host
+        defer { window.isHidden = true; window.rootViewController = nil; previous?.makeKeyAndVisible() }
+        let start = CFAbsoluteTimeGetCurrent()
+        window.makeKeyAndVisible()
+        host.view.layoutIfNeeded()
+        let layoutTime = CFAbsoluteTimeGetCurrent() - start
+        try await Task.sleep(for: .seconds(1))
+        func webViewCount(_ view: UIView) -> Int {
+            (view is WKWebView ? 1 : 0) + view.subviews.reduce(0) { $0 + webViewCount($1) }
+        }
+        let count = webViewCount(host.view)
+        print("Plugin icon first layout: \(layoutTime)s; embedded WKWebViews: \(count)")
+        XCTAssertEqual(count, 0, "图标应使用缓存图片，不能在每一行嵌入网页视图")
+        if let scroll = firstDescendant(of: UIScrollView.self, in: host.view) {
+            for offset in [300.0, 600.0, 0.0] {
+                scroll.contentOffset.y = offset
+                host.view.layoutIfNeeded()
+            }
+        }
+        XCTAssertEqual(webViewCount(host.view), 0)
     }
 }
 

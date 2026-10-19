@@ -53,6 +53,9 @@ internal object AndroidStrings {
     )
 
     internal val english: Map<String, String> = mapOf(
+        "切换到语音输入" to "Switch to voice input",
+        "切换到文字输入" to "Switch to text input",
+        "按住说话" to "Hold to speak",
         "描述你想要构建的内容" to "Describe what you want to build",
         "输入内容或按住说话" to "Type a message or hold to speak",
         "松手取消" to "Release to cancel",
@@ -750,6 +753,7 @@ internal object AndroidStrings {
         "隐藏目录" to "Hidden directory",
         "需要你的回答" to "Your answer is needed",
         "预览" to "Preview",
+        "源码" to "Source",
         "预览文字大小" to "Preview text size",
         "预计用量" to "Projected usage",
         "预设决定 Agent 使用的工具、提示词与能力。选择后只对新建会话生效。" to "A preset defines the agent’s tools, prompts, and capabilities. The choice only affects newly created sessions.",

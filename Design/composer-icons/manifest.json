@@ -1,0 +1,27 @@
+{
+  "figma": "https://www.figma.com/design/BjWYaFHG2LKe85T844105j?node-id=117-291",
+  "library": "Lucide",
+  "version": "0.468.0",
+  "platform": "Android",
+  "ios": "保留原生 SF Symbols：keyboard、photo.on.rectangle.angled",
+  "icons": [
+    {
+      "name": "keyboard",
+      "sourceName": "keyboard",
+      "nodeId": "118:293",
+      "viewport": 24,
+      "displaySize": 24,
+      "androidDrawable": "ic_composer_keyboard",
+      "sha256": "af5aff555e2e16bef9de4abbf384426b08b25cf45a9849f872a5aedb8cdabafa"
+    },
+    {
+      "name": "image",
+      "sourceName": "images",
+      "nodeId": "118:303",
+      "viewport": 24,
+      "displaySize": 22,
+      "androidDrawable": "ic_composer_image",
+      "sha256": "ac542090d30b010db1b5111b67d7fd2d2ee076c1eb12756005651f6c36b65a75"
+    }
+  ]
+}

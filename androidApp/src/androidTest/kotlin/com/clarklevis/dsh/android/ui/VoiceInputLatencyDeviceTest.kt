@@ -8,27 +8,28 @@ import android.os.SystemClock
 import android.util.Log
 import android.view.MotionEvent
 import android.view.View
-import android.view.ViewConfiguration
 import android.view.ViewTreeObserver
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import com.clarklevis.dsh.android.AndroidSharedStateHolder
+import com.clarklevis.dsh.shared.facade.VoiceInputInteraction
 import com.clarklevis.dsh.shared.facade.SharedVoiceInputStore
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import java.util.concurrent.atomic.AtomicLong
 
-/** 使用真实 MotionEvent 和受控 Compose 时钟验证系统长按阈值，不打开麦克风或远端连接。 */
+/** 使用真实 MotionEvent 和受控 Compose 时钟验证共享语音长按阈值，不打开麦克风或远端连接。 */
 class VoiceInputLatencyDeviceTest {
     @get:Rule
     val compose = createComposeRule()
 
     @Test
-    fun voiceHoldWaitsForSystemTimeoutAndPendingPermissionCannotShowRecording() {
+    fun voiceHoldShowsOverlayAfterSharedTimeoutWithoutWaitingForPermission() {
         val shared = SharedVoiceInputStore()
         shared.open("latency", "")
         val request = shared.connectionChanged(true, true).requests.first { it.requestType == "speech-catalog" }
@@ -79,10 +80,12 @@ class VoiceInputLatencyDeviceTest {
             voice.onPermissionNeeded = { permissionAt.compareAndSet(0, SystemClock.uptimeMillis()) }
             view.viewTreeObserver.addOnDrawListener(drawListener)
         }
+        compose.onNodeWithTag("composer-action").performClick()
+        compose.onNodeWithTag("composer-input").assertDoesNotExist()
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val position =
             compose
-                .onNodeWithTag("composer-input")
+                .onNodeWithTag("composer-voice-hold")
                 .fetchSemanticsNode()
                 .boundsInRoot.center
         val location = IntArray(2)
@@ -108,19 +111,23 @@ class VoiceInputLatencyDeviceTest {
         try {
             compose.mainClock.autoAdvance = false
             send(MotionEvent.ACTION_DOWN)
-            val longPressTimeout = ViewConfiguration.getLongPressTimeout().toLong()
+            val longPressTimeout = VoiceInputInteraction.LONG_PRESS_MILLISECONDS
             compose.mainClock.advanceTimeBy(longPressTimeout - 32)
-            assertTrue("系统长按阈值前不得请求录音权限", permissionAt.get() == 0L)
+            assertTrue("共享语音长按阈值前不得请求录音权限", permissionAt.get() == 0L)
+            compose.onNodeWithTag("voice-recording-overlay").assertDoesNotExist()
             compose.mainClock.advanceTimeBy(64)
             compose.waitUntil(longPressTimeout + 2_000) { permissionAt.get() > 0 }
-            compose.onNodeWithTag("voice-recording-overlay").assertDoesNotExist()
+            compose.mainClock.advanceTimeBy(VoiceInputInteraction.OVERLAY_FADE_IN_MILLISECONDS.toLong())
+            compose.onNodeWithTag("voice-recording-overlay").assertExists()
+            compose.waitUntil(2_000) { drawAt.get() > 0 }
             val recognized = permissionAt.get() - downAt
             Log.i(
                 "VoiceInputLatency",
                 "touchToPermission=${recognized}ms overlayVisible=${voice.state.overlayVisible} permissionStillPending=${voice.state.phase}",
             )
-            assertTrue("未收到首批音频不能显示录音蒙层", drawAt.get() == 0L)
+            assertTrue("权限仍在等待时应立即显示蒙层", voice.state.overlayVisible)
             assertTrue(voice.state.phase == "authorizing")
+            assertTrue(voice.state.status == "正在获取麦克风权限")
         } finally {
             send(MotionEvent.ACTION_UP)
             compose.mainClock.autoAdvance = true

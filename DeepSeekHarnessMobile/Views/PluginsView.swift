@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import ImageIO
 
 struct PluginsView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -10,7 +11,7 @@ struct PluginsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 26) {
+            LazyVStack(alignment: .leading, spacing: 26) {
                 Text("安装、启用和配置插件")
                     .appFont(.subheadline).foregroundStyle(.secondary)
                 if !store.gateway.state.isConnected {
@@ -358,25 +359,33 @@ private struct ExperimentalPluginBadge: View {
     }
 }
 
-private struct PluginIcon: View {
+struct PluginIcon: View {
     let dataURL: String?
     let fallback: String
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var loadedRequest: PluginIconImageCache.Request?
+    @State private var image: UIImage?
+
+    private var request: PluginIconImageCache.Request? {
+        dataURL.map { .init(dataURL: $0, isDark: colorScheme == .dark) }
+    }
+
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 13).strokeBorder(.gray.opacity(0.3))
-            if let dataURL, dataURL.count < 256_000,
-               dataURL.hasPrefix("data:image/"),
-               let comma = dataURL.firstIndex(of: ","),
-               dataURL[..<comma].hasSuffix(";base64"),
-               let bytes = Data(base64Encoded: String(dataURL[dataURL.index(after: comma)...])) {
-                if let image = UIImage(data: bytes) {
-                    Image(uiImage: image).resizable().scaledToFit().padding(11)
-                } else if dataURL.hasPrefix("data:image/svg+xml;base64,") {
-                    PluginSVGView(dataURL: dataURL).padding(8)
-                }
+            if loadedRequest == request, let image {
+                Image(uiImage: image).resizable().scaledToFit()
+                    .padding(dataURL?.hasPrefix("data:image/svg+xml;") == true ? 8 : 11)
             } else {
                 Image(artworkName).resizable().scaledToFit().padding(8)
             }
+        }
+        .task(id: request) {
+            guard let request else { return }
+            let result = await PluginIconImageCache.shared.image(for: request)
+            guard !Task.isCancelled else { return }
+            image = result
+            loadedRequest = request
         }
     }
 
@@ -391,22 +400,148 @@ private struct PluginIcon: View {
     }
 }
 
-private struct PluginSVGView: UIViewRepresentable {
-    let dataURL: String
-    final class Coordinator { var loadedDataURL: String? }
-    func makeCoordinator() -> Coordinator { Coordinator() }
-    func makeUIView(context: Context) -> WKWebView {
+/// 列表只显示普通图片；解码移出主线程，SVG 在一个复用的渲染器中串行转为图片。
+@MainActor
+final class PluginIconImageCache {
+    struct Request: Hashable {
+        let dataURL: String
+        let isDark: Bool
+    }
+
+    static let shared = PluginIconImageCache()
+    private enum DecodedIcon: @unchecked Sendable { case bitmap(UIImage), svg }
+    private let images = NSCache<NSString, UIImage>()
+    private var inFlight: [Request: Task<UIImage?, Never>] = [:]
+    private let renderer = PluginSVGImageRenderer()
+
+    init() {
+        images.countLimit = 128
+        images.totalCostLimit = 8 * 1_024 * 1_024
+    }
+
+    func image(for request: Request) async -> UIImage? {
+        guard request.dataURL.utf8.count < 256_000 else { return nil }
+        let key = "\(request.isDark):\(request.dataURL)" as NSString
+        if let cached = images.object(forKey: key) { return cached }
+        if let task = inFlight[request] { return await task.value }
+        let task = Task { [renderer] () -> UIImage? in
+            let decoded = await Task.detached(priority: .utility) { Self.decode(request.dataURL) }.value
+            switch decoded {
+            case .bitmap(let image): return image
+            case .svg: return await renderer.image(for: request)
+            case nil: return nil
+            }
+        }
+        inFlight[request] = task
+        let image = await task.value
+        if let image {
+            let cost = image.cgImage.map { $0.bytesPerRow * $0.height } ?? 1
+            images.setObject(image, forKey: key, cost: cost)
+        }
+        inFlight[request] = nil
+        return image
+    }
+
+    private nonisolated static func decode(_ source: String) -> DecodedIcon? {
+        guard source.utf8.count < 256_000, source.hasPrefix("data:image/"),
+              let comma = source.firstIndex(of: ","), source[..<comma].hasSuffix(";base64"),
+              let bytes = Data(base64Encoded: String(source[source.index(after: comma)...])) else { return nil }
+        if source.hasPrefix("data:image/svg+xml;base64,") {
+            guard let svg = String(data: bytes, encoding: .utf8), svg.contains("<svg") else { return nil }
+            return .svg
+        }
+        guard let source = CGImageSourceCreateWithData(bytes as CFData, nil),
+              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceThumbnailMaxPixelSize: 256,
+                kCGImageSourceShouldCacheImmediately: true,
+                kCGImageSourceCreateThumbnailWithTransform: true
+              ] as CFDictionary) else { return nil }
+        return .bitmap(UIImage(cgImage: image))
+    }
+}
+
+@MainActor
+private final class PluginSVGImageRenderer: NSObject, WKNavigationDelegate {
+    private struct Job {
+        let id = UUID()
+        let request: PluginIconImageCache.Request
+        let continuation: CheckedContinuation<UIImage?, Never>
+    }
+    private var queue: [Job] = []
+    private var active: Job?
+    private var navigation: WKNavigation?
+    private var timeout: Task<Void, Never>?
+    private lazy var webView: WKWebView = {
         let config = WKWebViewConfiguration()
         config.defaultWebpagePreferences.allowsContentJavaScript = false
-        let view = WKWebView(frame: .zero, configuration: config)
+        config.websiteDataStore = .nonPersistent()
+        let view = WKWebView(frame: CGRect(x: 0, y: 0, width: 96, height: 96), configuration: config)
         view.isOpaque = false
         view.backgroundColor = .clear
+        view.scrollView.backgroundColor = .clear
         view.scrollView.isScrollEnabled = false
+        view.navigationDelegate = self
         return view
+    }()
+
+    func image(for request: PluginIconImageCache.Request) async -> UIImage? {
+        await withCheckedContinuation { continuation in
+            queue.append(Job(request: request, continuation: continuation))
+            startNext()
+        }
     }
-    func updateUIView(_ view: WKWebView, context: Context) {
-        guard context.coordinator.loadedDataURL != dataURL else { return }
-        context.coordinator.loadedDataURL = dataURL
-        view.loadHTMLString("<html><head><meta name='viewport' content='width=device-width,initial-scale=1'></head><body style='margin:0;display:grid;place-items:center;background:transparent'><img style='max-width:100%;max-height:100%' src='\(dataURL)'></body></html>", baseURL: nil)
+
+    private func startNext() {
+        guard active == nil, !queue.isEmpty else { return }
+        let job = queue.removeFirst()
+        active = job
+        // 离屏视图不会自动经历显示周期，加载 SVG 前显式刷新其主题环境。
+        webView.traitOverrides.userInterfaceStyle = job.request.isDark ? .dark : .light
+        webView.updateTraitsIfNeeded()
+        navigation = webView.loadHTMLString("""
+        <html><head><meta name='viewport' content='width=device-width,initial-scale=1'>
+        <meta name='color-scheme' content='\(job.request.isDark ? "dark" : "light")'>
+        <meta http-equiv='Content-Security-Policy' content="default-src 'none'; img-src data:; style-src 'unsafe-inline'">
+        <style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent}
+        img{width:100%;height:100%;object-fit:contain;color-scheme:only \(job.request.isDark ? "dark" : "light")}</style></head>
+        <body><img src='\(job.request.dataURL)'></body></html>
+        """, baseURL: nil)
+        timeout = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(5)) } catch { return }
+            self?.finish(job.id, image: nil)
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard navigation === self.navigation, let job = active else { return }
+        let configuration = WKSnapshotConfiguration()
+        configuration.rect = webView.bounds
+        webView.takeSnapshot(with: configuration) { [weak self] image, _ in
+            self?.finish(job.id, image: image)
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        guard navigation === self.navigation, let job = active else { return }
+        finish(job.id, image: nil)
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        self.webView(webView, didFail: navigation, withError: error)
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        if let job = active { finish(job.id, image: nil) }
+    }
+
+    private func finish(_ id: UUID, image: UIImage?) {
+        guard let job = active, job.id == id else { return }
+        timeout?.cancel()
+        timeout = nil
+        active = nil
+        navigation = nil
+        job.continuation.resume(returning: image)
+        startNext()
     }
 }

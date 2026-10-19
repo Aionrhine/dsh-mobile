@@ -18,7 +18,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.clarklevis.dsh.shared.facade.FileIconCatalog
@@ -45,6 +48,11 @@ internal fun FileReferenceCard(
 ) {
     val kind = remember(path, mediaType) { FileIconCatalog.resolve(path, mediaType) }
     val summary = remember(description) { FileCardDescription.summary(description) }
+    val textStyle = TextStyle(
+        letterSpacing = 0.sp,
+        platformStyle = PlatformTextStyle(includeFontPadding = false),
+        lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both)
+    )
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
@@ -62,12 +70,16 @@ internal fun FileReferenceCard(
                 Text(
                     path.replace('\\', '/').substringAfterLast('/'),
                     fontSize = 15.sp,
+                    lineHeight = 18.sp,
                     fontWeight = FontWeight.Medium,
+                    style = textStyle,
                 )
                 summary?.let {
                     Text(
                         it,
                         fontSize = 12.sp,
+                        lineHeight = 15.sp,
+                        style = textStyle,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }

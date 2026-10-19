@@ -4,9 +4,7 @@ import com.clarklevis.dsh.shared.gateway.GatewayRequest
 import com.clarklevis.dsh.shared.gateway.GatewayRequestLanePolicy
 import com.clarklevis.dsh.shared.protocol.wireJson
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
 import kotlin.io.encoding.Base64
 import kotlin.math.ln
@@ -18,6 +16,7 @@ private const val WAVEFORM_TRIGGER_LEVEL = 0.08f
 /** 两端只渲染此状态；识别流程、音量归一化与草稿冲突策略只有一份。 */
 data class SharedVoiceInputSnapshot(
     val phase: String = "idle",
+    val voiceMode: Boolean = false,
     val keyboardVisible: Boolean = false,
     val supported: Boolean = false,
     val connected: Boolean = false,
@@ -34,12 +33,12 @@ data class SharedVoiceInputSnapshot(
     val error: String? = null,
     val pendingTranscript: String? = null,
 ) {
-    val hint: String get() = if (keyboardVisible) "描述你想要构建的内容" else "输入内容或按住说话"
+    val hint: String get() = "描述你想要构建的内容"
     val visualActivity: Float get() = if (waveformActive) 1f else 0f
     val active: Boolean get() = phase != "idle"
 
     // 松手后任务继续在后台执行，蒙层和输入保护只随用户持有录音显示。
-    val overlayVisible: Boolean get() = phase == "recording"
+    val overlayVisible: Boolean get() = phase in setOf("authorizing", "starting", "recording")
     val inputBlocked: Boolean get() = phase in setOf("authorizing", "starting", "recording")
     val touchPending: Boolean get() = phase == "priming"
     val recording: Boolean get() = phase in setOf("authorizing", "starting", "recording", "stopping")
@@ -141,7 +140,9 @@ class SharedVoiceInputStore {
         currentDraft: String,
     ): SharedVoiceInputTransition {
         val cancelled = if (contextId != context) cancel() else result()
-        if (contextId != context) state = state.copy(pendingTranscript = null, error = null, alertMessage = null)
+        if (contextId != context) {
+            state = state.copy(voiceMode = false, pendingTranscript = null, error = null, alertMessage = null)
+        }
         contextId = context
         draftChanged(currentDraft)
         return cancelled.copy(
@@ -155,7 +156,16 @@ class SharedVoiceInputStore {
             draft = value
             draftRevision++
         }
+        if (value.isNotBlank() && !state.recording && !state.touchPending) state = state.copy(voiceMode = false)
         return result()
+    }
+
+    /** 输入方式由共享层持有；退出语音态只取消持有中的录音，后台转写仍可回填草稿。 */
+    fun setVoiceMode(enabled: Boolean): SharedVoiceInputTransition {
+        if (state.voiceMode == enabled) return result()
+        val cancelled = if (!enabled && (state.inputBlocked || state.touchPending)) cancel() else result()
+        state = state.copy(voiceMode = enabled, keyboardVisible = if (enabled) false else state.keyboardVisible)
+        return cancelled.copy(snapshot = state)
     }
 
     fun keyboardChanged(visible: Boolean): SharedVoiceInputTransition {
@@ -224,8 +234,13 @@ class SharedVoiceInputStore {
         nowMilliseconds: Long,
         microphoneGranted: Boolean,
     ): SharedVoiceInputTransition {
-        if (!microphoneGranted || state.active || state.keyboardVisible ||
-            !state.connected || !state.supported || !state.ready
+        if (!state.voiceMode ||
+            !microphoneGranted ||
+            state.active ||
+            state.keyboardVisible ||
+            !state.connected ||
+            !state.supported ||
+            !state.ready
         ) {
             return result()
         }
@@ -237,6 +252,7 @@ class SharedVoiceInputStore {
     fun touchFinished(): SharedVoiceInputTransition = if (state.touchPending) cancel() else result()
 
     fun press(nowMilliseconds: Long): SharedVoiceInputTransition {
+        if (!state.voiceMode) return result()
         if (state.touchPending) {
             state = state.copy(phase = if (captureReady) "recording" else "starting")
             phaseStartedAt = nowMilliseconds
@@ -504,6 +520,7 @@ class SharedVoiceInputStore {
         state =
             state.copy(
                 phase = "idle",
+                voiceMode = false,
                 level = 0f,
                 waveformActive = false,
                 cancelArmed = false,
@@ -545,7 +562,7 @@ class SharedVoiceInputStore {
         val text = state.pendingTranscript ?: return result()
         val update = appendToDraft(draft, text)
         draftChanged(update)
-        state = state.copy(pendingTranscript = null)
+        state = state.copy(voiceMode = false, pendingTranscript = null)
         return result(draftUpdate = update)
     }
 
@@ -603,6 +620,7 @@ class SharedVoiceInputStore {
 
     fun leave(): SharedVoiceInputTransition {
         val cancelled = suspendCapture()
+        state = state.copy(voiceMode = false)
         contextId = null
         val unsubscribe =
             if (followId != null &&
@@ -615,7 +633,7 @@ class SharedVoiceInputStore {
         val requests = cancelled.requests + unsubscribe
         followId = null
         catalogId = null
-        return cancelled.copy(requests = requests)
+        return cancelled.copy(snapshot = state, requests = requests)
     }
 
     private fun noSpeech(): SharedVoiceInputTransition {

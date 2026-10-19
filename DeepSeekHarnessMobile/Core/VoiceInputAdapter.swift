@@ -65,6 +65,7 @@ final class VoiceInputAdapter: ObservableObject {
     }
     func draftChanged(_ text: String) { apply(shared.draftChanged(value: text)) }
     func keyboardChanged(_ visible: Bool) { apply(shared.keyboardChanged(visible: visible)) }
+    func setVoiceMode(_ enabled: Bool) { apply(shared.setVoiceMode(enabled: enabled)) }
     func touchDown() {
         startFeedback.prepare()
         apply(shared.touchDown(nowMilliseconds: now, microphoneGranted: permissionGranted()))

@@ -41,6 +41,7 @@ struct ConversationViewportEntry: Identifiable {
     let streamingAssistant: StreamingAssistant?
     let userMessage: UserMessage?
     let allowsHeightCaching: Bool
+    let allowsScrollAnchoring: Bool
     let clipsContentToBounds: Bool
 
     fileprivate var cellKind: CellKind {
@@ -54,12 +55,14 @@ struct ConversationViewportEntry: Identifiable {
         revision: Int,
         content: AnyView,
         allowsHeightCaching: Bool = true,
+        allowsScrollAnchoring: Bool = true,
         clipsContentToBounds: Bool = false
     ) {
         self.id = id
         self.revision = revision
         self.content = content
         self.allowsHeightCaching = allowsHeightCaching
+        self.allowsScrollAnchoring = allowsScrollAnchoring
         self.clipsContentToBounds = clipsContentToBounds
         streamingAssistant = nil
         userMessage = nil
@@ -75,6 +78,7 @@ struct ConversationViewportEntry: Identifiable {
         // current revision in the shared cache prevents UIKit from starting a
         // preferred-size invalidation while a diffable update is committing.
         allowsHeightCaching = true
+        allowsScrollAnchoring = true
         clipsContentToBounds = false
     }
 
@@ -85,6 +89,7 @@ struct ConversationViewportEntry: Identifiable {
         streamingAssistant = nil
         self.userMessage = userMessage
         allowsHeightCaching = true
+        allowsScrollAnchoring = true
         clipsContentToBounds = false
     }
 }
@@ -282,6 +287,17 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
         hasConversationContent: Bool
     )?
     private var cellHeightCache: [CellMeasurementKey: CGFloat] = [:]
+    private var historyHeightPreparation: (
+        entries: [ConversationViewportEntry], nextIndex: Int, width: CGFloat
+    )?
+    private var historyPreparationDisplayLink: CADisplayLink?
+    private final class HistoryPreparationTarget: NSObject {
+        weak var owner: ConversationViewportController?
+
+        @MainActor @objc func tick() {
+            owner?.prepareNextHistoryHeightBatch()
+        }
+    }
     private var streamingHeightMeasurers: [String: StreamingTextHeightMeasurer] = [:]
     private var pendingLiveHeightCorrections: [CellMeasurementKey: LiveHeightCorrection] = [:]
     private var isLiveHeightCorrectionScheduled = false
@@ -310,6 +326,7 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
     required init?(coder: NSCoder) { nil }
 
     deinit {
+        historyPreparationDisplayLink?.invalidate()
         let timeline = timeline
         let observerID = timelineObserverID
         Task { @MainActor in
@@ -329,6 +346,8 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
         loadViewIfNeeded()
         setSessionID(sessionID)
         if configuredBodyFontSize != UIFont.appPreferredFont(forTextStyle: .body).pointSize {
+            if historyHeightPreparation != nil { pendingApply = nil }
+            cancelHistoryHeightPreparation()
             configuredBodyFontSize = UIFont.appPreferredFont(forTextStyle: .body).pointSize
             cellHeightCache.removeAll()
             streamingHeightMeasurers.removeAll()
@@ -376,6 +395,7 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
     func setSessionID(_ newSessionID: String?) {
         guard newSessionID != sessionID else { return }
         sessionGeneration &+= 1
+        cancelHistoryHeightPreparation()
         sessionID = newSessionID
         // 在新 timeline snapshot 原子提交前隐藏旧 cell，
         // 禁止上一个 session 的内容在切换期间闪现一帧。
@@ -589,6 +609,7 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         if !isApplyingSnapshot,
+           historyHeightPreparation == nil,
            collectionView.bounds.width > 0,
            let pending = pendingApply {
             pendingApply = nil
@@ -625,16 +646,20 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
         // snapshot is still animating. Otherwise UIKit can ask for a cell from
         // snapshot A and receive the entry from pending snapshot B, which is
         // visible as duplicated/overlapping rows during rapid disclosures.
-        guard !isApplyingSnapshot else {
+        guard !isApplyingSnapshot, historyHeightPreparation == nil else {
             pendingApply = (entries, revision, bottomInset, hasConversationContent)
             return
         }
 
-        let prependAnchor = capturePrependAnchor(for: ids)
+        let hasStructureChange = dataSource.snapshot().itemIdentifiers != ids
+        let prependAnchor = hasStructureChange ? capturePrependAnchor(for: entries) : nil
+        if prependAnchor != nil, prepareHistoryHeightsIfNeeded(in: entries) {
+            pendingApply = (entries, revision, bottomInset, hasConversationContent)
+            return
+        }
         let oldEntriesByID = entriesByID
         entriesByID = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
         let changed = entries.compactMap { previousRevisions[$0.id] == $0.revision ? nil : $0.id }
-        let hasStructureChange = dataSource.snapshot().itemIdentifiers != ids
         let activeStreamingIDs = Set(entries.compactMap { entry in
             entry.streamingAssistant == nil ? nil : entry.id
         })
@@ -898,6 +923,63 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
             measuredIDs: measuredIDs,
             streamingHeightChangedIDs: streamingHeightChangedIDs
         )
+    }
+
+    /// 历史页仍需在 batch 前拿到准确高度，但不能连续创建整页 SwiftUI host。
+    /// 每帧只做少量测量，准备期间继续使用旧 snapshot 和 cell-provider 数据。
+    private func prepareHistoryHeightsIfNeeded(in entries: [ConversationViewportEntry]) -> Bool {
+        let width = chatLayout.layoutFrame.width > 0
+            ? chatLayout.layoutFrame.width : collectionView.bounds.width
+        guard width > 0 else { return false }
+        let unmeasuredEntries = entries.filter { entry in
+            entriesByID[entry.id] == nil && entry.allowsHeightCaching && cellHeightCache[
+                CellMeasurementKey(id: entry.id, revision: entry.revision, width: width)
+            ] == nil
+        }
+        guard !unmeasuredEntries.isEmpty else { return false }
+        historyHeightPreparation = (unmeasuredEntries, 0, width)
+        let target = HistoryPreparationTarget()
+        target.owner = self
+        let link = CADisplayLink(target: target, selector: #selector(HistoryPreparationTarget.tick))
+        historyPreparationDisplayLink = link
+        link.add(to: .main, forMode: .common)
+        return true
+    }
+
+    private func prepareNextHistoryHeightBatch() {
+        // 手指拖动和惯性滚动优先；结束后再准备和提交历史页。
+        guard !isStreamingRenderingPausedForUserScroll,
+              !collectionView.isTracking, !collectionView.isDragging,
+              !collectionView.isDecelerating,
+              var preparation = historyHeightPreparation else { return }
+        let width = chatLayout.layoutFrame.width > 0
+            ? chatLayout.layoutFrame.width : collectionView.bounds.width
+        if width == preparation.width {
+            let deadline = CACurrentMediaTime() + 0.003
+            repeat {
+                _ = prewarmHeights(in: [preparation.entries[preparation.nextIndex]])
+                preparation.nextIndex += 1
+            } while preparation.nextIndex < preparation.entries.count && CACurrentMediaTime() < deadline
+            if preparation.nextIndex < preparation.entries.count {
+                historyHeightPreparation = preparation
+                return
+            }
+        }
+        cancelHistoryHeightPreparation()
+        if let pending = pendingApply {
+            pendingApply = nil
+            // 此刻重新捕获阅读锚点，准备期间的滚动不会被旧位置覆盖。
+            // 旋转、字号或新快照使缓存失效时，apply 会先准备缺失高度。
+            apply(entries: pending.entries, revision: pending.revision,
+                  bottomInset: pending.bottomInset, hasConversationContent: pending.hasConversationContent)
+        }
+        finishStreamingRenderResumeIfPossible()
+    }
+
+    private func cancelHistoryHeightPreparation() {
+        historyPreparationDisplayLink?.invalidate()
+        historyPreparationDisplayLink = nil
+        historyHeightPreparation = nil
     }
 
     private func configureStreamingMeasurement(
@@ -1298,6 +1380,7 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
         guard isStreamingRenderResumePending,
               !isStreamingRenderingPausedForUserScroll,
               !isApplyingSnapshot,
+              historyHeightPreparation == nil,
               pendingApply == nil else { return }
         isStreamingRenderResumePending = false
     }
@@ -1328,13 +1411,24 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
         let interactionGeneration: Int
     }
 
-    private func capturePrependAnchor(for newIDs: [String]) -> VisibleAnchor? {
+    private func capturePrependAnchor(for newEntries: [ConversationViewportEntry]) -> VisibleAnchor? {
         let oldIDs = dataSource.snapshot().itemIdentifiers
-        guard let oldFirst = oldIDs.first,
-              let retainedIndex = newIDs.firstIndex(of: oldFirst),
-              retainedIndex > 0,
-              let indexPath = collectionView.indexPathsForVisibleItems.min(),
-              indexPath.item < oldIDs.count,
+        let newIDs = newEntries.map(\.id)
+        let retainedContentIDs = Set(newEntries.filter(\.allowsScrollAnchoring).map(\.id))
+        // 加载按钮始终位于第 0 行，不能用它判断是否追加了更早的消息，
+        // 也不能把它当作阅读锚点。比较真实内容前方的条目，兼顾最后一页移除按钮。
+        guard let oldFirstIndex = oldIDs.firstIndex(where: {
+            entriesByID[$0]?.allowsScrollAnchoring == true && retainedContentIDs.contains($0)
+        }),
+              let newFirstIndex = newIDs.firstIndex(of: oldIDs[oldFirstIndex]),
+              oldIDs[..<oldFirstIndex] != newIDs[..<newFirstIndex],
+              let indexPath = collectionView.indexPathsForVisibleItems.sorted().first(where: { path in
+                  guard path.item < oldIDs.count,
+                        entriesByID[oldIDs[path.item]]?.allowsScrollAnchoring == true,
+                        retainedContentIDs.contains(oldIDs[path.item]),
+                        let attributes = collectionView.layoutAttributesForItem(at: path) else { return false }
+                  return attributes.frame.intersects(collectionView.bounds)
+              }),
               let attributes = collectionView.layoutAttributesForItem(at: indexPath) else { return nil }
         return VisibleAnchor(
             id: oldIDs[indexPath.item],
@@ -1353,9 +1447,13 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
         guard let item = item ?? dataSource.snapshot().indexOfItem(anchor.id) else { return }
         let indexPath = IndexPath(item: item, section: 0)
         guard let attributes = collectionView.layoutAttributesForItem(at: indexPath) else { return }
+        let minimumY = -collectionView.adjustedContentInset.top
+        let maximumY = max(minimumY, collectionView.contentSize.height - collectionView.bounds.height
+                           + collectionView.adjustedContentInset.bottom)
+        let offsetY = min(maximumY, max(minimumY, attributes.frame.minY - anchor.offsetFromViewportTop))
         isProgrammaticScroll = true
         collectionView.setContentOffset(
-            CGPoint(x: 0, y: attributes.frame.minY - anchor.offsetFromViewportTop),
+            CGPoint(x: 0, y: offsetY),
             animated: false
         )
         isProgrammaticScroll = false

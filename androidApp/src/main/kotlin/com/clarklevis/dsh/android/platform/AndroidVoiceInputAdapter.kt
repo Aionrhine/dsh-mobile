@@ -27,7 +27,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import kotlin.math.sqrt
 
@@ -72,6 +71,8 @@ class AndroidVoiceInputAdapter(
     fun draftChanged(text: String) = apply(shared.draftChanged(text))
 
     fun keyboardChanged(visible: Boolean) = apply(shared.keyboardChanged(visible))
+
+    fun setVoiceMode(enabled: Boolean) = apply(shared.setVoiceMode(enabled))
 
     fun touchDown(uptimeMilliseconds: Long) {
         latency.touchDown(uptimeMilliseconds)

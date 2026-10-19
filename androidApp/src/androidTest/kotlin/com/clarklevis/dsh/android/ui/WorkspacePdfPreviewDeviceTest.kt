@@ -172,6 +172,38 @@ class WorkspacePdfPreviewDeviceTest {
     }
 
     @Test
+    fun markdownSwitchRendersAndRestoresBothSourceScrollAxes() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val local = File(context.cacheDir, "markdown-preview-test.md")
+        try {
+            local.writeText("# 渲染标题\n\n**强调内容**\n\n" +
+                (1..100).joinToString("\n") { "- 项目 $it " + "long_value_".repeat(100) })
+            val file = AndroidWorkspaceLocalFile(local, "s1", local.name, local.name, "text/markdown", "preview")
+            compose.setContent { DshTheme { WorkspaceCodePreviewSheet(file, {}, {}) } }
+            compose.waitUntil(15_000) { compose.onAllNodesWithTag("workspace-code-horizontal").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithTag("workspace-markdown-source-tab").assertIsSelected()
+            val horizontal = compose.onNodeWithTag("workspace-code-horizontal")
+            horizontal.performTouchInput { swipeLeft(durationMillis = 400) }
+            val horizontalOffset = horizontal.fetchSemanticsNode().config[SemanticsProperties.HorizontalScrollAxisRange].value()
+            assertTrue("代码正文必须能左右滚动", horizontalOffset > 0f)
+            val vertical = compose.onNodeWithTag("workspace-code-content")
+            vertical.performTouchInput { swipeUp(durationMillis = 400) }
+            val verticalOffset = vertical.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()
+            assertTrue(verticalOffset > 0f)
+            compose.onNodeWithTag("workspace-markdown-preview-tab").performClick()
+            compose.waitUntil(15_000) { compose.onAllNodesWithTag("workspace-markdown-preview").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithTag("workspace-markdown-preview").assertIsDisplayed()
+            compose.onNodeWithTag("workspace-markdown-preview-tab").assertIsSelected()
+            compose.onNodeWithTag("workspace-code-content").assertDoesNotExist()
+            screenshot("preview-sheet-markdown-rendered.png")
+            compose.onNodeWithTag("workspace-markdown-source-tab").performClick()
+            assertTrue(abs(horizontal.fetchSemanticsNode().config[SemanticsProperties.HorizontalScrollAxisRange].value() - horizontalOffset) < 2f)
+            assertTrue(abs(vertical.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value() - verticalOffset) < 2f)
+            screenshot("preview-sheet-markdown-source.png")
+        } finally { local.delete() }
+    }
+
+    @Test
     fun longCodeScrollsInsideDarkBottomSheetWithoutMovingToolbar() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val local = File(context.cacheDir, "preview-sheet-test.kt")

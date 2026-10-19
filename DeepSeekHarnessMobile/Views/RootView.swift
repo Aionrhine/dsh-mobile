@@ -1354,6 +1354,8 @@ private struct SendableWorkspaceCodeDocument: @unchecked Sendable {
 private struct WorkspaceCodeDocumentView: View {
     let document: WorkspaceCodeDocument
     @Environment(\.colorScheme) private var colorScheme
+    @State private var previewsMarkdown = false
+    @State private var hasRenderedMarkdown = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1370,7 +1372,42 @@ private struct WorkspaceCodeDocumentView: View {
             .frame(minHeight: 38)
             .background(Color(uiColor: .secondarySystemBackground))
 
-            WorkspaceCodeTextKitView(document: document, colorScheme: colorScheme)
+            if document.language == "markdown" {
+                Picker("Markdown", selection: $previewsMarkdown) {
+                    Text("源码").tag(false)
+                    Text("预览").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 320)
+                .padding(.horizontal, 14)
+                .padding(.bottom, 10)
+                .frame(maxWidth: .infinity)
+                .background(Color(uiColor: .secondarySystemBackground))
+                .accessibilityIdentifier("workspace-markdown-mode")
+            }
+
+            ZStack {
+                WorkspaceCodeTextKitView(document: document, colorScheme: colorScheme)
+                    .opacity(previewsMarkdown ? 0 : 1)
+                    .allowsHitTesting(!previewsMarkdown)
+                    .accessibilityHidden(previewsMarkdown)
+
+                // 首次切换时再解析 Markdown；保留两种视图以保存各自的滚动位置。
+                if previewsMarkdown || hasRenderedMarkdown {
+                    ScrollView {
+                        MarkdownContent(document.text)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(18)
+                    }
+                    .background(Color(uiColor: .systemBackground))
+                    .opacity(previewsMarkdown ? 1 : 0)
+                    .allowsHitTesting(previewsMarkdown)
+                    .accessibilityHidden(!previewsMarkdown)
+                    .accessibilityIdentifier("workspace-markdown-preview")
+                    .onAppear { hasRenderedMarkdown = true }
+                }
+            }
         }
     }
 }
@@ -1392,15 +1429,17 @@ private struct WorkspaceCodeTextKitView: UIViewRepresentable {
     }
 }
 
-final class WorkspaceCodeTextKitContainer: UIView, UITextViewDelegate {
+final class WorkspaceCodeTextKitContainer: UIView, UIScrollViewDelegate {
     private let gutterView = UIView()
     private var gutterWidthConstraint: NSLayoutConstraint?
     private let lineNumberLabel = UILabel()
+    private let codeScrollView = UIScrollView()
     private let codeTextView = UITextView(frame: .zero, textContainer: nil)
     private var codeFont: UIFont { UIFont.appMonospacedFont(ofSize: 13, weight: .regular) }
     private let lineSpacing: CGFloat = 4
     private var lineCount = 1
     private var maximumLineWidth: CGFloat = 0
+    private var measuredTextHeight: CGFloat = 0
     private var configuredRevision: String?
 
     override init(frame: CGRect) {
@@ -1415,14 +1454,22 @@ final class WorkspaceCodeTextKitContainer: UIView, UITextViewDelegate {
         lineNumberLabel.textAlignment = .right
         gutterView.addSubview(lineNumberLabel)
 
-        codeTextView.translatesAutoresizingMaskIntoConstraints = false
-        codeTextView.delegate = self
+        codeScrollView.translatesAutoresizingMaskIntoConstraints = false
+        codeScrollView.delegate = self
+        codeScrollView.alwaysBounceVertical = true
+        codeScrollView.showsHorizontalScrollIndicator = true
+        codeScrollView.contentInsetAdjustmentBehavior = .never
+        codeScrollView.accessibilityIdentifier = "workspace-code-scroll"
+        addSubview(codeScrollView)
+
         codeTextView.isEditable = false
         codeTextView.isSelectable = true
+        // 保留 UITextView 的文字布局机制，拖动统一交给外层双轴视口。
         codeTextView.isScrollEnabled = true
-        codeTextView.alwaysBounceVertical = true
-        codeTextView.showsVerticalScrollIndicator = true
-        codeTextView.showsHorizontalScrollIndicator = true
+        codeTextView.panGestureRecognizer.isEnabled = false
+        codeTextView.showsVerticalScrollIndicator = false
+        codeTextView.showsHorizontalScrollIndicator = false
+        codeTextView.accessibilityIdentifier = "workspace-code-text"
         codeTextView.contentInsetAdjustmentBehavior = .never
         codeTextView.contentInset = .zero
         codeTextView.textContainerInset = UIEdgeInsets(top: 14, left: 14, bottom: 24, right: 28)
@@ -1431,7 +1478,7 @@ final class WorkspaceCodeTextKitContainer: UIView, UITextViewDelegate {
         codeTextView.textContainer.heightTracksTextView = false
         codeTextView.textContainer.lineBreakMode = .byClipping
         codeTextView.layoutManager.allowsNonContiguousLayout = true
-        addSubview(codeTextView)
+        codeScrollView.addSubview(codeTextView)
 
         let gutterWidth = gutterView.widthAnchor.constraint(equalToConstant: 52)
         gutterWidthConstraint = gutterWidth
@@ -1440,10 +1487,10 @@ final class WorkspaceCodeTextKitContainer: UIView, UITextViewDelegate {
             gutterView.topAnchor.constraint(equalTo: topAnchor),
             gutterView.bottomAnchor.constraint(equalTo: bottomAnchor),
             gutterWidth,
-            codeTextView.leadingAnchor.constraint(equalTo: gutterView.trailingAnchor),
-            codeTextView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            codeTextView.topAnchor.constraint(equalTo: topAnchor),
-            codeTextView.bottomAnchor.constraint(equalTo: bottomAnchor)
+            codeScrollView.leadingAnchor.constraint(equalTo: gutterView.trailingAnchor),
+            codeScrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            codeScrollView.topAnchor.constraint(equalTo: topAnchor),
+            codeScrollView.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
     }
 
@@ -1457,6 +1504,7 @@ final class WorkspaceCodeTextKitContainer: UIView, UITextViewDelegate {
         guard configuredRevision != revision else { return }
         configuredRevision = revision
         lineCount = max(1, Int(document.lineCount))
+        measuredTextHeight = CGFloat(lineCount) * codeFont.lineHeight + CGFloat(lineCount - 1) * lineSpacing
         let numberWidth = (String(lineCount) as NSString).size(withAttributes: [.font: codeFont]).width
         gutterWidthConstraint?.constant = max(52, ceil(numberWidth) + 24)
 
@@ -1468,6 +1516,7 @@ final class WorkspaceCodeTextKitContainer: UIView, UITextViewDelegate {
             : UIColor.secondarySystemBackground
         backgroundColor = codeBackground
         codeTextView.backgroundColor = codeBackground
+        codeScrollView.backgroundColor = codeBackground
         gutterView.backgroundColor = gutterBackground
         codeTextView.tintColor = UIColor(DSHColor.ocean)
         codeTextView.attributedText = WorkspaceCodeAttributedText.highlight(document, isDark: isDark)
@@ -1498,7 +1547,7 @@ final class WorkspaceCodeTextKitContainer: UIView, UITextViewDelegate {
     override func layoutSubviews() {
         super.layoutSubviews()
         let insets = codeTextView.textContainerInset
-        let visibleWidth = max(1, codeTextView.bounds.width - insets.left - insets.right)
+        let visibleWidth = max(1, codeScrollView.bounds.width - insets.left - insets.right)
         let containerWidth = max(visibleWidth, ceil(maximumLineWidth) + 1)
         if abs(codeTextView.textContainer.size.width - containerWidth) > 0.5 {
             codeTextView.textContainer.size = CGSize(
@@ -1507,11 +1556,28 @@ final class WorkspaceCodeTextKitContainer: UIView, UITextViewDelegate {
             )
         }
         codeTextView.textContainer.widthTracksTextView = false
+        codeTextView.layoutManager.ensureLayout(for: codeTextView.textContainer)
+        let usedHeight = codeTextView.layoutManager.usedRect(for: codeTextView.textContainer).maxY
+        // 非连续布局在隐藏/重新显示时可能暂时返回空区域，不能因此收缩滚动范围。
+        measuredTextHeight = max(measuredTextHeight, ceil(usedHeight))
+        let contentSize = CGSize(
+            width: containerWidth + insets.left + insets.right,
+            height: max(codeScrollView.bounds.height, measuredTextHeight + insets.top + insets.bottom)
+        )
+        codeTextView.frame = CGRect(origin: .zero, size: contentSize)
+        codeScrollView.contentSize = contentSize
+        if !codeScrollView.isDragging && !codeScrollView.isDecelerating {
+            let offset = CGPoint(
+                x: min(max(0, codeScrollView.contentOffset.x), max(0, contentSize.width - codeScrollView.bounds.width)),
+                y: min(max(0, codeScrollView.contentOffset.y), max(0, contentSize.height - codeScrollView.bounds.height))
+            )
+            if codeScrollView.contentOffset != offset { codeScrollView.contentOffset = offset }
+        }
         updateLineNumberPosition()
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
-        guard scrollView === codeTextView else { return }
+        guard scrollView === codeScrollView else { return }
         updateLineNumberPosition()
     }
 
@@ -1521,7 +1587,7 @@ final class WorkspaceCodeTextKitContainer: UIView, UITextViewDelegate {
             CGFloat(max(0, lineCount - 1)) * lineSpacing
         lineNumberLabel.frame = CGRect(
             x: 0,
-            y: 14 - codeTextView.contentOffset.y,
+            y: 14 - codeScrollView.contentOffset.y,
             width: gutterView.bounds.width - 12,
             height: max(labelHeight, rowHeight)
         )

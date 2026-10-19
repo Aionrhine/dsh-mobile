@@ -24,6 +24,8 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.assertContentDescriptionEquals
+import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.performClick
@@ -40,6 +42,43 @@ import org.junit.Test
 class ConversationKeyboardDeviceTest {
     @get:Rule
     val compose = createComposeRule()
+
+    @Test
+    fun emptyComposerSwitchesBetweenWaveformAndKeyboardAndDraftUsesSend() {
+        val fixture = showConversation()
+        try {
+            val composer = compose.onNodeWithTag("conversation-composer-column")
+            val defaultHeight = composer.fetchSemanticsNode().boundsInRoot.height
+            val action = compose.onNodeWithTag("composer-action")
+            action.assertIsEnabled().assertContentDescriptionEquals("切换到语音输入")
+            val editor = compose.onNodeWithTag("composer-input")
+            editor.performTouchInput { longClick() }
+            compose.runOnIdle {
+                assertTrue("文字态长按不能录音", !fixture.holder.voiceInput.state.active)
+            }
+            action.performClick()
+            compose.onNodeWithTag("composer-input").assertDoesNotExist()
+            compose.onNodeWithTag("composer-voice-hold").assertIsDisplayed()
+            compose.onNodeWithText("按住说话").assertIsDisplayed()
+            action.assertContentDescriptionEquals("切换到文字输入")
+            waitForIme(fixture.view, false)
+            assertTrue("切换语音态不能改变输入框默认高度", kotlin.math.abs(composer.fetchSemanticsNode().boundsInRoot.height - defaultHeight) < 1f)
+            compose.runOnIdle { assertTrue(!fixture.holder.voiceInput.state.active) }
+            val image = compose.onNodeWithTag("conversation-composer-column").captureToImage()
+            val output = InstrumentationRegistry.getInstrumentation().targetContext.cacheDir.resolve("voice-mode-composer.png")
+            output.outputStream().use { image.asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it) }
+            action.performClick()
+            compose.onNodeWithTag("composer-voice-hold").assertDoesNotExist()
+            editor.assertIsFocused()
+            waitForIme(fixture.view, true)
+            editor.performTextInput("先编辑再发送")
+            action.assertContentDescriptionEquals("发送")
+            editor.performTextClearance()
+            action.assertContentDescriptionEquals("切换到语音输入")
+        } finally {
+            fixture.holder.close()
+        }
+    }
 
     @Test
     fun inputFocusMovesLatestMessageAboveImeAndTimelineTapHidesIme() {
@@ -88,6 +127,7 @@ class ConversationKeyboardDeviceTest {
     fun transcribedDraftKeepsNativeTapEditingAndImeInput() {
         val shared = SharedVoiceInputStore()
         shared.open("keyboard-session", "")
+        shared.setVoiceMode(true)
         val request = shared.connectionChanged(true, true).requests.first { it.requestType == "speech-catalog" }
         shared.acceptJson("""{"kind":"speech-catalog","requestId":"${request.correlationId}","available":true,"selection":{"providerId":"p"},"providers":[{"id":"p","preparation":{"phase":"ready"}}]}""")
         val token = shared.press(1000).effects.first { it.action == "permission" }.recordingId
@@ -99,7 +139,8 @@ class ConversationKeyboardDeviceTest {
         compose.onNodeWithTag("voice-recording-overlay").assertDoesNotExist()
         compose.onNodeWithText("正在整理录音").assertDoesNotExist()
         compose.onNodeWithText("正在转成文字").assertDoesNotExist()
-        compose.onNodeWithTag("composer-input").assertIsEnabled().assertIsNotFocused()
+        compose.onNodeWithTag("composer-voice-hold").assertExists()
+        compose.onNodeWithTag("composer-input").assertDoesNotExist()
         compose.runOnIdle {
             fixture.holder.voiceInput.accept("""{"kind":"speech-transcript","requestId":"$token","text":"语音草稿"}""")
         }
@@ -126,13 +167,14 @@ class ConversationKeyboardDeviceTest {
     fun continuedVoiceHoldCannotStartTextSelectionOrShowIme() {
         val shared = SharedVoiceInputStore()
         shared.open("keyboard-session", "")
+        shared.setVoiceMode(true)
         val request = shared.connectionChanged(true, true).requests.first { it.requestType == "speech-catalog" }
         shared.acceptJson("""{"kind":"speech-catalog","requestId":"${request.correlationId}","available":true,"selection":{"providerId":"p"},"providers":[{"id":"p","preparation":{"phase":"ready"}}]}""")
         val fixture = showConversation(shared)
-        val editor = compose.onNodeWithTag("composer-input")
+        var editor = compose.onNodeWithTag("composer-voice-hold")
         var token = ""
         try {
-            // Down 先交给真实文本框，随后注入已启动的录音，模拟硬件结果，不启用麦克风。
+            // Down 先交给专用语音区，随后注入已启动的录音，模拟硬件结果，不启用麦克风。
             compose.mainClock.autoAdvance = false
             editor.performTouchInput { down(center) }
             compose.runOnIdle {
@@ -157,12 +199,13 @@ class ConversationKeyboardDeviceTest {
             assertTrue("松手应完成录音而非被原生手势取消", fixture.holder.voiceInput.state.phase == "stopping")
             compose.onNodeWithTag("voice-recording-overlay").assertDoesNotExist()
             compose.onNodeWithText("正在整理录音").assertDoesNotExist()
-            editor.assertIsEnabled().assertIsNotFocused()
+            assertTrue(!editor.fetchSemanticsNode().config.getOrElse(SemanticsProperties.Focused) { false })
             compose.runOnIdle {
                 shared.captureFinished(token, Base64.encodeToString(ByteArray(16000), Base64.NO_WRAP), 1501)
                 fixture.holder.voiceInput.draftChanged("")
                 fixture.holder.voiceInput.accept("""{"kind":"speech-transcript","requestId":"$token","text":"继续长按回归"}""")
             }
+            editor = compose.onNodeWithTag("composer-input")
             editor.assertIsNotFocused().assertTextContains("继续长按回归")
             waitForIme(fixture.view, false)
             editor.performTouchInput { click() }
@@ -281,6 +324,7 @@ class ConversationKeyboardDeviceTest {
     fun particleMaskCoversComposerAndSwitchesToLightRedForCancellation() {
         val shared = SharedVoiceInputStore()
         shared.open("keyboard-session", "")
+        shared.setVoiceMode(true)
         val request = shared.connectionChanged(true, true).requests.first { it.requestType == "speech-catalog" }
         shared.acceptJson("""{"kind":"speech-catalog","requestId":"${request.correlationId}","available":true,"selection":{"providerId":"p"},"providers":[{"id":"p","preparation":{"phase":"ready"}}]}""")
         val token = shared.press(1000).effects.first { it.action == "permission" }.recordingId
@@ -335,6 +379,7 @@ class ConversationKeyboardDeviceTest {
     fun recordingOverlayFadesBothWaysAndHasCurvedTopEdge() {
         val shared = SharedVoiceInputStore()
         shared.open("keyboard-session", "")
+        shared.setVoiceMode(true)
         val request = shared.connectionChanged(true, true).requests.first { it.requestType == "speech-catalog" }
         shared.acceptJson("""{"kind":"speech-catalog","requestId":"${request.correlationId}","available":true,"selection":{"providerId":"p"},"providers":[{"id":"p","preparation":{"phase":"ready"}}]}""")
         fun startCapture() {
@@ -372,8 +417,11 @@ class ConversationKeyboardDeviceTest {
             compose.mainClock.advanceTimeByFrame()
             compose.mainClock.advanceTimeBy(32)
             val enteringRed = bottomRed()
+            val enteringTop = mask.fetchSemanticsNode().boundsInRoot.top
             compose.mainClock.advanceTimeBy(360)
             val settledRed = bottomRed()
+            val settledTop = mask.fetchSemanticsNode().boundsInRoot.top
+            assertTrue("蒙层入场应轻微上移", enteringTop > settledTop + 0.5f)
             val earlyOpacity = (1 - enteringRed) / (1 - settledRed)
             assertTrue("淡入开始 32ms 应已清晰可见，不能慢起步", earlyOpacity > 0.25f)
             assertTrue("淡入仍应保留平滑过渡", earlyOpacity < 0.90f)

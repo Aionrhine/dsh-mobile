@@ -8,11 +8,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -26,9 +30,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -120,6 +126,16 @@ private fun CodePreviewDocument(document: WorkspaceCodeDocument) {
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val verticalScroll = rememberScrollState()
     val horizontalScroll = rememberScrollState()
+    val previewScroll = rememberScrollState()
+    var previewsMarkdown by remember(document) { mutableStateOf(false) }
+    val markdownPreloader = rememberDshMarkdownPreloader()
+    var markdownReady by remember(document, markdownPreloader) { mutableStateOf(false) }
+    LaunchedEffect(previewsMarkdown, document, markdownPreloader) {
+        if (previewsMarkdown && !markdownReady) {
+            markdownPreloader.preload(listOf(document.text))
+            markdownReady = true
+        }
+    }
     val highlighted = remember(document, dark) { highlightedCode(document, dark) }
     val lineNumbers = remember(document.lineCount) {
         (1..document.lineCount).joinToString("\n")
@@ -146,35 +162,83 @@ private fun CodePreviewDocument(document: WorkspaceCodeDocument) {
             Spacer(Modifier.weight(1f))
             Text(appText("%1\$s 行 · UTF-8", document.lineCount), color = secondary, fontSize = 12.sp)
         }
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(verticalScroll)
-                .testTag("workspace-code-content"),
-            verticalAlignment = Alignment.Top
-        ) {
-            Text(
-                text = lineNumbers,
+        if (document.language == "markdown") {
+            Box(Modifier.fillMaxWidth().background(gutterBackground).padding(horizontal = 14.dp)
+                .padding(bottom = 10.dp), contentAlignment = Alignment.Center) {
+                MarkdownPreviewModePicker(previewsMarkdown, dark) { previewsMarkdown = it }
+            }
+        }
+        if (previewsMarkdown) {
+            if (markdownReady) {
+                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)
+                    .verticalScroll(previewScroll).testTag("workspace-markdown-preview").padding(18.dp)) {
+                    DshMarkdownText(document.text)
+                }
+            } else {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            }
+        } else {
+            Row(
                 modifier = Modifier
-                    .widthIn(min = 52.dp)
-                    .background(gutterBackground)
-                    .padding(start = 8.dp, end = 12.dp, top = 14.dp, bottom = 24.dp),
-                color = secondary,
-                fontFamily = FontFamily.Monospace,
-                fontSize = 13.sp,
-                lineHeight = 20.sp,
-                textAlign = TextAlign.End
-            )
-            Text(
-                text = highlighted,
-                modifier = Modifier
-                    .horizontalScroll(horizontalScroll)
-                    .padding(start = 14.dp, end = 28.dp, top = 14.dp, bottom = 24.dp),
-                fontFamily = FontFamily.Monospace,
-                fontSize = 13.sp,
-                lineHeight = 20.sp,
-                softWrap = false
-            )
+                    .fillMaxSize()
+                    .verticalScroll(verticalScroll)
+                    .testTag("workspace-code-content"),
+                verticalAlignment = Alignment.Top
+            ) {
+                Text(
+                    text = lineNumbers,
+                    modifier = Modifier
+                        .widthIn(min = 52.dp)
+                        .background(gutterBackground)
+                        .padding(start = 8.dp, end = 12.dp, top = 14.dp, bottom = 24.dp),
+                    color = secondary,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 13.sp,
+                    lineHeight = 20.sp,
+                    textAlign = TextAlign.End
+                )
+                Text(
+                    text = highlighted,
+                    modifier = Modifier
+                        .weight(1f)
+                        .horizontalScroll(horizontalScroll)
+                        .testTag("workspace-code-horizontal")
+                        .padding(start = 14.dp, end = 28.dp, top = 14.dp, bottom = 24.dp),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 13.sp,
+                    lineHeight = 20.sp,
+                    softWrap = false
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MarkdownPreviewModePicker(previewsMarkdown: Boolean, dark: Boolean, onSelect: (Boolean) -> Unit) {
+    val shape = RoundedCornerShape(50)
+    val track = if (dark) Color(0xFF303035) else Color(0xFFE3E3E8)
+    val selectedBackground = if (dark) Color(0xFF636366) else Color.White
+    Row(
+        Modifier.widthIn(max = 320.dp).fillMaxWidth().height(32.dp)
+            .clip(shape).background(track).padding(2.dp).selectableGroup()
+    ) {
+        listOf(false, true).forEach { preview ->
+            val selected = previewsMarkdown == preview
+            Box(
+                Modifier.weight(1f).fillMaxHeight().clip(shape)
+                    .background(if (selected) selectedBackground else Color.Transparent)
+                    .selectable(selected = selected, role = Role.Tab, onClick = { onSelect(preview) })
+                    .testTag(if (preview) "workspace-markdown-preview-tab" else "workspace-markdown-source-tab"),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    appText(if (preview) "预览" else "源码"),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 13.sp,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                )
+            }
         }
     }
 }

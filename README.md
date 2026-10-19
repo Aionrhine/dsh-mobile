@@ -1,14 +1,16 @@
 <div align="center">
 
+**简体中文** · [English](README.en.md)
+
 <img src="Design/whale-girl-ios-app-promo-16x9-v3.png" alt="Whaleness iOS 应用展示" width="100%">
 
 # Whaleness（DeepSeek Harness 的第三方移动端应用）
 
 **使用 Kotlin Multiplatform 共享核心逻辑，为 Android 与 iOS 提供原生移动端体验。**
 
-通过 Mobile Gateway 在手机上访问 DeepSeek Harness 的工作区、会话、实时对话、Agent 轨迹与文件。
+通过 Mobile Gateway 在手机、平板和折叠屏设备上访问 DeepSeek Harness 的工作区、实时对话、Agent 轨迹、插件、定时任务与文件。
 
-Official website: [Whaleness](https://clarklevis1995.github.io/dsh-mobile/)
+官方网站：[Whaleness](https://clarklevis1995.github.io/dsh-mobile/)
 
 <p>
   <a href="https://testflight.apple.com/join/1Euwby6r"><img src="Docs/images/badges/testflight.svg" alt="加入 iOS TestFlight 公测" width="180" height="60"></a>
@@ -35,6 +37,13 @@ Whaleness 是独立开发的 DeepSeek Harness 第三方原生移动客户端。�
 
 两端均通过 [`dsh-plugin-mobile-gateway`](https://github.com/Clarklevis1995/dsh-plugin-mobile-gateway) 与 Harness 建立 WebSocket 连接。网络、安全存储、文件、图片、生命周期和后台任务由各平台原生实现，业务规则则尽可能收敛到 `shared/commonMain`。
 
+## 下载与前置条件
+
+- **iOS**：[加入 TestFlight 公测](https://testflight.apple.com/join/1Euwby6r)，支持 iPhone 与 iPad，要求 iOS / iPadOS 17.0 或更高版本。
+- **Android**：[从 GitHub Releases 下载 APK](https://github.com/Clarklevis1995/dsh-mobile/releases)，要求 Android 7.0（API 24）或更高版本。应用内检查更新优先使用加速下载源，并校验安装包。
+- **桌面端**：需要运行 DeepSeek Harness，并安装、启用 **`dsh-plugin-mobile-gateway` 0.10.3 或更高版本**。最低版本以 [`AppRelease/release-info.json`](AppRelease/release-info.json) 为准。
+- **语音输入**：另需在桌面端的“插件”模块启用官方“语音输入”插件，完成模型下载和初始化，并授予移动端麦克风权限。
+
 ## 当前平台状态
 
 | 平台/模块 | 当前状态 | 主要实现 |
@@ -47,27 +56,79 @@ Whaleness 是独立开发的 DeepSeek Harness 第三方原生移动客户端。�
 
 ## 功能亮点
 
+### 对话与 Agent 执行
+
 - **原生实时对话**：处理 WebSocket 增量事件，展示 Markdown、代码、思考过程、工具调用、工具结果与图片附件。
-- **历史与实时解耦**：分页加载历史记录时保留实时尾部，按序列与事件身份去重，避免消息重复或回退。
+- **语音与文字输入**：切换到独立的“按住说话”区域，松手转写为可编辑草稿，上滑取消；语音转写通过主机上的语音输入能力完成。
+- **历史、队列与命令**：分页加载历史记录时合并实时尾部并去重；查看和编辑排队消息，通过斜杠命令调用主机提供的能力。iOS 加载更早记录时保留当前阅读位置。
 - **完整 Agent 轨迹**：查看 User、Assistant、Tool 等事件，以及调用参数、结果、Schema、Token 和耗时信息。
-- **工作区与会话管理**：远程浏览、创建和切换 Harness 主机上的工作区，搜索、创建、切换及归档会话。
-- **工作区文件**：浏览 Harness 主机上的远端目录，分块下载文件，校验完整性，预览常见代码文件或交给系统应用打开。
 - **交互式 Agent 流程**：支持 Human Question 与工具审批请求，可提交、取消、拒绝或单次允许。
+
+### 主机、工作区与扩展
+
+- **多主机与会话管理**：保存并切换多个 Gateway 主机，分别管理认证信息；浏览、创建和切换工作区，搜索、创建、切换及归档会话。
+- **文件卡片与预览**：直接打开对话中的文件卡片，浏览远端目录，分块下载并校验完整性；预览 PDF、图片和代码，或交给系统分享与打开。
+- **Markdown 源码 / 预览**：代码预览支持语法高亮、行号和长行横向滚动；Markdown 文件可切换源码与渲染视图，并保留各自的阅读位置。
+- **插件管理**：查看官方及已安装插件、详情和运行状态，按主机支持的能力安装、启用、停用和配置插件。
+- **定时任务**：查看会话创建的定时任务，搜索和筛选任务，展开查看规则、下次执行时间及投递记录，并编辑或删除任务。
 - **会话和默认配置**：管理 Agent 预设、Provider/模型、思考等级与 `read-only`、`workspace-write`、`danger-full-access` Harness Agent 权限；这些不是手机本地文件系统权限。
+
+### 原生设备体验
+
+- **大屏与折叠屏适配**：iPad、Android 平板和折叠屏根据可用窗口尺寸调整布局；宽屏首页使用分栏，会话保持合适的阅读宽度，文件预览随窗口伸缩。Android 布局会考虑折叠铰链占用的区域。
+- **主题与字体大小**：浅色、深色主题，以及跟随系统或手动调整的应用字体大小；保留 Harness 的深海、网格与鲸鱼视觉语言。
+- **iOS 实时活动与通知**：在锁屏和支持的灵动岛设备上查看任务进展、审批与完成状态，重要进展可通过系统通知提醒。
 - **安全设备配对**：扫描 WebUI 二维码或手动输入配对信息；长期凭据保存到平台安全存储。
 - **移动端生命周期**：两端进入后台均不主动关闭健康连接，断线后回到前台自动恢复；手动断开不自动重连。Android 仅在 Agent 回合执行期间使用前台服务，空闲连接不启动前台服务；iOS 使用系统授予的有限后台执行时间管理活动任务，不保证无限期维持 WebSocket。
-- **浅色与深色主题**：两端均提供原生主题适配，并保留 Harness 的深海、网格与鲸鱼视觉语言。
 
 ## 界面预览
 
-> 当前仓库中的界面截图来自 iOS 版本；Android 使用 Jetpack Compose 实现相同的信息架构和核心流程。
+> 截图来自 iOS 版本；Android 使用 Jetpack Compose 实现相应的信息架构和核心流程。新增的语音、文件、字体及 iPad 截图拍摄于 2026 年 10 月 16 日（1.7.6），素材来源见[截图说明](Docs/images/screenshots/2026-10/SOURCES.md)。
+
+### 语音输入、文件预览与字体
+
+<table>
+  <tr>
+    <td width="33.33%" align="center"><img src="Docs/images/screenshots/2026-10/voice-input.png" alt="iPhone 按住说话时的语音录入浮层" width="100%"></td>
+    <td width="33.33%" align="center"><img src="Docs/images/screenshots/2026-10/pdf-preview.png" alt="从对话文件卡片打开 PDF 预览" width="100%"></td>
+    <td width="33.33%" align="center"><img src="Docs/images/screenshots/2026-10/font-size.png" alt="应用字体大小预览与滑块设置" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>按住说话</strong><br>松手转写，上滑取消</td>
+    <td align="center"><strong>PDF 预览</strong><br>从对话直接查看文件</td>
+    <td align="center"><strong>字体大小</strong><br>跟随系统或手动调整</td>
+  </tr>
+</table>
+
+[查看上滑取消状态](Docs/images/screenshots/2026-10/voice-cancel.png)
+
+### iPad 与大屏
+
+<table>
+  <tr>
+    <td width="50%" align="center"><img src="Docs/images/screenshots/2026-10/ipad-home.png" alt="iPad 首页的工作区与最近会话双栏布局" width="100%"></td>
+    <td width="50%" align="center"><img src="Docs/images/screenshots/2026-10/ipad-conversation.png" alt="iPad 横屏对话和文件卡片" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>宽屏首页</strong><br>工作区与会话分栏展示</td>
+    <td align="center"><strong>大屏对话</strong><br>舒适的内容宽度与输入区域</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="Docs/images/screenshots/2026-10/ipad-pdf-preview.png" alt="iPad 对话中的 PDF 预览窗口" width="100%"></td>
+    <td align="center"><img src="Docs/images/screenshots/2026-10/ipad-voice-input.png" alt="适配 iPad 横屏的语音输入浮层" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>文件预览</strong><br>保留对话上下文</td>
+    <td align="center"><strong>大屏语音输入</strong><br>录音反馈随窗口尺寸适配</td>
+  </tr>
+</table>
 
 ### 核心体验
 
 <table>
   <tr>
     <td width="33.33%" align="center"><img src="Docs/images/screenshots/home.png" alt="iOS 工作区首页" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/conversation-light.png" alt="iOS 浅色模式对话" width="100%"></td>
+    <td width="33.33%" align="center"><img src="Docs/images/screenshots/2026-10/file-card.png" alt="iOS 对话中的文件卡片与执行统计入口" width="100%"></td>
     <td width="33.33%" align="center"><img src="Docs/images/screenshots/trajectory-light.png" alt="iOS 浅色模式轨迹" width="100%"></td>
   </tr>
   <tr>
@@ -91,6 +152,22 @@ Whaleness 是独立开发的 DeepSeek Harness 第三方原生移动客户端。�
     <td align="center"><strong>默认模型</strong><br>Provider、模型与思考等级</td>
   </tr>
 </table>
+
+### 插件与定时任务
+
+<table>
+  <tr>
+    <td width="50%" align="center"><img src="website/assets/plugins.webp" alt="iOS 官方与已安装插件列表" width="100%"></td>
+    <td width="50%" align="center"><img src="website/assets/tasks.webp" alt="iOS 定时任务规则与详情" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>插件管理</strong><br>查看详情与启用状态</td>
+    <td align="center"><strong>定时任务</strong><br>查看计划与执行情况</td>
+  </tr>
+</table>
+
+<details>
+<summary>更多界面：工作区、轨迹详情与设备配对</summary>
 
 ### 工作区操作与轨迹详情
 
@@ -121,6 +198,8 @@ Whaleness 是独立开发的 DeepSeek Harness 第三方原生移动客户端。�
     <td align="center"><strong>深色对话</strong><br>阅读、代码与输入面板</td>
   </tr>
 </table>
+
+</details>
 
 ## 跨端架构
 
@@ -185,7 +264,7 @@ Android 和 iOS 均在平台侧负责安全存储、图片处理、临时文件�
 ### 通用
 
 - Java 17
-- 已启用 `dsh-plugin-mobile-gateway` 的 DeepSeek Harness
+- 已启用 `dsh-plugin-mobile-gateway` 0.10.3+ 的 DeepSeek Harness
 - 能够访问 Mobile Gateway 的模拟器或真机
 
 ### Android
@@ -196,9 +275,10 @@ Android 和 iOS 均在平台侧负责安全存储、图片处理、临时文件�
 
 ### iOS
 
-- macOS 与可构建 iOS 17.0+ 的 Xcode
+- macOS 与 Xcode 26+（包含 iOS 26 SDK，以编译 Liquid Glass 等系统 API；应用部署目标仍为 iOS 17.0）
 - iOS 17.0+ 模拟器或真机
 - Android SDK（Xcode 构建阶段会通过 Gradle 编译 KMP framework）
+- 可用的 Metal 工具链（构建阶段会自动查找）
 
 ## 运行 Android
 
@@ -245,7 +325,12 @@ adb reverse tcp:3080 tcp:3080
 
 ## 连接与配对
 
-1. 在 DeepSeek Harness 中安装并启用 `dsh-plugin-mobile-gateway`。
+1. 在 DeepSeek Harness 中安装或升级 `dsh-plugin-mobile-gateway`（最低 0.10.3），完整退出并重新启动 `dsh web`：
+
+   ```bash
+   dsh plugin --profile web add dsh-plugin-mobile-gateway@latest
+   ```
+
 2. 打开 WebUI 的“移动设备”面板，启用移动设备连接与设备鉴权。
 3. 确认 WebSocket 地址能被手机或模拟器访问。
 4. 生成一次性配对二维码/Token，并在 Android 或 iOS 客户端中完成认证。
@@ -268,14 +353,19 @@ adb reverse tcp:3080 tcp:3080
 
 ## 构建与测试
 
-执行共享层测试、Android 单元测试、Lint 和 APK 构建：
+执行 Android 单元测试、Lint 和 APK 构建：
 
 ```bash
 ./gradlew \
-  :shared:allTests \
   :androidApp:testDebugUnitTest \
   :androidApp:lintDebug \
   :androidApp:assembleDebug
+```
+
+在 Apple Silicon macOS 上执行共享层 Kotlin/Native 测试：
+
+```bash
+./gradlew :shared:iosSimulatorArm64Test
 ```
 
 有可用 Android 设备或模拟器时，可继续执行：

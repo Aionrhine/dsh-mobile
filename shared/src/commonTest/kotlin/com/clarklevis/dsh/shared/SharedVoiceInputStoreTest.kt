@@ -19,10 +19,12 @@ class SharedVoiceInputStoreTest {
             """{"kind":"speech-catalog","requestId":"${request.correlationId}","available":true,"maxAudioBytes":4194304,"maxDurationSeconds":120,"selection":{"providerId":"sensevoice-local","language":"zh"},"providers":[{"id":"sensevoice-local","languages":["auto","zh","en"],"preparation":{"phase":"ready"}}]}""",
         )
         assertTrue(store.snapshot().ready)
+        store.setVoiceMode(true)
         return store
     }
 
     private fun capture(store: SharedVoiceInputStore): String {
+        store.setVoiceMode(true)
         val token =
             store
                 .press(1000)
@@ -52,14 +54,68 @@ class SharedVoiceInputStoreTest {
         return token
     }
 
+    @Test fun textModeNeverStartsCaptureEvenWithoutKeyboard() {
+        val store = ready()
+        store.setVoiceMode(false)
+        assertFalse(store.snapshot().voiceMode)
+        assertTrue(store.touchDown(1000, true).effects.isEmpty())
+        assertTrue(store.press(1200).effects.isEmpty())
+        assertFalse(store.snapshot().active)
+        assertFalse(store.snapshot().hint.contains("按住说话"))
+    }
+
+    @Test fun switchingModesDoesNotRecordAndLeavingVoiceCancelsHeldCapture() {
+        val store = ready()
+        store.setVoiceMode(false)
+        val switched = store.setVoiceMode(true)
+        assertTrue(switched.snapshot.voiceMode)
+        assertTrue(switched.effects.isEmpty())
+        assertTrue(switched.requests.isEmpty())
+        val token = capture(store)
+        val exited = store.setVoiceMode(false)
+        assertFalse(exited.snapshot.voiceMode)
+        assertFalse(exited.snapshot.active)
+        assertTrue(exited.effects.any { it.action == "stop" && it.recordingId == token && it.discard })
+    }
+
+    @Test fun completedSpeechReturnsToTextModeWithoutSendingOrOpeningKeyboard() {
+        val store = ready()
+        val token = transcribe(store)
+        assertTrue(store.snapshot().voiceMode)
+        val result = store.acceptJson("""{"kind":"speech-transcript","requestId":"$token","text":"编辑后发送"}""")
+        assertFalse(result.snapshot.voiceMode)
+        assertEquals("编辑后发送", result.draftUpdate)
+        assertFalse(result.snapshot.keyboardVisible)
+        assertTrue(result.requests.isEmpty())
+    }
+
+    @Test fun returningToTextDuringTranscriptionKeepsBackgroundResult() {
+        val store = ready()
+        val token = transcribe(store)
+        store.setVoiceMode(false)
+        assertEquals("transcribing", store.snapshot().phase)
+        val result = store.acceptJson("""{"kind":"speech-transcript","requestId":"$token","text":"后台结果"}""")
+        assertEquals("后台结果", result.draftUpdate)
+        assertFalse(result.snapshot.voiceMode)
+    }
+
+    @Test fun cancellationKeepsVoiceModeAndChangingSessionResetsIt() {
+        val store = ready()
+        capture(store)
+        store.pointerMoved(-100f)
+        store.release(1500)
+        assertTrue(store.snapshot().voiceMode)
+        assertFalse(store.open("another", "").snapshot.voiceMode)
+    }
+
     @Test fun keyboardControlsHintWithoutStartingMicrophone() {
         val store = ready()
-        assertEquals("输入内容或按住说话", store.snapshot().hint)
+        assertEquals("描述你想要构建的内容", store.snapshot().hint)
         store.keyboardChanged(true)
         assertEquals("描述你想要构建的内容", store.snapshot().hint)
         assertTrue(store.press(1000).effects.isEmpty())
         store.keyboardChanged(false)
-        assertTrue(store.snapshot().hint.endsWith("或按住说话"))
+        assertEquals("描述你想要构建的内容", store.snapshot().hint)
     }
 
     @Test fun releaseTranscribesAndFillsDraftWithoutSending() {
@@ -294,7 +350,7 @@ class SharedVoiceInputStoreTest {
     }
 
     @Test
-    fun coldMicrophoneCannotShowRecordingBeforeFirstSamples() {
+    fun coldMicrophoneShowsOverlayImmediatelyWithStartingStatusUntilFirstSamples() {
         val store = ready()
         val token =
             store
@@ -305,12 +361,15 @@ class SharedVoiceInputStoreTest {
         val hold = store.press(1080)
         assertEquals("starting", hold.snapshot.phase)
         assertTrue(hold.snapshot.inputBlocked)
-        assertFalse(hold.snapshot.overlayVisible)
+        assertTrue(hold.snapshot.overlayVisible)
+        assertEquals("正在开启麦克风", hold.snapshot.status)
         assertEquals(1, hold.effects.count { it.action == "hapticStart" })
         store.tick(1500)
-        assertFalse(store.snapshot().overlayVisible)
+        assertTrue(store.snapshot().overlayVisible)
+        assertEquals("starting", store.snapshot().phase)
         val first = store.captureStarted(token, 1600)
         assertTrue(first.snapshot.overlayVisible)
+        assertEquals("松手转文字 · 上滑取消", first.snapshot.status)
         assertFalse(first.effects.any { it.action.startsWith("haptic") })
     }
 
@@ -341,7 +400,8 @@ class SharedVoiceInputStoreTest {
         assertEquals("idle", store.snapshot().phase)
         val hold = store.press(1080)
         assertEquals("authorizing", hold.snapshot.phase)
-        assertFalse(hold.snapshot.overlayVisible)
+        assertTrue(hold.snapshot.overlayVisible)
+        assertEquals("正在获取麦克风权限", hold.snapshot.status)
         assertEquals(1, hold.effects.count { it.action == "permission" })
     }
 
@@ -434,6 +494,7 @@ class SharedVoiceInputStoreTest {
         val store = SharedVoiceInputStore()
         store.open("session-1", "原草稿")
         store.connectionChanged(true, false)
+        store.setVoiceMode(true)
         val rejected = store.press(1000)
         assertEquals("idle", rejected.snapshot.phase)
         assertEquals(null, rejected.draftUpdate)
@@ -623,7 +684,7 @@ class SharedVoiceInputStoreTest {
         val store = ready()
         val press = store.press(1000)
         assertTrue(press.snapshot.active)
-        assertFalse(press.snapshot.overlayVisible)
+        assertTrue(press.snapshot.overlayVisible)
         assertEquals(1, press.effects.count { it.action == "hapticStart" })
         assertFalse(store.press(1001).effects.any { it.action.startsWith("haptic") })
         val token = press.effects.first { it.action == "permission" }.recordingId
