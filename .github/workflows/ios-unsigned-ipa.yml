@@ -11,13 +11,18 @@ on:
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
       - name: Toolchain
-        run: xcodebuild -version && swift --version
+        run: |
+          echo "--- installed Xcodes ---"
+          ls -1 /Applications | grep -i '^xcode' || true
+          xcodebuild -version
+          swift --version
+          xcodebuild -showsdks | grep -i 'iphoneos' || true
 
       - name: Apply text-selection patch
         run: python3 scripts/apply-text-selection.py && grep -n 'textSelection(.enabled)' DeepSeekHarnessMobile/Views/ConversationView.swift | head -5
@@ -41,7 +46,13 @@ jobs:
             DEVELOPMENT_TEAM="" \
             PROVISIONING_PROFILE_SPECIFIER="" \
             ONLY_ACTIVE_ARCH=NO \
-            build | xcbeautify || exit 1
+            build 2>&1 | tee /tmp/xcodebuild.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            echo "=== build failed (exit $status), last diagnostics ==="
+            grep -E 'error:|BUILD FAILED' /tmp/xcodebuild.log | head -40
+            exit "$status"
+          fi
 
       - name: Package unsigned IPA
         run: |
