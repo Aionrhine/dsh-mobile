@@ -1,80 +1,72 @@
 package com.clarklevis.dsh.android.ui
 
 import android.Manifest
-import android.view.HapticFeedbackConstants
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.compose.runtime.key
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.provider.Settings
 import android.util.Base64
+import android.view.HapticFeedbackConstants
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.foundation.Image
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.calculateEndPadding
-import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -105,9 +97,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -116,25 +108,27 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.compositeOver
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.shadow.Shadow
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -143,17 +137,16 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalWindowInfo
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.TransformedText
@@ -162,41 +155,39 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
-import com.clarklevis.dsh.android.localization.appText
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.clarklevis.dsh.android.AndroidSharedStateHolder
 import com.clarklevis.dsh.android.AttachmentLoadState
 import com.clarklevis.dsh.android.R
+import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.android.platform.AndroidAttachmentThumbnailer
 import com.clarklevis.dsh.android.platform.AndroidPreparedImage
 import com.clarklevis.dsh.shared.facade.VoiceInputInteraction
 import com.clarklevis.dsh.shared.gateway.GatewayConnectionState
-import com.clarklevis.dsh.shared.protocol.GatewayModelItem
-import com.clarklevis.dsh.shared.protocol.GatewayReasoningEffort
 import com.clarklevis.dsh.shared.projection.ConversationItem
 import com.clarklevis.dsh.shared.projection.ConversationItemKind
 import com.clarklevis.dsh.shared.protocol.GatewayImageAttachment
-import com.clarklevis.dsh.shared.protocol.GatewayPendingQuestionRequest
-import com.clarklevis.dsh.shared.protocol.GatewayQuestion
-import com.clarklevis.dsh.shared.protocol.GatewayQuestionAnswer
-import com.clarklevis.dsh.shared.projection.TrajectoryNode
-import com.clarklevis.dsh.shared.projection.TrajectoryNodeKind
+import com.clarklevis.dsh.shared.protocol.GatewayModelItem
+import com.clarklevis.dsh.shared.protocol.GatewayReasoningEffort
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -208,7 +199,7 @@ internal fun ConversationScreen(
     onBack: () -> Unit
 ) {
     val session = stateHolder.snapshot.sessions.firstOrNull { it.id == stateHolder.snapshot.selectedSessionId }
-    val title = session?.title ?: appText("新建 DeepSeek Harness")
+    val title = session?.title ?: if (stateHolder.snapshot.selectedSessionId != null) "已缓存会话" else appText("新建 DeepSeek Harness")
     val agentPresetId = stateHolder.sessionAgentPreset.agentPreset
         .takeIf { stateHolder.sessionAgentPreset.sessionId == stateHolder.snapshot.selectedSessionId }
         ?: session?.agentPreset ?: stateHolder.snapshot.agentPresetDefault
@@ -518,6 +509,9 @@ private fun ConversationPage(
     var isPinnedToBottom by remember(sessionId) { mutableStateOf(true) }
     var scrollToBottomToken by remember(sessionId) { mutableIntStateOf(0) }
     val imeIsVisible = WindowInsets.isImeVisible
+    LaunchedEffect(stateHolder.cacheViewGeneration) {
+        if (stateHolder.cacheViewGeneration > 0) scrollToBottomToken += 1
+    }
     LaunchedEffect(imeIsVisible, sessionId) {
         if (imeIsVisible) scrollToBottomToken += 1
     }
@@ -539,6 +533,27 @@ private fun ConversationPage(
                     imagePreview = ConversationImagePreviewRequest(attachments, initialIndex)
                 }
             )
+        }
+        if (stateHolder.localSearchContextSessionId == sessionId && sessionId != null) {
+            Row(
+                Modifier.align(
+                    Alignment.TopCenter
+                ).fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    if (stateHolder.localSearchIsOpening) {
+                        "正在定位搜索结果"
+                    } else if (stateHolder.localSearchIsFragment) {
+                        "只读本地搜索片段"
+                    } else {
+                        "已定位搜索结果"
+                    },
+                    fontSize = 12.sp,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = stateHolder::returnToLatestCached) { Text("返回最新消息") }
+            }
         }
         val showInitialHistoryOverlay = shouldShowInitialHistoryOverlay(
             isLoading = stateHolder.snapshot.selectedHistoryIsLoading,
@@ -851,8 +866,28 @@ private fun ConversationTimeline(
             }
         }.distinctUntilChanged().collect(stateHolder::updateVisibleAttachments)
     }
-    LaunchedEffect(hasInitialContent) {
-        if (!initialPositionApplied && hasInitialContent) {
+    val searchTarget = stateHolder.localSearchScrollTarget?.takeIf { it.sessionId == selectedSessionId }
+    LaunchedEffect(searchTarget, timelineEntries) {
+        val target = searchTarget ?: return@LaunchedEffect
+        val messageId = "${target.sessionId}-${target.seq}"
+        val index = timelineEntries.indexOfFirst {
+            it.id == messageId || it.id.startsWith("$messageId:") || it.id.startsWith("assistant:$messageId:")
+        }
+        if (index >= 0) {
+            programmaticScrollCount += 1
+            try {
+                isPinnedToBottom = false
+                onPinnedToBottomChanged(false)
+                listState.scrollToItem(index + if (hasHistoryLoadingRow) 1 else 0)
+                initialPositionApplied = true
+                stateHolder.consumeLocalSearchScrollTarget()
+            } finally {
+                programmaticScrollCount -= 1
+            }
+        }
+    }
+    LaunchedEffect(hasInitialContent, searchTarget) {
+        if (!initialPositionApplied && hasInitialContent && searchTarget == null) {
             programmaticScrollCount += 1
             try {
                 listState.scrollToTimelineBottom(lastTimelineIndex, animated = false)
@@ -869,7 +904,7 @@ private fun ConversationTimeline(
         initialPositionApplied,
         hasStreamingItem
     ) {
-        if (initialPositionApplied && isPinnedToBottom && hasInitialContent) {
+        if (initialPositionApplied && isPinnedToBottom && hasInitialContent && searchTarget == null) {
             programmaticScrollCount += 1
             try {
                 listState.scrollToTimelineBottom(
@@ -952,9 +987,17 @@ private fun ConversationTimeline(
                 }
             }
     ) {
-        if (items.isEmpty() && !selectedSessionIsRunning && !stateHolder.snapshot.selectedHistoryIsLoading) {
+        if (items.isEmpty() && (!selectedSessionIsRunning || stateHolder.offlineBrowsing) && !stateHolder.snapshot.selectedHistoryIsLoading) {
             val error = stateHolder.snapshot.selectedHistoryError
-            if (error == null) {
+            if (stateHolder.offlineBrowsing) {
+                Text(
+                    appText("当前离线，此会话尚未缓存。连接网关后可加载聊天内容。"),
+                    modifier = Modifier.align(Alignment.Center).padding(horizontal = 28.dp).padding(bottom = 150.dp)
+                        .testTag("offline-history-unavailable"),
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else if (error == null) {
                 EmptyConversation(Modifier.align(Alignment.Center).padding(bottom = 150.dp))
             } else {
                 Column(
@@ -3261,9 +3304,7 @@ private fun MarkdownLikeText(text: String) {
 private fun SmallConnectionDot(state: GatewayConnectionState) {
     val color = when (state) {
         GatewayConnectionState.CONNECTED -> DshColors.Success
-        GatewayConnectionState.FAILED -> Color.Red
-        GatewayConnectionState.CONNECTING, GatewayConnectionState.AUTHENTICATING, GatewayConnectionState.WAITING_FOR_NETWORK -> DshColors.Amber
-        else -> Color.Gray
+        else -> Color.Red
     }
     StatusIndicatorDot(
         color = color,

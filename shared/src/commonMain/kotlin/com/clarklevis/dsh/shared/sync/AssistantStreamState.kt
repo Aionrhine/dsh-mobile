@@ -61,7 +61,20 @@ class AssistantStreamState {
 
     fun hasBaseline(sessionId: String): Boolean = selectedSessionId == sessionId && streamId != null
 
+    /** 仅登记磁盘格式供 hello 失效检查；磁盘游标不建立实时订阅基线。 */
+    fun rememberCachedFormat(sessionId: String, historyFormatVersion: Int?) {
+        formats[sessionId] = historyFormatVersion
+    }
+
     fun formatVersion(sessionId: String): Int? = formats[sessionId]
+
+    fun retainSessions(sessionIds: List<String>) {
+        val keep = sessionIds.toSet() + listOfNotNull(selectedSessionId)
+        formats.keys.filter { it !in keep }.forEach(formats::remove)
+        cursors.keys.filter { it !in keep }.forEach(cursors::remove)
+    }
+
+    fun persistentCursorFor(sessionId: String): Int? = cursors[sessionId]
 
     val persistentCursor: Int? get() = cursors[selectedSessionId]
 

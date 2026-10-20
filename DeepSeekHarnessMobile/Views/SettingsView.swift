@@ -229,6 +229,18 @@ struct SettingsView: View {
                 Text("语言设置将在重新启动应用后生效。")
             }
 
+            Section {
+                Text(store.cacheStorageSummary.isEmpty ? "正在统计…" : store.cacheStorageSummary)
+                    .font(.footnote).foregroundStyle(.secondary)
+                Button("刷新缓存统计") { Task { await store.refreshCacheStorage() } }
+                Button("清理可回收缓存", role: .destructive) { Task { await store.refreshCacheStorage(clear: true) } }
+                    .disabled(store.cacheStorageBusy)
+            } header: {
+                Text("本地缓存")
+            } footer: {
+                Text("正在预览、下载或导出的文件在关闭后回收；已导出的文件和待发内容保留。")
+            }
+
             Section("关于") {
                 releaseRow("当前版本", value: appVersion, repository: "dsh-mobile", version: appVersion)
                 releaseRow("要求网关版本", value: releaseInfo.map { "≥ \($0.minimumGatewayVersion)" } ?? "未提供",
@@ -243,6 +255,7 @@ struct SettingsView: View {
         .navigationTitle("设置")
         .task {
             store.refreshDefaultConfiguration()
+            await store.refreshCacheStorage()
             if gatewayState.isConnected { store.refreshPlugins() }
         }
         .onReceive(store.gateway.$state) { state in

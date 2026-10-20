@@ -54,6 +54,25 @@ final class MultiGatewayTests: XCTestCase {
     }
 
     @MainActor
+    func testSelectingDisconnectedCurrentGatewayKeepsBusinessContainerAndHomeState() throws {
+        let suite = "same-gateway-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let profile = GatewayProfile(gatewayName: "离线电脑", endpoints: ["wss://a.example/ws/mobile"])
+        defaults.set(try JSONEncoder().encode([profile]), forKey: "gateway.profiles.v1")
+        let hosts = MultiGatewayStore(defaults: defaults)
+        let current = hosts.activeStore
+        current.selectedWorkspaceId = "workspace-kept"
+        hosts.select(profile, connect: false)
+        XCTAssertTrue(current === hosts.activeStore)
+        hosts.select(profile)
+        XCTAssertTrue(current === hosts.activeStore)
+        XCTAssertEqual(current.selectedWorkspaceId, "workspace-kept")
+        current.disconnect()
+        current.deactivateGateway()
+    }
+
+    @MainActor
     func testSwitchReplacesBusinessContainerAndRejectsOldCallbacks() throws {
         let defaults = UserDefaults(suiteName: "multi-switch-\(UUID())")!
         let first = GatewayProfile(gatewayName: "同名电脑", endpoints: ["wss://a.example/ws/mobile"])

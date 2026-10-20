@@ -1,15 +1,11 @@
 package com.clarklevis.dsh.android.ui
 
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -23,10 +19,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -35,43 +33,44 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
-import com.clarklevis.dsh.android.localization.appText
-import com.clarklevis.dsh.shared.protocol.GatewayPermissionOption
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.Dispatchers
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlin.math.roundToInt
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.clarklevis.dsh.android.AndroidSharedStateHolder
 import com.clarklevis.dsh.android.R
+import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.shared.gateway.GatewayConnectionState
 import com.clarklevis.dsh.shared.protocol.GatewayAgentPreset
 import com.clarklevis.dsh.shared.protocol.GatewayModelGroup
 import com.clarklevis.dsh.shared.protocol.GatewayModelItem
+import com.clarklevis.dsh.shared.protocol.GatewayPermissionOption
 import com.clarklevis.dsh.shared.protocol.GatewayReasoningEffort
+import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -105,6 +104,7 @@ internal fun SettingsScreen(
     val pageBackground = if (dark) Color(0xFF0D1118) else Color(0xFFF1F1F6)
     LaunchedEffect(stateHolder.gatewayState.connection) {
         stateHolder.refreshProductState()
+        stateHolder.refreshCacheStorage()
         if (isConnected(stateHolder)) stateHolder.refreshPlugins()
     }
     Scaffold(
@@ -204,6 +204,16 @@ internal fun SettingsScreen(
                         LanguageSettingsRow()
                         SettingsDivider()
                         FontSizeSettingsRow(onOpenFontSize)
+                    }
+                    SettingsSection(
+                        title = "本地缓存与存储",
+                        footer = "聊天和附件缓存可重新下载；正在预览、导出或交给其他应用使用的文件会保留。不会删除用户保存的文件、待发消息或上传源。外部应用文件最多保留 6 小时。"
+                    ) {
+                        Text(stateHolder.cacheStorageSummary, modifier = Modifier.padding(16.dp), fontSize = 13.sp)
+                        SettingsDivider()
+                        SettingsActionRow("清理可回收缓存", enabled = !stateHolder.cacheMaintenanceRunning) {
+                            stateHolder.refreshCacheStorage(clear = true)
+                        }
                     }
                     SettingsSection(appText("关于")) {
                         SettingsValueRow(

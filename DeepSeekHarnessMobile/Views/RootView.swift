@@ -19,6 +19,9 @@ struct RootView: View {
             .onChange(of: scenePhase) { _, phase in
                 store.handleScenePhase(phase)
             }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
+                store.handleMemoryWarning()
+            }
             .onReceive(AgentUserNotificationManager.shared.$pendingSessionRoute) { route in
                 guard let route, route.gatewayID != hosts.activeID,
                       let profile = hosts.profiles.first(where: { $0.id == route.gatewayID }) else { return }
@@ -1321,7 +1324,13 @@ struct WorkspaceQuickLookPreview: UIViewControllerRepresentable {
 
     final class Coordinator: NSObject, QLPreviewControllerDataSource {
         let url: URL
-        init(url: URL) { self.url = url }
+        init(url: URL) {
+            self.url = url
+            WorkspaceFileLifetime.shared.retain(url)
+        }
+        deinit {
+            WorkspaceFileLifetime.shared.release(url, deleteTemporary: url.path.hasPrefix(WorkspacePreviewCache.temporaryRoot.path + "/"))
+        }
         func numberOfPreviewItems(in controller: QLPreviewController) -> Int { 1 }
         func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem {
             url as NSURL
@@ -1722,7 +1731,7 @@ private struct WorkspaceFileExporter: UIViewControllerRepresentable {
     let onExported: (URL) -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onExported: onExported, onCancelled: onCancelled)
+        Coordinator(url: url, onExported: onExported, onCancelled: onCancelled)
     }
 
     func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
@@ -1735,12 +1744,18 @@ private struct WorkspaceFileExporter: UIViewControllerRepresentable {
     final class Coordinator: NSObject, UIDocumentPickerDelegate {
         let onExported: (URL) -> Void
         let onCancelled: (() -> Void)?
+        let sourceURL: URL
 
-        init(onExported: @escaping (URL) -> Void, onCancelled: (() -> Void)?) {
+        init(url: URL, onExported: @escaping (URL) -> Void, onCancelled: (() -> Void)?) {
+            sourceURL = url
+            WorkspaceFileLifetime.shared.retain(url)
             self.onExported = onExported
             self.onCancelled = onCancelled
         }
 
+        deinit {
+            WorkspaceFileLifetime.shared.release(sourceURL, deleteTemporary: sourceURL.path.hasPrefix(WorkspacePreviewCache.temporaryRoot.path + "/"))
+        }
         func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
             onCancelled?()
         }

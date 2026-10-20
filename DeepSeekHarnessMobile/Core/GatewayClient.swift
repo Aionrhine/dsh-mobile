@@ -47,6 +47,16 @@ final class GatewayClient: ObservableObject {
     init(channel: String = "control") {
         self.channel = channel
     }
+#if DEBUG
+    private var testRequestTransport: ((String) -> Void)?
+
+    /// 测试使用明确的已连接传输，避免仅投递 hello 却仍处于断线状态的伪在线 fixture。
+    func installConnectedTransportForTesting(_ send: @escaping (String) -> Void = { _ in }) {
+        testRequestTransport = send
+        state = .connected
+    }
+#endif
+
     /// History responses contain raw trajectory events (including request
     /// context) and can exceed URLSessionWebSocketTask's 1 MiB default.
     /// Gateway v0.1.12 normally keeps history pages below 4 MiB. Retain a much
@@ -568,6 +578,12 @@ final class GatewayClient: ObservableObject {
 
     /// KMP 文件状态机已经生成并校验过的协议请求。平台 transport 只负责发送。
     func sendRequestPayload(_ payload: String) {
+#if DEBUG
+        if let testRequestTransport {
+            if state.isConnected { testRequestTransport(payload) }
+            return
+        }
+#endif
         if let type = try? JSONDecoder().decode(RequestEnvelope.self, from: Data(payload.utf8)).type,
            Self.usesConversationChannel(type), let conversationClient {
             conversationClient.sendRequestPayload(payload)
@@ -582,6 +598,14 @@ final class GatewayClient: ObservableObject {
     }
 
     private func send(_ object: [String: Any]) {
+#if DEBUG
+        if let testRequestTransport {
+            if state.isConnected, let data = try? JSONSerialization.data(withJSONObject: object) {
+                testRequestTransport(String(decoding: data, as: UTF8.self))
+            }
+            return
+        }
+#endif
         if let type = object["type"] as? String,
            Self.usesConversationChannel(type),
            let conversationClient {

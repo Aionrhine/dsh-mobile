@@ -321,7 +321,11 @@ final class AppStore: ObservableObject {
     private var scheduledTaskMutationKind: String?
     @Published var workspaces: [GatewayWorkspace] = []
     @Published var selectedWorkspaceId: String? {
-        didSet { preferences.selectedWorkspaceID = selectedWorkspaceId }
+        didSet {
+            preferences.selectedWorkspaceID = selectedWorkspaceId
+            offlineWorkspaceSelectionRevision &+= 1
+            persistOfflineCatalog()
+        }
     }
     @Published private(set) var archivedSessionIds: Set<String> = []
     /// Raw protocol storage. UI updates are driven by the throttled compact
@@ -336,6 +340,8 @@ final class AppStore: ObservableObject {
     @Published private(set) var conversationPreparingSessionIDs: Set<String> = []
     @Published private(set) var historyLoadErrors: [String: String] = [:]
     @Published private(set) var historyHasMore: [String: Bool] = [:]
+    @Published private(set) var offlineHistoryBoundarySessionIds: Set<String> = []
+    private var offlineHistoryLoadingOlderSessionIds: [String: UUID] = [:]
     @Published private(set) var historyLoadingSessionIds: Set<String> = []
     @Published private(set) var historyLoadingOlderSessionIds: Set<String> = []
     @Published private(set) var historyLoadProgress: [String: HistoryLoadProgress] = [:]
@@ -405,7 +411,14 @@ final class AppStore: ObservableObject {
     @Published private(set) var workspaceFileDownloadPurpose: String?
     @Published private(set) var workspaceFilePreviewProgress: Double = 0
     @Published private(set) var workspaceFilePreviewRequest: WorkspaceFilePreviewRequest?
-    @Published var completedWorkspaceFile: WorkspaceLocalFile?
+    @Published var completedWorkspaceFile: WorkspaceLocalFile? {
+        didSet {
+            if let old = oldValue, old.url != completedWorkspaceFile?.url {
+                let temporary = old.url.path.hasPrefix(WorkspacePreviewCache.temporaryRoot.path + "/")
+                WorkspaceFileLifetime.shared.release(old.url, deleteTemporary: temporary)
+            }
+        }
+    }
     @Published private(set) var conversationFilePreviewRequested = false
     @Published private(set) var conversationFileIsOpening = false
 
@@ -414,6 +427,80 @@ final class AppStore: ObservableObject {
     let gatewayLocalID: String
     var pairingHandler: ((String) throws -> Void)?
     var gatewayDisplayName = ""
+    private var offlineCatalogRestoreTask: Task<Void, Never>?
+    private var offlineCatalogWriteTask: Task<Void, Never>?
+    private var offlineCatalogRestored = false
+    private var offlineCatalogActive = true
+    private var offlineSessionRevision: UInt64 = 0
+    private var offlineSessionSelectionRevision: UInt64 = 0
+    private var offlineArchiveRevision: UInt64 = 0
+    private var offlineWorkspaceRevision: UInt64 = 0
+    private var offlineWorkspaceSelectionRevision: UInt64 = 0
+    private var offlineCatalogWriteRevision: UInt64 = 0
+    private let chatHistoryCache: ChatHistoryCache?
+    private let chatCacheProtectionOwner: ChatHistoryCache.ProtectionOwner?
+    private var chatCacheWrites: [String: Task<Void, Never>] = [:]
+    private var chatPrefetchRecoverySessionID: String?
+    private lazy var chatPrefetcher: ChatSessionPrefetcher = {
+        ChatSessionPrefetcher(
+            rank: { [weak self] candidates, selected in
+                guard let self, let cache = self.chatHistoryCache, let owner = self.chatCacheProtectionOwner else { return [] }
+                return await cache.planPrefetch(owner: owner, candidates: candidates, selected: selected)
+            },
+            ticket: { [weak self] id in
+                guard let self, let cache = self.chatHistoryCache, let owner = self.chatCacheProtectionOwner else { return nil }
+                return await cache.prefetchTicket(owner: owner, sessionID: id)
+            },
+            accept: { [weak self] id, json, ticket in
+                guard let self, let cache = self.chatHistoryCache, let owner = self.chatCacheProtectionOwner else { return false }
+                return await cache.acceptPrefetch(owner: owner, sessionID: id, json: json, ticket: ticket)
+            },
+            invalidate: { [chatHistoryCache, chatCacheProtectionOwner] id, ticket in
+                guard let cache = chatHistoryCache, let owner = chatCacheProtectionOwner else { return }
+                await cache.cancelPrefetch(owner: owner, sessionID: id, ticket: ticket)
+            },
+            request: { [weak self] id, _ in
+                self?.gateway.requestHistory(sessionId: id, maxMessages: 80, maxBytes: 256 * 1024,
+                    view: "conversation")
+            },
+            foregroundReady: { [weak self] id in
+                guard let self, self.selectedSessionId == id, self.historyLoadingSessionIds.contains(id) else { return }
+                self.requestHistoryPage(for: id, beforeSeq: self.historyLoadingOlderSessionIds.contains(id) ? self.events[id]?.first?.seq : nil)
+            },
+            reconnectForeground: { [weak self] id in
+                guard let self, self.selectedSessionId == id else { return }
+                self.chatPrefetchRecoverySessionID = id
+                self.resetOutstandingRequests()
+                // 旧协议不能在原 socket 上丢槽重发；只在前台确需该会话时重建一次连接。
+                self.gateway.connect(to: self.endpoint)
+            }
+        )
+    }()
+
+    private var restoringChatCache = false
+    private var chatCacheSelectionGeneration = 0
+    private var chatCacheHelloReceived = false
+    private var chatCacheHelloFormat: Int?
+    private var conversationMemoryAccess: [String: UInt64] = [:]
+    private var conversationMemoryTrimTask: Task<Void, Never>?
+    private var conversationMemoryTrimID = UUID()
+    private var evictedConversationSessionIDs: Set<String> = []
+    private var localSearchTask: Task<Void, Never>?
+    private var localSearchQuery = ""
+    private var remoteSearchGate = RemoteSearchGate()
+    private var remoteSearchTimeout: Task<Void, Never>?
+    private var localSearchResults: [GatewaySearchItem] = []
+    private var localSearchSequences: [String: Int] = [:]
+    @Published private(set) var conversationSearchTarget: String?
+    @Published private(set) var isShowingSearchContext = false
+    @Published private(set) var searchContextHasMore = false
+    @Published private(set) var searchContextLoadingOlder = false
+    private var searchContextRecords: [SessionEvent] = []
+    private var searchContextTimeline: ConversationTimeline?
+    private var searchContextProjector: KMPConversationStoreAdapter?
+    @Published private(set) var searchCoverage = ""
+    @Published private(set) var cacheStorageSummary = ""
+    @Published private(set) var cacheStorageBusy = false
     private let preferences: AppPreferences
     /// SessionList 的唯一业务状态来源；Swift 属性只是 UI/持久化快照。
     private let kmpSessionListStore: KMPSessionListStoreAdapter
@@ -531,6 +618,8 @@ final class AppStore: ObservableObject {
     private var workspaceFileHandle: FileHandle?
     private var workspaceFileOperationID = UUID()
     private var workspaceFileTemporaryURL: URL?
+    private var workspaceFileOperationCache: WorkspacePreviewCache?
+    private var imageAttachmentRequestEpochs: [String: UInt64] = [:]
     private let sessionControlRequestTracker = RequestTracker()
     private let defaultConfigurationRequestTracker = RequestTracker()
     /// Navigation preparation is intentionally cheap. Remote activation begins
@@ -539,7 +628,7 @@ final class AppStore: ObservableObject {
     private var activeConversationActivationKey: String?
     /// 返回主页后仍在运行的会话需要保留事件订阅，供实时活动和通知使用。
     private var backgroundMonitoredSessionID: String?
-    private var presentsNextConnectionFailureAsAlert = true
+    private var presentsNextConnectionFailureAsAlert = false
     private var hasHandledColdLaunchConnection = false
     private let backgroundExecutionController: AgentBackgroundExecutionController
     private static let defaultConfigurationRequestKinds: Set<String> = [
@@ -568,7 +657,9 @@ final class AppStore: ObservableObject {
         sessionControlEffectExecutor: (any GatewaySessionControlEffectExecuting)? = nil,
         backgroundExecutionController: AgentBackgroundExecutionController? = nil,
         historyRequestTimeout: Duration = .seconds(20),
-        voiceInput: VoiceInputAdapter? = nil
+        chatHistoryCache: ChatHistoryCache? = .shared,
+        voiceInput: VoiceInputAdapter? = nil,
+        offlineCatalogRestoreBarrier: (@Sendable () async -> Void)? = nil
     ) {
         self.voiceInput = voiceInput ?? VoiceInputAdapter()
         self.historyRequestTimeout = historyRequestTimeout
@@ -576,6 +667,8 @@ final class AppStore: ObservableObject {
         imageAttachmentCache = ImageAttachmentCache(directoryURL: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?.appendingPathComponent("GatewayAttachments/\(gatewayLocalID)", isDirectory: true))
         slashCommands = kmpSlashCommandStore.snapshot()
         self.preferences = preferences
+        self.chatHistoryCache = historyBridge == nil ? chatHistoryCache : nil
+        self.chatCacheProtectionOwner = historyBridge == nil ? chatHistoryCache?.makeProtectionOwner(gatewayID: gatewayLocalID) : nil
         self.questionEffectExecutor = questionEffectExecutor ?? gateway
         self.approvalEffectExecutor = approvalEffectExecutor ?? gateway
         self.backgroundExecutionController = backgroundExecutionController ?? AgentBackgroundExecutionController()
@@ -622,6 +715,19 @@ final class AppStore: ObservableObject {
             lastError = error.localizedDescription
         }
         preferences.performMigrations()
+        imageAttachmentCache.onDataLoaded = { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, let id = self.selectedSessionId else { return }
+                if self.isShowingSearchContext, let timeline = self.searchContextTimeline {
+                    timeline.publish(timeline.currentSnapshot.items)
+                }
+                if let items = self.renderedConversationItems[id] { self.conversationTimeline(for: id).publish(items) }
+            }
+        }
+        let historyCache = chatHistoryCache
+        if historyCache === ChatHistoryCache.shared {
+            Task { _ = await AppCacheMaintenance.shared.run(cache: historyCache) }
+        }
         kmpSessionListStore.onSnapshot = { [weak self] snapshot, error in
             self?.enqueueKMPEventDelivery { [weak self] in
                 self?.handleSessionListEvent(snapshot: snapshot, error: error)
@@ -677,6 +783,13 @@ final class AppStore: ObservableObject {
         gateway.onConnectionFailure = { [weak self] detail in
             self?.handleConnectionFailure(detail)
         }
+        offlineCatalogRestoreTask = Task { [weak self] in
+            await offlineCatalogRestoreBarrier?()
+            guard let self, offlineCatalogActive else { return }
+            let json = await self.chatHistoryCache?.loadOfflineCatalog(gatewayID: gatewayLocalID)
+            guard offlineCatalogActive, !Task.isCancelled else { return }
+            restoreOfflineCatalog(json)
+        }
         self.backgroundExecutionController.onKeepAlivePulse = { [weak self] in
             if self?.gateway.state.isConnected == true { self?.gateway.ping() }
             AgentLiveActivityManager.shared.refreshActiveActivities()
@@ -685,11 +798,11 @@ final class AppStore: ObservableObject {
 
     var selectedEvents: [SessionEvent] {
         guard let selectedSessionId else { return [] }
-        return events[selectedSessionId, default: []]
+        return isShowingSearchContext ? searchContextRecords : events[selectedSessionId, default: []]
     }
     var selectedConversationItems: [ConversationItem] {
         guard let selectedSessionId else { return [] }
-        return renderedConversationItems[selectedSessionId, default: []]
+        return isShowingSearchContext ? searchContextTimeline?.currentSnapshot.items ?? [] : renderedConversationItems[selectedSessionId, default: []]
     }
     var selectedNotices: [GatewayNotice] {
         Array(protocolNotices.filter { $0.sessionId == nil || $0.sessionId == selectedSessionId }.suffix(20))
@@ -755,7 +868,18 @@ final class AppStore: ObservableObject {
         }
         return timeline
     }
+    func displayedConversationTimeline(for sessionID: String) -> ConversationTimeline {
+        if isShowingSearchContext, sessionID == selectedSessionId, let searchContextTimeline { return searchContextTimeline }
+        return conversationTimeline(for: sessionID)
+    }
+    var selectedHistoryHasMore: Bool {
+        if isShowingSearchContext { return searchContextHasMore }
+        guard let id = selectedSessionId else { return false }
+        return historyHasMore[id] == true && (gateway.state.isConnected || !offlineHistoryBoundarySessionIds.contains(id))
+    }
+
     private func publishTrajectory(sessionID: String) {
+        guard !evictedConversationSessionIDs.contains(sessionID) else { return }
         let transient = kmpTrajectoryStore.decodeTransientNodes(assistantStreamState.transientTrajectoryJson(sessionId: sessionID))
         trajectoryTimeline(for: sessionID).publish(kmpTrajectoryStore.nodes(for: sessionID) + transient)
     }
@@ -803,6 +927,8 @@ final class AppStore: ObservableObject {
 
 #if DEBUG
     /// XCTest 只等待生产使用的同一延迟交付队列，不提供同步发布旁路。
+    var chatPrefetchRequestCountForTesting: Int { chatPrefetcher.requestCount }
+
     func awaitPendingKMPEventDeliveriesForTesting() async {
         while isKMPEventDeliveryScheduled || !pendingKMPEventDeliveries.isEmpty {
             await Task.yield()
@@ -813,7 +939,8 @@ final class AppStore: ObservableObject {
     /// 这里同样不提供同步旁路：只让出执行权，直到该 session 的投影驱动跑完一次。
     func awaitConversationProjectionForTesting(sessionID: String, expectedText: String) async {
         for _ in 0..<200 {
-            if renderedConversationItems[sessionID]?.last?.text == expectedText { return }
+            if renderedConversationItems[sessionID]?.last?.text == expectedText ||
+                sessionID == selectedSessionId && selectedConversationItems.last?.text == expectedText { return }
             try? await Task.sleep(for: .milliseconds(5))
         }
     }
@@ -869,6 +996,17 @@ final class AppStore: ObservableObject {
 
     /// 废弃整个业务容器，旧异步工作最多只能触达已断开的旧 GatewayClient。
     func deactivateGateway() {
+        offlineCatalogActive = false
+        offlineCatalogRestoreTask?.cancel()
+        offlineCatalogWriteTask?.cancel()
+        chatPrefetchRecoverySessionID = nil
+        chatPrefetcher.stop(reason: "deactivate")
+        chatCacheSelectionGeneration &+= 1
+        conversationMemoryTrimTask?.cancel()
+        conversationMemoryTrimTask = nil
+        chatCacheWrites.values.forEach { $0.cancel() }
+        chatCacheWrites.removeAll()
+        if let chatHistoryCache, let chatCacheProtectionOwner { chatHistoryCache.releaseProtection(chatCacheProtectionOwner) }
         pairingHandler = nil
         resetOutstandingRequests()
         backgroundExecutionController.cancel()
@@ -878,19 +1016,29 @@ final class AppStore: ObservableObject {
         gateway.disconnect()
         pendingKMPEventDeliveries.removeAll()
         attachmentLoader.reset()
+        localSearchTask?.cancel()
+        remoteSearchTimeout?.cancel()
         cancelWorkspaceFileDownload()
+        clearSearchContext()
+        completedWorkspaceFile = nil
+        imageAttachmentCache.removeAllFromMemory()
     }
 
     func connect() {
         preferences.automaticallyConnect = true
         resetOutstandingRequests()
-        presentsNextConnectionFailureAsAlert = true
+        presentsNextConnectionFailureAsAlert = false
         lastError = nil
         gateway.connect(to: endpoint)
     }
 
     func disconnect() {
+        chatPrefetchRecoverySessionID = nil
+        chatPrefetcher.stop(reason: "disconnect")
         preferences.automaticallyConnect = false
+        resetOutstandingRequests()
+        resetRemoteSearchForOffline()
+        showOfflineHistoryBoundary()
         gateway.disconnect()
     }
 
@@ -904,10 +1052,8 @@ final class AppStore: ObservableObject {
         guard !hasHandledColdLaunchConnection else { return }
         hasHandledColdLaunchConnection = true
         guard preferences.automaticallyConnect else { return }
-        guard gateway.hasStoredCredential(for: endpoint) else {
-            lastError = String(localized: "尚未连接到 DeepSeek Harness。请点击主页右上角的 🔑 按钮，扫描配对二维码或手动输入 Token 进行连接。")
-            return
-        }
+        // 离线目录可能仍在异步恢复；缺少凭据只维持未连接状态，配对入口始终可见。
+        guard gateway.hasStoredCredential(for: endpoint) else { return }
         connect()
     }
 
@@ -916,9 +1062,16 @@ final class AppStore: ObservableObject {
         case .active:
             backgroundExecutionController.applicationDidBecomeActive()
             gateway.applicationDidBecomeActive()
+            // 健康连接恢复前台不会重新 hello；补查后台期间漏掉的会话终态。
+            if gateway.state.isConnected { gateway.requestSessions() }
         case .background:
+            chatPrefetcher.stop(reason: "background")
             backgroundExecutionController.applicationDidEnterBackground()
             imageAttachmentCache.removeExpiredFiles()
+            let historyCache = chatHistoryCache
+            if historyCache === ChatHistoryCache.shared {
+                Task { _ = await AppCacheMaintenance.shared.run(cache: historyCache) }
+            }
             gateway.applicationDidEnterBackground()
             if !gateway.state.isConnected {
                 applySessionAgentPresetTransition(sessionAgentPresetStore.disconnected())
@@ -996,9 +1149,11 @@ final class AppStore: ObservableObject {
     }
     func prepareNewConversation() async -> Bool {
         guard !isPreparingNewConversation else { return false }
+        clearSearchContext()
         leaveSessionAgentPreset()
         isPreparingNewConversation = true
-        defer { isPreparingNewConversation = false }
+        updateChatPrefetchState()
+        defer { isPreparingNewConversation = false; updateChatPrefetchState() }
         var sessionID: String?
         if supportsSessionCreation {
             do {
@@ -1021,18 +1176,151 @@ final class AppStore: ObservableObject {
     }
 
     func prepareConversation(for session: SessionSummary) async -> Bool {
+        chatPrefetcher.prioritizeSelection(sessionID: session.id, assistantStream: usesAssistantStream)
         leaveSessionAgentPreset()
+        clearSearchContext()
+        evictedConversationSessionIDs.remove(session.id)
         cancelSnapshotWait()
-        if let previous = selectedSessionId { try? kmpConversationStore.clearAssistantChunks(sessionID: previous) }
-        assistantStreamState.selectSession(sessionId: session.id)
+        let preservesStream = localSearchSequences[session.id] != nil && assistantStreamState.hasBaseline(sessionId: session.id)
+        if !preservesStream {
+            if gateway.state.isConnected, let previous = selectedSessionId {
+                try? kmpConversationStore.clearAssistantChunks(sessionID: previous)
+            }
+            assistantStreamState.selectSession(sessionId: session.id)
+        }
         guard dispatchSessionListIntent(.select(session.id)) else { return false }
+        if let cache = chatHistoryCache, let owner = chatCacheProtectionOwner {
+            Task { await cache.recordSessionOpen(owner: owner, sessionID: session.id) }
+        }
+        updateChatPrefetchState()
         backgroundMonitoredSessionID = nil
         waitingForNewSession = false
         preparedConversationActivationKey = session.id
         activeConversationActivationKey = nil
-        if usesAssistantStream { beginSnapshotWait(for: session.id) }
+        if gateway.state.isConnected, usesAssistantStream, !preservesStream { beginSnapshotWait(for: session.id) }
         await commitPendingKMPEventsAfterViewUpdate()
+        chatCacheSelectionGeneration &+= 1
+        let generation = chatCacheSelectionGeneration
+        let searchSequence = localSearchSequences[session.id]
+        conversationSearchTarget = searchSequence.map { "message-\(session.id)-\($0)" }
+        let searchAlreadyVisible = searchSequence.map { sequence in
+            events[session.id, default: []].contains { $0.seq == sequence }
+        } ?? false
+        if let chatHistoryCache, let protectionOwner = chatCacheProtectionOwner, !searchAlreadyVisible {
+            let gatewayID = gatewayLocalID
+            let protected = Set(sessions.filter(\.isRunning).map(\.id)).union([session.id])
+            Task { [weak self] in
+                await chatHistoryCache.protect(owner: protectionOwner, sessionIDs: protected)
+                let window = await chatHistoryCache.loadTyped(gatewayID: gatewayID, sessionID: session.id,
+                    before: searchSequence.map { $0 == Int.max ? $0 : $0 + 1 })
+                guard let self else { return }
+                guard generation == self.chatCacheSelectionGeneration, self.selectedSessionId == session.id else {
+                    ChatCacheDiagnostics.shared.restoreSkipped(reason: .selectionChanged)
+                    return
+                }
+                guard let window else {
+                    if searchSequence != nil { self.invalidateSearchContext(sessionID: session.id) }
+                    else if !self.gateway.state.isConnected, self.events[session.id, default: []].isEmpty {
+                        self.historyLoadErrors[session.id] = "此会话尚未缓存，连接后可加载聊天内容"
+                        self.conversationPreparingSessionIDs.remove(session.id)
+                    }
+                    return
+                }
+                let format = window.historyFormatVersion?.intValue
+                if !self.chatCacheHelloReceived || format == self.chatCacheHelloFormat {
+                    if let searchSequence {
+                        if !window.events.contains(where: { $0.seq == searchSequence }) ||
+                            self.searchTargetWasInvalidated(sessionID: session.id, sequence: searchSequence) {
+                            self.invalidateSearchContext(sessionID: session.id)
+                        } else { self.presentSearchContext(window) }
+                        return
+                    }
+                    self.historyLoadErrors[session.id] = nil
+                    self.restoringChatCache = true
+                    defer { self.restoringChatCache = false }
+                    if (try? self.kmpHistoryStore.hydrateCachedWindow(sessionID: session.id, window: window)) == true {
+                        self.assistantStreamState.rememberCachedFormat(sessionId: session.id,
+                            historyFormatVersion: format.map { KotlinInt(int: Int32($0)) })
+                        self.drainKMPEventDeliveries()
+                    }
+                } else {
+                    ChatCacheDiagnostics.shared.restoreSkipped(reason: .formatChanged)
+                    if self.gateway.state.isConnected { self.invalidateChatCache(sessionID: session.id) }
+                    else if self.events[session.id, default: []].isEmpty {
+                        self.historyLoadErrors[session.id] = "缓存格式与上次连接不一致，连接后可重新加载聊天内容"
+                        self.conversationPreparingSessionIDs.remove(session.id)
+                    }
+                }
+            }
+        }
+        conversationMemoryAccess[session.id] = DispatchTime.now().uptimeNanoseconds
+        scheduleInactiveConversationMemoryTrim(replacing: true)
         return selectedSessionId == session.id
+    }
+
+    private func searchTargetWasInvalidated(sessionID: String, sequence: Int) -> Bool {
+        guard let authoritative = events[sessionID], !historyLoadingSessionIds.contains(sessionID),
+              !kmpHistoryStore.canPrependCachedPage(sessionID: sessionID),
+              !authoritative.contains(where: { $0.seq == sequence }) else { return false }
+        return !(historyHasMore[sessionID] == true && authoritative.first.map { sequence < $0.seq } == true)
+    }
+
+    private func invalidateSearchContext(sessionID: String) {
+        clearSearchContext()
+        conversationSearchTarget = nil
+        localSearchSequences[sessionID] = nil
+        localSearchResults.removeAll { $0.sessionId == sessionID }
+        searchResults.removeAll { $0.sessionId == sessionID }
+        notice("搜索结果已失效", "本地缓存或网关历史已不包含此内容，请重新搜索。", sessionId: sessionID)
+    }
+
+    private func clearSearchContext() {
+        conversationSearchTarget = nil
+        isShowingSearchContext = false
+        searchContextHasMore = false
+        searchContextLoadingOlder = false
+        searchContextRecords = []
+        searchContextTimeline = nil
+        searchContextProjector = nil
+    }
+
+    /// 搜索上下文单独投影，网络权威窗口和实时 cursor 始终保留。
+    private func presentSearchContext(_ window: CachedHistoryWindow, prepend: Bool = false) {
+        let history = KMPHistoryStoreAdapter()
+        guard (try? history.hydrateCachedWindow(sessionID: window.sessionId, window: window)) == true,
+              let page = history.eventsBySessionID[window.sessionId] else { return }
+        let records: [SessionEvent]
+        if prepend {
+            let known = Set(searchContextRecords.map(\.seq))
+            records = (page.filter { !known.contains($0.seq) } + searchContextRecords).sorted { $0.seq < $1.seq }
+        } else { records = page }
+        let projector = KMPConversationStoreAdapter()
+        guard (try? projector.replace(sessionID: window.sessionId, events: records)) != nil else { return }
+        searchContextRecords = records
+        searchContextProjector = projector
+        let timeline = prepend ? searchContextTimeline ?? ConversationTimeline() : ConversationTimeline()
+        timeline.publish(projector.items(for: window.sessionId))
+        searchContextTimeline = timeline
+        searchContextHasMore = window.hasMore
+        isShowingSearchContext = true
+        enqueueImageAttachments(in: page, sessionId: window.sessionId)
+    }
+
+    func returnToLatestConversation() async {
+        guard let id = selectedSessionId else { return }
+        conversationSearchTarget = nil
+        clearSearchContext()
+        if events[id] == nil, let chatHistoryCache {
+            let generation = chatCacheSelectionGeneration
+            if let window = await chatHistoryCache.loadTyped(gatewayID: gatewayLocalID, sessionID: id),
+               generation == chatCacheSelectionGeneration, selectedSessionId == id, events[id] == nil {
+                restoringChatCache = true
+                defer { restoringChatCache = false }
+                _ = try? kmpHistoryStore.hydrateCachedWindow(sessionID: id, window: window)
+                drainKMPEventDeliveries()
+            }
+        }
+        if gateway.state.isConnected, !assistantStreamState.hasBaseline(sessionId: id) { loadHistory(for: id) }
     }
 
     func refreshScheduledTasks() {
@@ -1222,6 +1510,7 @@ final class AppStore: ObservableObject {
         if let sessionID {
             markRead(sessionID)
             subscribeToSession(sessionID)
+            gateway.requestSessions()
         } else {
             subscribeToSession(nil)
         }
@@ -1265,8 +1554,75 @@ final class AppStore: ObservableObject {
         return session.lastActivity > coveredActivity
     }
     func loadHistory(for sessionId: String, older: Bool = false) {
+        if older, isShowingSearchContext, sessionId == selectedSessionId,
+           let chatHistoryCache, let before = searchContextRecords.first?.seq {
+            guard !searchContextLoadingOlder else { return }
+            searchContextLoadingOlder = true
+            let selection = chatCacheSelectionGeneration
+            Task { [weak self] in
+                guard let self else { return }
+                let epoch = await chatHistoryCache.epoch()
+                let page = await chatHistoryCache.loadTyped(gatewayID: gatewayLocalID, sessionID: sessionId, before: before)
+                let currentEpoch = await chatHistoryCache.epoch()
+                guard selection == chatCacheSelectionGeneration, isShowingSearchContext,
+                      selectedSessionId == sessionId, before == searchContextRecords.first?.seq else { return }
+                searchContextLoadingOlder = false
+                if epoch == currentEpoch, let page, !page.events.isEmpty { presentSearchContext(page, prepend: true) }
+                else { searchContextHasMore = false }
+            }
+            return
+        }
+        if older, !gateway.state.isConnected, !kmpHistoryStore.canPrependCachedPage(sessionID: sessionId), let chatHistoryCache,
+           let before = events[sessionId]?.first?.seq {
+            guard offlineHistoryLoadingOlderSessionIds[sessionId] == nil else { return }
+            let operation = UUID()
+            offlineHistoryLoadingOlderSessionIds[sessionId] = operation
+            let selection = chatCacheSelectionGeneration
+            Task { [weak self] in
+                guard let self else { return }
+                defer {
+                    if offlineHistoryLoadingOlderSessionIds[sessionId] == operation {
+                        offlineHistoryLoadingOlderSessionIds[sessionId] = nil
+                    }
+                }
+                let page = await chatHistoryCache.loadTyped(gatewayID: gatewayLocalID, sessionID: sessionId, before: before)
+                guard selection == chatCacheSelectionGeneration, selectedSessionId == sessionId else { return }
+                guard !gateway.state.isConnected else { return }
+                guard let page, !page.events.isEmpty,
+                      !chatCacheHelloReceived || page.historyFormatVersion?.intValue == chatCacheHelloFormat else {
+                    offlineHistoryBoundarySessionIds.insert(sessionId)
+                    return
+                }
+                searchContextRecords = events[sessionId, default: []]
+                presentSearchContext(page, prepend: true)
+            }
+            return
+        }
+        if older, let chatHistoryCache, kmpHistoryStore.canPrependCachedPage(sessionID: sessionId),
+           let before = events[sessionId]?.first?.seq {
+            let selection = chatCacheSelectionGeneration
+            Task { [weak self] in
+                guard let self else { return }
+                let epoch = await chatHistoryCache.epoch()
+                let page = await chatHistoryCache.loadTyped(gatewayID: gatewayLocalID, sessionID: sessionId, before: before)
+                let currentEpoch = await chatHistoryCache.epoch()
+                if let window = page,
+                   !window.events.isEmpty, selection == chatCacheSelectionGeneration,
+                   epoch == currentEpoch,
+                   kmpHistoryStore.canPrependCachedPage(sessionID: sessionId) {
+                    try? kmpHistoryStore.prependCachedPage(sessionID: sessionId, window: window)
+                } else if selection == chatCacheSelectionGeneration,
+                          epoch == currentEpoch, gateway.state.isConnected {
+                    startHistorySync(for: sessionId, older: true)
+                } else if selection == chatCacheSelectionGeneration, epoch == currentEpoch {
+                    offlineHistoryBoundarySessionIds.insert(sessionId)
+                }
+            }
+            return
+        }
         guard gateway.state.isConnected else {
-            lastError = String(localized: "WebSocket 尚未连接，无法加载历史记录")
+            historyLoadErrors[sessionId] = events[sessionId, default: []].isEmpty
+                ? "此会话尚未缓存，连接后可加载聊天内容" : "已到达本地缓存边界，连接后可加载更早内容"
             return
         }
         if usesAssistantStream && !older && sessionId == selectedSessionId {
@@ -1290,8 +1646,21 @@ final class AppStore: ObservableObject {
         }
     }
 
+    private func updateChatPrefetchState(sessionsReceived: Bool = false) {
+        guard chatHistoryCache != nil else { return }
+        let candidates = historySessions.filter { !archivedSessionIds.contains($0.id) }.map { session in
+            ChatSessionPrefetcher.Candidate(id: session.id, lastActivityEpochSeconds: session.lastActivity.timeIntervalSince1970,
+                isRunning: session.isRunning, hasUnread: session.hasUnread, hasConversation: session.isVisibleInHistory)
+        }
+        let selectedHistoryLoading = selectedSessionId.map { historyLoadingSessionIds.contains($0) } ?? false
+        let busy = messageSubmissionPending || pendingSnapshotSessionID != nil || selectedHistoryLoading
+            || selectedSession?.isRunning == true || isPreparingNewConversation
+        chatPrefetcher.update(candidates: candidates, selected: selectedSessionId, busy: busy, sessionsReceived: sessionsReceived)
+    }
+
     private func requestHistoryPage(for sessionId: String, beforeSeq: Int?) {
         beginHistoryRequestTimeout(for: sessionId)
+        guard chatPrefetcher.shouldSendForeground(sessionID: sessionId, isOlder: beforeSeq != nil) else { return }
         gateway.requestHistory(
             sessionId: sessionId,
             beforeSeq: beforeSeq,
@@ -1305,6 +1674,7 @@ final class AppStore: ObservableObject {
     private func beginHistoryRequestTimeout(for sessionId: String) {
         historySyncEngine.beginRequest(sessionID: sessionId, timeout: historyRequestTimeout) { [weak self] in
             guard let self else { return }
+            self.chatPrefetcher.foregroundTimedOut(sessionID: sessionId)
             if self.pendingSnapshotSessionID == sessionId { self.pendingSnapshotSessionID = nil }
             let hasUsableLocalContent = !self.events[sessionId, default: []].isEmpty
                 || !self.renderedConversationItems[sessionId, default: []].isEmpty
@@ -1327,6 +1697,7 @@ final class AppStore: ObservableObject {
     func resumeWorkspace() {
         preparedConversationActivationKey = nil
         activeConversationActivationKey = nil
+        guard gateway.state.isConnected else { return }
         if let sessionID = selectedSessionId,
            backgroundExecutionController.isAgentWorkActive(sessionID: sessionID)
             || sessions.first(where: { $0.id == sessionID })?.isRunning == true
@@ -1347,8 +1718,151 @@ final class AppStore: ObservableObject {
     }
     func search(_ query: String) {
         let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if normalized.isEmpty { searchResults = [] } else { gateway.searchSessions(normalized) }
+        localSearchTask?.cancel()
+        localSearchQuery = normalized
+        localSearchResults = []
+        localSearchSequences = [:]
+        searchResults = []
+        searchCoverage = normalized.isEmpty ? "" : "本地结果仅涵盖已缓存聊天"
+        guard !normalized.isEmpty else { return }
+        localSearchTask = Task { [weak self] in
+            do { try await Task.sleep(for: .milliseconds(180)) } catch { return }
+            guard let self else { return }
+            let json = await chatHistoryCache?.search(gatewayID: gatewayLocalID, query: normalized)
+            guard !Task.isCancelled, localSearchQuery == normalized else { return }
+            if let json, let data = json.data(using: .utf8),
+               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let hits = object["results"] as? [[String: Any]] {
+                var seen = Set<String>()
+                localSearchResults = hits.compactMap { hit in
+                    guard let id = hit["sessionId"] as? String, seen.insert(id).inserted else { return nil }
+                    self.localSearchSequences[id] = hit["seq"] as? Int
+                    return GatewaySearchItem(sessionId: id, snippet: hit["snippet"] as? String ?? "")
+                }
+                searchResults = localSearchResults
+            }
+            requestRemoteSearchIfPossible()
+        }
     }
+
+    private func requestRemoteSearchIfPossible() {
+        guard gateway.state.isConnected, !localSearchQuery.isEmpty,
+              remoteSearchGate.begin(localSearchQuery) else { return }
+        let query = localSearchQuery
+        gateway.searchSessions(query)
+        remoteSearchTimeout?.cancel()
+        remoteSearchTimeout = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(10)) } catch { return }
+            guard let self, remoteSearchGate.inFlight == query else { return }
+            // 未回显 query 的旧网关无法识别超时后的迟到响应，因此继续本地检索并等待旧请求消化或重连。
+            remoteSearchGate.timedOut()
+        }
+    }
+
+    func refreshCacheStorage(clear: Bool = false) async {
+        guard !cacheStorageBusy else { return }
+        cacheStorageBusy = true
+        defer { cacheStorageBusy = false }
+        if clear {
+            chatPrefetcher.stop(reason: "clear")
+            chatCacheSelectionGeneration &+= 1
+            chatCacheWrites.values.forEach { $0.cancel() }
+            chatCacheWrites.removeAll()
+            imageAttachmentCache.removeAllFromMemory()
+            ConversationViewportController.clearReusableHeights()
+        }
+        let stats = await AppCacheMaintenance.shared.run(cache: chatHistoryCache, clear: clear)
+        let format: (Int64) -> String = { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) }
+        cacheStorageSummary = "磁盘 \(format(stats.totalBytes)) · 聊天 \(format(stats.databaseBytes)) · 图片 \(format(stats.imageBytes)) · 预览 \(format(stats.resources.previewBytes)) · 临时 \(format(stats.resources.temporaryBytes)) · 使用中 \(format(stats.resources.protectedBytes))\n聊天 L1 \(format(stats.memoryBytes)) · 内存命中 \(stats.memoryHits) · 磁盘命中 \(stats.diskHits) · 未命中 \(stats.misses)"
+        if stats.underPressure { cacheStorageSummary += "\n部分缓存正在使用，暂不能回收；关闭预览或切换会话后重试。" }
+    }
+
+    private func scheduleInactiveConversationMemoryTrim(replacing: Bool = false) {
+        if replacing { conversationMemoryTrimTask?.cancel(); conversationMemoryTrimTask = nil }
+        guard conversationMemoryTrimTask == nil else { return }
+        let generation = chatCacheSelectionGeneration
+        let id = UUID()
+        conversationMemoryTrimID = id
+        conversationMemoryTrimTask = Task { [weak self] in
+            await Task.yield()
+            guard !Task.isCancelled, let self, generation == chatCacheSelectionGeneration else { return }
+            defer { if conversationMemoryTrimID == id { conversationMemoryTrimTask = nil } }
+            await trimInactiveConversationMemory()
+        }
+    }
+
+    func handleMemoryWarning() {
+        chatPrefetcher.stop(reason: "memory")
+        imageAttachmentCache.removeAllFromMemory()
+        ConversationViewportController.clearReusableHeights()
+        let generation = chatCacheSelectionGeneration
+        Task { [weak self] in
+            guard let self, generation == chatCacheSelectionGeneration else { return }
+            await trimInactiveConversationMemory(force: true)
+            await chatHistoryCache?.trimMemory()
+        }
+    }
+
+    private func trimInactiveConversationMemory(force: Bool = false) async {
+        guard let chatHistoryCache else { return }
+        let selection = chatCacheSelectionGeneration
+        let epoch = await chatHistoryCache.epoch()
+        guard selection == chatCacheSelectionGeneration else { return }
+        var keep = Set(sessions.filter(\.isRunning).map(\.id))
+            .union([selectedSessionId].compactMap { $0 })
+            .union(pendingApprovalRequests.map(\.sessionId))
+            .union(pendingQuestionRequests.map(\.sessionId))
+            .union(queueState.queues.filter { !$0.value.isEmpty }.keys)
+            .union(historyLoadingSessionIds)
+        let sorted = renderedConversationItems.keys.sorted { conversationMemoryAccess[$0, default: 0] > conversationMemoryAccess[$1, default: 0] }
+        var bytes: Int64 = 0
+        for id in sorted {
+            let cost = kmpHistoryStore.estimatedRetainedBytes(sessionID: id)
+                + kmpConversationStore.estimatedRetainedBytes(sessionID: id)
+            if keep.contains(id) || !force && keep.count < 6 && bytes + cost <= 24 * 1024 * 1024 {
+                keep.insert(id); bytes += cost
+            }
+        }
+        for id in sorted where !keep.contains(id) {
+            chatCacheWrites.removeValue(forKey: id)?.cancel()
+            if let json = kmpHistoryStore.cachedWindowJSON(sessionID: id,
+                historyFormatVersion: assistantStreamState.formatVersion(sessionId: id)?.intValue,
+                persistentCursor: assistantStreamState.persistentCursorFor(sessionId: id)?.intValue) {
+                _ = await chatHistoryCache.save(gatewayID: gatewayLocalID, sessionID: id, json: json,
+                    generation: DispatchTime.now().uptimeNanoseconds, epoch: epoch)
+                guard selection == chatCacheSelectionGeneration else { return }
+            }
+        }
+        keep.formUnion([selectedSessionId].compactMap { $0 })
+        keep.formUnion(sessions.filter(\.isRunning).map(\.id))
+        keep.formUnion(pendingApprovalRequests.map(\.sessionId))
+        keep.formUnion(pendingQuestionRequests.map(\.sessionId))
+        keep.formUnion(queueState.queues.filter { !$0.value.isEmpty }.keys)
+        keep.formUnion(historyLoadingSessionIds)
+        evictedConversationSessionIDs.formUnion(Set(sorted).subtracting(keep))
+        let removed = kmpHistoryStore.retainSessions(keep)
+        evictedConversationSessionIDs.formIntersection(Set(removed).union(evictedConversationSessionIDs.subtracting(Set(sorted))))
+        assistantStreamState.retainSessions(sessionIds: Array(keep))
+        for id in removed {
+            try? kmpConversationStore.clear(sessionID: id)
+            kmpConversationStore.releaseRetainedState(sessionID: id)
+            try? kmpTrajectoryStore.clear(sessionID: id)
+            kmpTrajectoryStore.releaseRetainedState(sessionID: id)
+            trajectoryTimelines[id] = nil
+            trajectoryProjectionDrivers.removeValue(forKey: id)?.stop()
+            pendingTrajectoryEvents[id] = nil
+            trajectoryProjectedVersions[id] = nil
+            trajectoryHistoryRevisions[id] = nil
+            activeTrajectorySessionIDs.remove(id)
+            renderedConversationItems[id] = nil
+            events[id] = nil
+            conversationTimelines[id] = nil
+            conversationProjectionDrivers.removeValue(forKey: id)?.stop()
+            conversationMemoryAccess[id] = nil
+            conversationContentSessionIds.remove(id)
+        }
+    }
+
     func browseDirectories(path: String? = nil) {
         guard gateway.state.isConnected else {
             lastError = String(localized: "请先连接 DeepSeek Harness")
@@ -1383,6 +1897,7 @@ final class AppStore: ObservableObject {
               workspaceFilePreviewRequest == nil, !conversationFileIsOpening else { return }
         conversationFilePreviewRequested = false
         completedWorkspaceFile = nil
+        workspaceFileOperationCache = WorkspacePreviewCache(gatewayID: gatewayLocalID)
         if purpose == "preview" {
             lastError = nil
             conversationFileIsOpening = true
@@ -1413,6 +1928,7 @@ final class AppStore: ObservableObject {
             return
         }
         completedWorkspaceFile = nil
+        workspaceFileOperationCache = WorkspacePreviewCache(gatewayID: gatewayLocalID)
         conversationFilePreviewRequested = true
         conversationFileIsOpening = true
         lastError = nil
@@ -1657,6 +2173,7 @@ final class AppStore: ObservableObject {
             return false
         }
         guard !sessionAgentPreset.blocksSending else { return false }
+        if isShowingSearchContext { clearSearchContext(); conversationSearchTarget = nil }
         if let command = kmpSlashCommandStore.commandExecutionForInput(text: trimmed) {
             guard images.isEmpty || command.allowsImages else {
                 lastError = String(localized: "此命令不支持图片")
@@ -1670,11 +2187,13 @@ final class AppStore: ObservableObject {
         guard !messageSubmissionPending else { return false }
         applySessionAgentPresetTransition(sessionAgentPresetStore.beginMessage())
         messageSubmissionPending = true
+        updateChatPrefetchState()
         messageSubmissionTimeout?.cancel()
         messageSubmissionTimeout = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(20)) } catch { return }
             guard let self, self.messageSubmissionPending else { return }
             self.messageSubmissionPending = false
+            self.updateChatPrefetchState()
             self.applySessionAgentPresetTransition(self.sessionAgentPresetStore.requestFailed(
                 type: "message", sessionId: self.selectedSessionId, requestId: nil, message: nil
             ))
@@ -1808,6 +2327,8 @@ final class AppStore: ObservableObject {
     }
 
     private func subscribeToSession(_ sessionID: String?) {
+        if conversationSearchTarget != nil, let sessionID,
+           assistantStreamState.hasBaseline(sessionId: sessionID) { return }
         if let previous = selectedSessionId {
             try? kmpConversationStore.clearAssistantChunks(sessionID: previous)
         }
@@ -1821,7 +2342,19 @@ final class AppStore: ObservableObject {
     }
 
     private func handle(_ frame: GatewayFrame) {
-        if frame.kind == "hello" { voiceInput.hello(frame.capabilities ?? []) }
+        if chatPrefetcher.consume(frame) || chatPrefetcher.consumeHistoryError(frame,
+            foregroundHistoryPending: !historyLoadingSessionIds.isEmpty) { return }
+        defer { updateChatPrefetchState() }
+        if frame.kind == "hello" {
+            remoteSearchTimeout?.cancel()
+            remoteSearchGate.reset()
+            voiceInput.hello(frame.capabilities ?? [])
+        }
+        if frame.kind == "search" {
+            guard let accepted = remoteSearchGate.complete(echoedQuery: frame.query, desiredQuery: localSearchQuery) else { return }
+            remoteSearchTimeout?.cancel()
+            guard accepted else { requestRemoteSearchIfPossible(); return }
+        }
         if frame.kind == "plugin-catalog" || frame.kind == "plugins-changed" ||
             frame.kind == "plugin-bundle-set-enabled" || frame.kind == "plugin-entry-set-enabled" ||
             (frame.kind == "error" && frame.requestType?.hasPrefix("plugin-") == true) {
@@ -1878,6 +2411,10 @@ final class AppStore: ObservableObject {
         }
         if frame.subscriptionId != nil { drainKMPEventDeliveries() }
         defer { if frame.subscriptionId != nil { drainKMPEventDeliveries() } }
+        if frame.kind == "hello" {
+            chatCacheHelloReceived = true
+            chatCacheHelloFormat = frame.historyFormatVersion
+        }
         if frame.kind == "history", let id = frame.sessionId,
            assistantStreamState.hasBaseline(sessionId: id),
            !historyLoadingOlderSessionIds.contains(id) { return }
@@ -1885,6 +2422,7 @@ final class AppStore: ObservableObject {
             let update = assistantStreamState.acceptJson(json: String(decoding: encoded, as: UTF8.self))
             do {
                 for id in update.invalidatedSessionIds {
+                    invalidateChatCache(sessionID: id)
                     historySyncEngine.finish(sessionID: id)
                     try kmpHistoryStore.clear(sessionID: id)
                     try kmpConversationStore.clear(sessionID: id)
@@ -1921,10 +2459,14 @@ final class AppStore: ObservableObject {
                     }
                 }
                 if frame.kind == "session-snapshot", let id = frame.sessionId {
+                    if isShowingSearchContext, conversationSearchTarget == nil { clearSearchContext() }
                     historyLoadErrors[id] = nil
                     lastError = nil
                     historySyncEngine.finish(sessionID: id)
                     let records = (frame.events ?? []).map { $0.normalized(sessionId: id) }
+                    if assistantStreamState.activeAttemptId() == nil {
+                        dispatchSessionListIntent(.historyReceived(sessionID: id, events: records))
+                    }
                     let replaced = try kmpHistoryStore.installSnapshot(sessionID: id,
                         events: records,
                         hasMore: frame.hasMore == true, nextBeforeSequence: frame.nextBeforeSeq)
@@ -2057,9 +2599,12 @@ final class AppStore: ObservableObject {
                 deviceName ?? String(localized: "长期凭据已安全保存到 Keychain")
             )
         case .hello(let payload):
+            offlineHistoryBoundarySessionIds.removeAll()
+            offlineHistoryLoadingOlderSessionIds.removeAll()
             // hello 定义新的连接代际。必须先清除上一代 request identity/quarantine，
             // 再发送本代 refresh，避免旧 token 或迟到响应跨连接污染新请求。
             resetOutstandingRequests()
+            chatPrefetcher.connectedHello()
             // 主动后台挂起不触发 onConnectionFailure，也必须重新激活订阅。
             activeConversationActivationKey = nil
             backgroundExecutionController.releaseAllQuestionAnswers()
@@ -2083,7 +2628,7 @@ final class AppStore: ObservableObject {
             workspaceFileOperationID = UUID()
             applyWorkspaceFileTransition(kmpWorkspaceFileStore.reset(sessionId: selectedSessionId))
             attachmentLoader.reset()
-            presentsNextConnectionFailureAsAlert = true
+            presentsNextConnectionFailureAsAlert = false
             let authentication = payload.authenticated
                 ? String(localized: "设备鉴权成功")
                 : String(localized: "Debug 未鉴权")
@@ -2101,6 +2646,14 @@ final class AppStore: ObservableObject {
             refreshDefaultConfiguration()
             if let selectedSessionId {
                 refreshSessionControls(for: selectedSessionId)
+            }
+            // 恢复旧预加载槽时，即使当前只选中而尚未激活视图，也必须重发真实前台请求。
+            let recoverySessionID = chatPrefetchRecoverySessionID
+            chatPrefetchRecoverySessionID = nil
+            if let recoverySessionID, selectedSessionId == recoverySessionID,
+               preparedConversationActivationKey == nil {
+                if usesAssistantStream { subscribeToSession(recoverySessionID) }
+                else { startHistorySync(for: recoverySessionID) }
             }
             // rc.2 由订阅原子快照恢复历史和生成前缀。
             if preparedConversationActivationKey != nil, let selectedSessionId {
@@ -2150,13 +2703,16 @@ final class AppStore: ObservableObject {
         _ transition: DeepSeekHarnessShared.SharedWorkspaceFileTransition,
         cachedURL: URL? = nil
     ) {
-        let cache = WorkspacePreviewCache(gatewayID: gatewayLocalID)
+        let cache = workspaceFileOperationCache ?? WorkspacePreviewCache(gatewayID: gatewayLocalID)
         if let lookup = transition.cacheLookup {
             let entry = WorkspacePreviewCacheEntry(lookup)
             let operationID = workspaceFileOperationID
             Task {
                 let url = await Task.detached(priority: .userInitiated) { cache.find(entry) }.value
-                guard operationID == workspaceFileOperationID else { return }
+                guard operationID == workspaceFileOperationID else {
+                    if let url { WorkspaceFileLifetime.shared.release(url) }
+                    return
+                }
                 let next = kmpWorkspaceFileStore.completeCacheLookup(requestId: lookup.requestId, available: url != nil)
                 applyWorkspaceFileTransition(next, cachedURL: url)
             }
@@ -2199,6 +2755,10 @@ final class AppStore: ObservableObject {
                 return
             }
             do {
+                let free = (try? URL(fileURLWithPath: NSHomeDirectory()).resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage) ?? Int64.max
+                guard free - Int64(bytes.count) >= WorkspacePreviewCache.minimumFreeBytes else {
+                    throw CocoaError(.fileWriteOutOfSpace)
+                }
                 try workspaceFileHandle.seekToEnd()
                 try workspaceFileHandle.write(contentsOf: bytes)
             } catch {
@@ -2237,14 +2797,14 @@ final class AppStore: ObservableObject {
             let fileSize = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?
                 .int64Value
             guard fileSize == completion.size else {
-                try? FileManager.default.removeItem(at: url)
+                WorkspaceFileLifetime.shared.release(url, deleteTemporary: true)
                 workspaceFileTemporaryURL = nil
                 conversationFileIsOpening = false
                 lastError = String(localized: "下载文件的本地大小校验失败")
                 return
             }
             guard completion.sessionId == selectedSessionId else {
-                try? FileManager.default.removeItem(at: url)
+                WorkspaceFileLifetime.shared.release(url, deleteTemporary: true)
                 workspaceFileTemporaryURL = nil
                 return
             }
@@ -2256,15 +2816,18 @@ final class AppStore: ObservableObject {
                 let saved = await Task.detached(priority: .userInitiated) {
                     entry.flatMap { cache.store(url, entry: $0) }
                 }.value
-                if saved != nil { try? FileManager.default.removeItem(at: url) }
+                if saved != nil { WorkspaceFileLifetime.shared.release(url, deleteTemporary: true) }
                 guard operationID == workspaceFileOperationID, completion.sessionId == selectedSessionId else {
-                    if saved == nil { try? FileManager.default.removeItem(at: url) }
+                    if let saved { WorkspaceFileLifetime.shared.release(saved) }
+                    else { WorkspaceFileLifetime.shared.release(url, deleteTemporary: true) }
                     return
                 }
                 conversationFileIsOpening = false
                 completedWorkspaceFile = WorkspaceLocalFile(url: saved ?? url, sessionID: completion.sessionId,
                     remotePath: completion.path, name: completion.name,
                     mediaType: completion.mediaType, purpose: completion.purpose)
+                let historyCache = chatHistoryCache
+                Task { _ = await AppCacheMaintenance.shared.run(cache: historyCache) }
             }
         }
         if let request = transition.request {
@@ -2274,24 +2837,28 @@ final class AppStore: ObservableObject {
 
     private func openWorkspaceTemporaryFile(name: String) throws {
         closeWorkspaceTemporaryFile(remove: true)
-        let safeName = URL(fileURLWithPath: name).lastPathComponent
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("dsh-workspace-files", isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let url = directory.appendingPathComponent(safeName)
-        guard FileManager.default.createFile(atPath: url.path, contents: nil) else {
-            throw CocoaError(.fileWriteUnknown)
+        try WorkspaceFileLifetime.shared.synchronized {
+            guard isSafeManagedCacheDirectory(WorkspacePreviewCache.temporaryRoot) else { throw CocoaError(.fileWriteInvalidFileName) }
+            let candidate = URL(fileURLWithPath: name).lastPathComponent
+            let safeName = ["", ".", ".."].contains(candidate) ? "download" : candidate
+            let directory = WorkspacePreviewCache.temporaryRoot
+                .appendingPathComponent(UUID().uuidString, isDirectory: true)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let url = directory.appendingPathComponent(safeName)
+            guard FileManager.default.createFile(atPath: url.path, contents: nil) else {
+                throw CocoaError(.fileWriteUnknown)
+            }
+            WorkspaceFileLifetime.shared.retain(url)
+            workspaceFileTemporaryURL = url
+            workspaceFileHandle = try FileHandle(forWritingTo: url)
         }
-        workspaceFileTemporaryURL = url
-        workspaceFileHandle = try FileHandle(forWritingTo: url)
     }
 
     private func closeWorkspaceTemporaryFile(remove: Bool) {
         try? workspaceFileHandle?.close()
         workspaceFileHandle = nil
         if remove, let url = workspaceFileTemporaryURL {
-            try? FileManager.default.removeItem(at: url)
+            WorkspaceFileLifetime.shared.release(url, deleteTemporary: true)
             workspaceFileTemporaryURL = nil
         }
     }
@@ -2332,6 +2899,7 @@ final class AppStore: ObservableObject {
             merge(record)
             enqueueImageAttachments(record.event.images ?? [], sessionId: record.sessionId)
         case .workspaces(let received, let archivedSessionIDs):
+            offlineWorkspaceRevision &+= 1
             workspaces = received
             if selectedWorkspaceId == nil || (
                 selectedWorkspaceId != Self.ungroupedWorkspaceID &&
@@ -2339,7 +2907,8 @@ final class AppStore: ObservableObject {
             ) {
                 selectedWorkspaceId = workspaces.first?.id ?? Self.ungroupedWorkspaceID
             }
-            dispatchSessionListIntent(.setArchivedSessionIDs(archivedSessionIDs))
+            if let archivedSessionIDs { dispatchSessionListIntent(.setArchivedSessionIDs(archivedSessionIDs)) }
+            persistOfflineCatalog()
             notice(
                 String(localized: "notice.workspaces.synced", defaultValue: "工作区已同步"),
                 String(localized: "workspaces.count", defaultValue: "\(workspaces.count) 个工作区")
@@ -2361,6 +2930,7 @@ final class AppStore: ObservableObject {
             )
         case .sessions(let received):
             dispatchSessionListIntent(.remoteSessionsReceived(received))
+            updateChatPrefetchState(sessionsReceived: true)
             let runningBySessionID = received.reduce(into: [String: Bool]()) { result, session in
                 result[session.sessionId] = session.running
             }
@@ -2381,7 +2951,9 @@ final class AppStore: ObservableObject {
         case .attachment(let payload):
             handleImageAttachment(payload)
         case .search(let received, let hasMore):
-            searchResults = received
+            guard !localSearchQuery.isEmpty else { break }
+            let localIDs = Set(localSearchResults.map(\.sessionId))
+            searchResults = localSearchResults + received.filter { !localIDs.contains($0.sessionId) }
             notice(
                 String(localized: "notice.search.finished", defaultValue: "搜索完成"),
                 String(
@@ -2878,6 +3450,11 @@ final class AppStore: ObservableObject {
                     nextBeforeSequence: payload.nextBeforeSequence,
                     remoteActivityTimestamp: self.sessions.first(where: { $0.id == id })?.lastActivity.timeIntervalSince1970
                 )
+                self.drainKMPEventDeliveries()
+                // 使用合并后的历史，避免旧分页中的 end 误停较新的实时 turn/start。
+                if self.assistantStreamState.activeAttemptId() == nil {
+                    self.dispatchSessionListIntent(.historyReceived(sessionID: id, events: self.events[id] ?? []))
+                }
             } catch {
                 let primaryError = error.localizedDescription
                 self.lastError = primaryError
@@ -2923,14 +3500,21 @@ final class AppStore: ObservableObject {
 
     private func enqueueImageAttachments(_ attachments: [GatewayImageAttachment], sessionId: String) {
         guard supportsImages else { return }
-        let requests = attachmentLoader.enqueue(attachments, sessionID: sessionId) {
-            imageAttachmentCache.data(for: $0) != nil
+        let cache = imageAttachmentCache
+        Task { [weak self] in
+            for attachment in attachments { _ = await cache.loadData(for: attachment.id) }
+            guard let self, !self.evictedConversationSessionIDs.contains(sessionId) else { return }
+            if let items = self.renderedConversationItems[sessionId] { self.conversationTimeline(for: sessionId).publish(items) }
+            let requests = self.attachmentLoader.enqueue(attachments, sessionID: sessionId) {
+                cache.data(for: $0) != nil
+            }
+            self.requestImageAttachments(requests)
         }
-        requestImageAttachments(requests)
     }
 
     private func requestImageAttachments(_ requests: [AttachmentLoadRequest]) {
         for request in requests {
+            imageAttachmentRequestEpochs[request.attachment.id] = imageAttachmentCache.epoch
             gateway.requestAttachment(
                 sessionId: request.sessionID,
                 attachmentId: request.attachment.id
@@ -2940,6 +3524,7 @@ final class AppStore: ObservableObject {
 
     private func handleImageAttachment(_ payload: GatewayAttachmentPayload) {
         let attachment = payload.attachment
+        let requestEpoch = imageAttachmentRequestEpochs.removeValue(forKey: attachment.id)
         let nextRequests = attachmentLoader.complete(attachmentID: attachment.id) {
             imageAttachmentCache.data(for: $0) != nil
         }
@@ -2955,7 +3540,9 @@ final class AppStore: ObservableObject {
             )
             return
         }
-        imageAttachmentCache.store(decoded, for: attachment.id)
+        guard let requestEpoch else { return }
+        imageAttachmentCache.store(decoded, for: attachment.id, expectedEpoch: requestEpoch)
+        if isShowingSearchContext, let timeline = searchContextTimeline { timeline.publish(timeline.currentSnapshot.items) }
         guard let sessionId = payload.sessionID,
               let items = renderedConversationItems[sessionId] else { return }
         // The row revision also includes cache presence, so this publication
@@ -2964,6 +3551,7 @@ final class AppStore: ObservableObject {
     }
 
     private func scheduleConversationProjection(for sessionId: String) {
+        guard !evictedConversationSessionIDs.contains(sessionId) else { return }
         let driver: ConversationProjectionDriver
         if let existing = conversationProjectionDrivers[sessionId] {
             driver = existing
@@ -3013,8 +3601,14 @@ final class AppStore: ObservableObject {
         publishConversationItems(items, for: sessionId)
     }
     private func publishConversationItems(_ items: [ConversationItem], for sessionId: String) {
+        guard !evictedConversationSessionIDs.contains(sessionId) else { return }
         let previouslyHadContent = conversationContentSessionIds.contains(sessionId)
+        let isNewRetainedSession = renderedConversationItems[sessionId] == nil
         renderedConversationItems[sessionId] = items
+        if isNewRetainedSession || renderedConversationItems.count > 6 ||
+            sessionId != selectedSessionId && events[sessionId]?.last?.event.type != "assistant/chunk" {
+            scheduleInactiveConversationMemoryTrim()
+        }
         conversationTimeline(for: sessionId).publish(items)
         if let request = pendingApprovalRequests.last(where: { $0.sessionId == sessionId }) {
             AgentLiveActivityManager.shared.enrichApprovalCommand(
@@ -3035,7 +3629,8 @@ final class AppStore: ObservableObject {
     }
     /// 只有 UI 投影发布完成后，空列表才可以被解释为真正的空会话。
     func isPreparingConversation(_ sessionID: String) -> Bool {
-        !conversationContentSessionIds.contains(sessionID) && (
+        if isShowingSearchContext, sessionID == selectedSessionId { return false }
+        return !conversationContentSessionIds.contains(sessionID) && (
             historyLoadingSessionIds.contains(sessionID)
                 || conversationPreparingSessionIDs.contains(sessionID)
         )
@@ -3255,10 +3850,7 @@ final class AppStore: ObservableObject {
         queueActionTimeout?.cancel()
         if queueState.pendingItemId != nil { queueState = queueStore.failPending(message: "连接已中断，请重新连接后确认队列状态") }
         assistantStreamState.disconnect()
-        if let id = selectedSessionId {
-            try? kmpConversationStore.clearAssistantChunks(sessionID: id)
-            publishTrajectory(sessionID: id)
-        }
+        resetRemoteSearchForOffline()
         // Keep the prepared destination, but require a fresh activation after
         // the transport reconnects and emits its next hello frame.
         activeConversationActivationKey = nil
@@ -3267,10 +3859,11 @@ final class AppStore: ObservableObject {
         // business request. Cancel their timeout tokens first so an unrelated
         // "agent-presets 请求超时" cannot replace the real WebSocket cause.
         resetOutstandingRequests()
+        showOfflineHistoryBoundary()
         if presentsNextConnectionFailureAsAlert {
             lastError = detail
         }
-        presentsNextConnectionFailureAsAlert = true
+        presentsNextConnectionFailureAsAlert = false
         backgroundExecutionController.cancel()
     }
 
@@ -3279,6 +3872,7 @@ final class AppStore: ObservableObject {
     }
 
     private func resetOutstandingRequests() {
+        chatPrefetcher.stop(reason: "reset")
         sessionAgentPresetTimeout?.cancel()
         applySessionAgentPresetTransition(sessionAgentPresetStore.disconnected())
         cancelSnapshotWait()
@@ -3387,6 +3981,13 @@ final class AppStore: ObservableObject {
     @discardableResult
     private func dispatchSessionListIntent(_ action: KMPSessionListIntent) -> Bool {
         do {
+            switch action {
+            case .restore: break
+            case .select: offlineSessionSelectionRevision &+= 1
+            case .setArchivedSessionIDs: offlineArchiveRevision &+= 1
+            case .markRead: break
+            default: offlineSessionRevision &+= 1
+            }
             try kmpSessionListStore.reduce(action)
             return true
         } catch {
@@ -3403,6 +4004,7 @@ final class AppStore: ObservableObject {
             return
         }
         guard let snapshot else { return }
+        defer { updateChatPrefetchState(); persistOfflineCatalog() }
         let previousSessionIDs = Set(sessions.map(\.id))
         let previousArchivedSessionIDs = archivedSessionIds
         // stage9-kmp-write-scope: session-list-begin
@@ -3429,6 +4031,8 @@ final class AppStore: ObservableObject {
         if !clearedSessionIDs.isEmpty {
             dispatchSessionControl(.clearSessionsData(sessionIDs: clearedSessionIDs))
             for sessionID in clearedSessionIDs {
+                if sessionID == selectedSessionId { clearSearchContext(); conversationSearchTarget = nil }
+                invalidateChatCache(sessionID: sessionID)
                 do {
                     historySyncEngine.finish(sessionID: sessionID)
                     try kmpHistoryStore.clear(sessionID: sessionID)
@@ -3510,7 +4114,42 @@ final class AppStore: ObservableObject {
         }
         return transition
     }
+
+    private func invalidateChatCache(sessionID: String) {
+        chatCacheWrites.removeValue(forKey: sessionID)?.cancel()
+        guard let chatHistoryCache else { return }
+        let generation = DispatchTime.now().uptimeNanoseconds
+        let gatewayID = gatewayLocalID
+        Task { await chatHistoryCache.remove(gatewayID: gatewayID, sessionID: sessionID, generation: generation) }
+    }
+
+    private func scheduleChatCacheWrite(sessionID: String, immediate: Bool) {
+        guard !restoringChatCache, let chatHistoryCache, let protectionOwner = chatCacheProtectionOwner else { return }
+        chatCacheWrites.removeValue(forKey: sessionID)?.cancel()
+        let generation = DispatchTime.now().uptimeNanoseconds
+        chatCacheWrites[sessionID] = Task { [weak self] in
+            if !immediate {
+                do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
+            }
+            guard !Task.isCancelled, let self,
+                  let json = self.kmpHistoryStore.cachedWindowJSON(sessionID: sessionID,
+                    historyFormatVersion: self.assistantStreamState.formatVersion(sessionId: sessionID)?.intValue,
+                    persistentCursor: self.assistantStreamState.persistentCursorFor(sessionId: sessionID)?.intValue) else { return }
+            let protected = Set(self.sessions.filter(\.isRunning).map(\.id)).union([self.selectedSessionId].compactMap { $0 })
+            let gatewayID = self.gatewayLocalID
+            let epoch = await chatHistoryCache.epoch()
+            await chatHistoryCache.protect(owner: protectionOwner, sessionIDs: protected)
+            guard !Task.isCancelled else { return }
+            await chatHistoryCache.save(gatewayID: gatewayID, sessionID: sessionID, json: json, generation: generation, epoch: epoch)
+        }
+    }
+
     private func handleHistoryChange(_ change: KMPHistoryChange) {
+        defer { updateChatPrefetchState() }
+        if evictedConversationSessionIDs.contains(change.sessionID) {
+            guard !change.events.isEmpty else { return }
+            evictedConversationSessionIDs.remove(change.sessionID)
+        }
         if change.eventPatchKind != nil, !conversationContentSessionIds.contains(change.sessionID),
            !conversationPreparingSessionIDs.contains(change.sessionID) {
             conversationPreparingSessionIDs.insert(change.sessionID)
@@ -3529,6 +4168,11 @@ final class AppStore: ObservableObject {
         if let patchKind = change.eventPatchKind {
             historyLoadErrors[change.sessionID] = nil
             events[change.sessionID] = change.events
+            if isShowingSearchContext, change.sessionID == selectedSessionId,
+               let sequence = localSearchSequences[change.sessionID],
+               searchTargetWasInvalidated(sessionID: change.sessionID, sequence: sequence) {
+                invalidateSearchContext(sessionID: change.sessionID)
+            }
             trajectoryHistoryRevisions[change.sessionID, default: 0] &+= 1
             // Only the baseline path can surface events the client has never
             // scanned (a new image attachment, a new tool row). A streaming chunk
@@ -3587,6 +4231,12 @@ final class AppStore: ObservableObject {
                 return
             }
             requestHistoryPage(for: effect.sessionId, beforeSeq: effect.beforeSequence)
+        }
+
+        if !restoringChatCache, (change.eventPatchKind != nil || change.outcome == "completed"),
+           change.eventRecord?.event.type != "assistant/chunk" {
+            scheduleChatCacheWrite(sessionID: change.sessionID,
+                immediate: change.eventRecord?.event.type == "assistant/message" || change.outcome == "completed")
         }
 
         switch change.outcome {
@@ -3816,7 +4466,94 @@ final class AppStore: ObservableObject {
             lastError = "KMP SessionControl 返回未知 effect：\(effect.kind)"
         }
     }
+    private func showOfflineHistoryBoundary() {
+        guard let id = selectedSessionId, selectedConversationItems.isEmpty,
+              events[id, default: []].isEmpty else { return }
+        conversationPreparingSessionIDs.remove(id)
+        historyLoadErrors[id] = "此会话尚未缓存，连接后可加载聊天内容"
+    }
+
+    private func resetRemoteSearchForOffline() {
+        remoteSearchTimeout?.cancel()
+        remoteSearchGate.reset()
+        searchResults = localSearchResults
+    }
+
+    /// 目录恢复只进入 SessionList，绝不安装历史/流 baseline 或发送订阅。
+    private func restoreOfflineCatalog(_ json: String?) {
+        if let json {
+            let codec = SharedOfflineCatalogCodec()
+            if let value = codec.sessionListJson(catalogJson: json),
+               var snapshot = try? JSONDecoder().decode(KMPSessionListSnapshot.self, from: Data(value.utf8)) {
+                if offlineSessionRevision == 0 {
+                    if offlineSessionSelectionRevision > 0 { snapshot.selectedSessionId = kmpSessionListStore.snapshot.selectedSessionId }
+                    if offlineArchiveRevision > 0 { snapshot.archivedSessionIds = kmpSessionListStore.snapshot.archivedSessionIds }
+                    _ = dispatchSessionListIntent(.restore(snapshot))
+                } else if offlineArchiveRevision == 0 {
+                    // sessions 与 archives 由不同响应推进；先来的 sessions 不应阻止补归档目录。
+                    _ = dispatchSessionListIntent(.setArchivedSessionIDs(snapshot.archivedSessionIDSet))
+                }
+                drainKMPEventDeliveries()
+            }
+            if offlineWorkspaceRevision == 0, let value = codec.workspacesJson(catalogJson: json),
+               let decoded = try? JSONDecoder().decode([GatewayWorkspace].self, from: Data(value.utf8)) {
+                workspaces = decoded
+                if offlineWorkspaceSelectionRevision == 0 {
+                    selectedWorkspaceId = codec.selectedWorkspaceId(catalogJson: json)
+                }
+            }
+        }
+        offlineCatalogRestored = true
+        persistOfflineCatalog()
+    }
+
+    private func persistOfflineCatalog() {
+        guard offlineCatalogRestored, offlineCatalogActive, let cache = chatHistoryCache,
+              let owner = chatCacheProtectionOwner else { return }
+        offlineCatalogWriteRevision &+= 1
+        let revision = offlineCatalogWriteRevision
+        let previous = offlineCatalogWriteTask
+        previous?.cancel()
+        offlineCatalogWriteTask = Task { [weak self] in
+            await previous?.value
+            do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
+            guard let self, offlineCatalogActive, !Task.isCancelled,
+                  revision == offlineCatalogWriteRevision,
+                  let encodedSessions = try? JSONEncoder().encode(kmpSessionListStore.snapshot),
+                  let encodedWorkspaces = try? JSONEncoder().encode(workspaces),
+                  let json = SharedOfflineCatalogCodec().create(
+                    sessionListJson: String(decoding: encodedSessions, as: UTF8.self),
+                    workspacesJson: String(decoding: encodedWorkspaces, as: UTF8.self),
+                    selectedWorkspaceId: selectedWorkspaceId) else { return }
+            _ = await cache.saveOfflineCatalog(owner: owner, json: json)
+        }
+    }
+
+    func awaitOfflineCatalogForTesting() async {
+        await offlineCatalogRestoreTask?.value
+        await offlineCatalogWriteTask?.value
+    }
+
     private func persistSessions() {
         preferences.saveSessions(sessions)
+    }
+}
+
+/// 旧网关未回显 query 时仍能把响应归属唯一请求；超时请求消化前不再发新请求。
+struct RemoteSearchGate {
+    private(set) var inFlight: String?
+    private var blocked = false
+    mutating func begin(_ query: String) -> Bool {
+        guard !query.isEmpty, inFlight == nil, !blocked else { return false }
+        inFlight = query
+        return true
+    }
+    mutating func timedOut() { blocked = true }
+    mutating func reset() { inFlight = nil; blocked = false }
+    mutating func complete(echoedQuery: String?, desiredQuery: String) -> Bool? {
+        guard let requested = inFlight, echoedQuery == nil || echoedQuery == requested else { return nil }
+        inFlight = nil
+        blocked = false
+        return requested == desiredQuery && !desiredQuery.isEmpty
     }
 }

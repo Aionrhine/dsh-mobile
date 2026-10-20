@@ -1,15 +1,15 @@
 package com.clarklevis.dsh.android.ui
 
 import android.content.ActivityNotFoundException
-import android.content.Intent
 import android.content.ClipData
+import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,8 +23,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -49,8 +49,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -60,13 +60,13 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.android.AndroidSharedStateHolder
-import com.clarklevis.dsh.android.AndroidWorkspaceLocalFile
 import com.clarklevis.dsh.android.AndroidWorkspaceDownloadRegistry
+import com.clarklevis.dsh.android.AndroidWorkspaceLocalFile
 import com.clarklevis.dsh.android.R
-import com.clarklevis.dsh.shared.protocol.GatewayDirectoryItem
+import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.shared.facade.FileIconCatalog
+import com.clarklevis.dsh.shared.protocol.GatewayDirectoryItem
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -85,6 +85,7 @@ internal fun WorkspaceFilesBottomSheet(
     val downloadRegistry = remember(context) { AndroidWorkspaceDownloadRegistry(context, stateHolder.gatewayLocalId) }
     val sessionId = stateHolder.snapshot.selectedSessionId
     var pendingExport by remember { mutableStateOf<AndroidWorkspaceLocalFile?>(null) }
+    var pendingExportLease by remember { mutableStateOf<java.io.Closeable?>(null) }
     var downloadedPaths by remember(sessionId) { mutableStateOf(emptySet<String>()) }
     var pendingApkUri by rememberSaveable { mutableStateOf<String?>(null) }
 
@@ -119,6 +120,7 @@ internal fun WorkspaceFilesBottomSheet(
 
     fun requestApkInstall(file: AndroidWorkspaceLocalFile) {
         runCatching {
+            stateHolder.retainExternalWorkspaceFile(file.file)
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.workspace-files", file.file)
             if (canInstallApks()) {
                 launchApkInstaller(uri)
@@ -149,6 +151,8 @@ internal fun WorkspaceFilesBottomSheet(
     ) { uri ->
         val file = pendingExport
         pendingExport = null
+        val lease = pendingExportLease
+        pendingExportLease = null
         if (uri != null && file != null) {
             runCatching {
                 context.contentResolver.openOutputStream(uri, "w")!!.use { output ->
@@ -158,12 +162,15 @@ internal fun WorkspaceFilesBottomSheet(
                 if (file.sessionId == sessionId) downloadedPaths = downloadedPaths + file.remotePath
             }.onFailure { stateHolder.showPlatformError(appText("保存文件失败：%1\$s", it.localizedMessage)) }
         }
+        lease?.close()
+        file?.let { stateHolder.releaseWorkspaceTemporaryFile(it.file) }
     }
 
     LaunchedEffect(stateHolder.completedWorkspaceFile) {
         val file = stateHolder.completedWorkspaceFile ?: return@LaunchedEffect
         if (file.purpose == "download") {
             pendingExport = file
+            pendingExportLease = stateHolder.leaseWorkspaceFile(file.file)
             exporter.launch(file.name)
         } else if (file.purpose == "install") {
             requestApkInstall(file)
@@ -287,6 +294,7 @@ internal fun openWorkspaceFileExternally(
             "${context.packageName}.workspace-files",
             file.file
         )
+        stateHolder.retainExternalWorkspaceFile(file.file)
         context.startActivity(Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, file.mediaType)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)

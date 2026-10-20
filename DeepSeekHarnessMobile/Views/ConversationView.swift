@@ -480,7 +480,9 @@ struct ConversationView: View {
             ConversationViewport(
                 proxy: viewportProxy,
                 sessionID: sessionID,
-                timeline: store.conversationTimeline(for: sessionID ?? "__empty__"),
+                cacheScope: store.gatewayLocalID,
+                searchTargetID: searchTargetViewportID,
+                timeline: store.displayedConversationTimeline(for: sessionID ?? "__empty__"),
                 supplementalEntries: supplementalViewportEntries,
                 makeEntries: { items in
                     makeConversationViewportEntries(from: items)
@@ -509,7 +511,7 @@ struct ConversationView: View {
                 },
                 onApproachingTop: {
                     guard let sessionID = store.selectedSessionId,
-                          store.historyHasMore[sessionID] == true,
+                          store.selectedHistoryHasMore,
                           !store.historyLoadingSessionIds.contains(sessionID) else { return }
                     store.loadHistory(for: sessionID, older: true)
                 }
@@ -858,7 +860,7 @@ struct ConversationView: View {
     private func historyFailureState(_ error: String) -> some View {
         VStack(spacing: 14) {
             Image(systemName: "exclamationmark.triangle").appFont(.largeTitle).foregroundStyle(.orange)
-            Text("历史记录加载失败").appFont(.title3.weight(.semibold))
+            Text(error.contains("尚未缓存") ? "离线内容不可用" : "历史记录加载失败").appFont(.title3.weight(.semibold))
             Text(error.contains("refuses this format")
                  ? "Host 无法读取旧格式会话，请修复或升级 Host 后重试。原始记录未修改。"
                  : error)
@@ -868,6 +870,7 @@ struct ConversationView: View {
                 if let id = store.selectedSessionId { store.loadHistory(for: id) }
             }
             .buttonStyle(.bordered)
+            .disabled(!store.gateway.state.isConnected)
         }
         .padding(.horizontal, 28)
         .accessibilityIdentifier("history-load-failure")
@@ -880,7 +883,7 @@ struct ConversationView: View {
 
     private var isLoadingOlderSelectedHistory: Bool {
         guard let id = store.selectedSessionId else { return false }
-        return store.historyLoadingOlderSessionIds.contains(id)
+        return store.isShowingSearchContext ? store.searchContextLoadingOlder : store.historyLoadingOlderSessionIds.contains(id)
     }
 
     private var shouldShowScrollToBottom: Bool {
@@ -1892,18 +1895,31 @@ struct ConversationView: View {
         var hasher = Hasher()
         hasher.combine(isLoadingSelectedHistory)
         if let sessionID = store.selectedSessionId {
-            hasher.combine(store.historyHasMore[sessionID])
+            hasher.combine(store.selectedHistoryHasMore)
             hasher.combine(store.historyLoadProgress[sessionID]?.loaded)
             hasher.combine(store.historyLoadProgress[sessionID]?.total)
         }
         let revision = hasher.finalize()
         var entries: [ConversationViewportEntry] = []
+        if store.conversationSearchTarget != nil {
+            entries.append(.init(id: "search-context", revision: revision,
+                content: AnyView(HStack {
+                    Text("本地缓存片段").appFont(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("返回最新消息") {
+                        Task {
+                            await store.returnToLatestConversation()
+                            viewportScrollToBottomToken &+= 1
+                        }
+                    }.appFont(.caption)
+                }.padding(.vertical, 8)), allowsScrollAnchoring: false))
+        }
         if !conversationItems.isEmpty, isLoadingSelectedHistory {
             entries.append(.init(id: "history-loading", revision: revision, content: AnyView(historyLoadingBanner), allowsScrollAnchoring: false))
         }
         if !isLoadingSelectedHistory,
            let sessionID = store.selectedSessionId,
-           store.historyHasMore[sessionID] == true {
+           store.selectedHistoryHasMore {
             entries.append(.init(
                 id: "history-more",
                 revision: revision,
@@ -1916,6 +1932,17 @@ struct ConversationView: View {
             ))
         }
         return entries
+    }
+
+    private var searchTargetViewportID: String? {
+        guard let target = store.conversationSearchTarget else { return nil }
+        let eventID = String(target.dropFirst("message-".count))
+        return ConversationDisplayEntry.make(from: conversationItems).first { entry in
+            switch entry.content {
+            case .message(let item): item.id == eventID || item.id.hasPrefix(eventID + "-")
+            case .process(let group): group.items.contains { $0.id == eventID || $0.id.hasPrefix(eventID + "-") }
+            }
+        }?.id ?? target
     }
 
     private func makeConversationViewportEntries(from items: [ConversationItem]) -> [ConversationViewportEntry] {

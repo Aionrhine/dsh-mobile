@@ -224,14 +224,12 @@ struct WorkspaceView: View {
             VStack(alignment: .leading, spacing: 7) {
                 Text("探索未至之境")
                     .appFont(.system(size: 32, weight: .bold))
-                if connectionIsReady {
-                    Text("已连接Deepseek Harness预览版")
-                        .appFont(.subheadline).foregroundStyle(.white.opacity(0.65))
-                }
+                Text("Deepseek Harness预览版")
+                    .appFont(.subheadline).foregroundStyle(.white.opacity(0.65))
             }
             .id("workspace-hero")
             workspaceCard.id("workspace-card")
-            newSessionButton.id("workspace-new-session")
+            newSessionButton.id("workspace-new-session").disabled(!connectionIsReady)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -540,14 +538,15 @@ struct WorkspaceView: View {
     }
 
     private var emptySessions: some View {
-        Text("暂无已知会话。连接服务后创建第一个任务。")
+        Text(searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+             ? "暂无已知会话。连接服务后创建第一个任务。"
+             : "已缓存聊天中未找到匹配内容。连接网关后可继续搜索其他聊天。")
             .appFont(.subheadline).foregroundStyle(.white.opacity(0.5))
             .frame(maxWidth: .infinity, alignment: .leading).padding(18)
             .background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 15))
     }
 
     private var displayedSessions: [SessionSummary] {
-        guard connectionIsReady else { return [] }
         let workspaceSessions: [SessionSummary]
         if store.isUngroupedWorkspaceSelected {
             workspaceSessions = store.ungroupedSessions
@@ -557,11 +556,16 @@ struct WorkspaceView: View {
         } else {
             workspaceSessions = store.historySessions
         }
-        guard !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else {
             return workspaceSessions.filter { !store.archivedSessionIds.contains($0.id) }
         }
         let ids = Set(store.searchResults.map(\.sessionId))
-        return workspaceSessions.filter { !store.archivedSessionIds.contains($0.id) && (ids.contains($0.id) || $0.title.localizedCaseInsensitiveContains(searchQuery)) }
+        let known = Set(workspaceSessions.map(\.id))
+        let missing = store.searchResults.filter { !known.contains($0.sessionId) }.map {
+            SessionSummary(id: $0.sessionId, title: "已缓存聊天", lastActivity: .distantPast, isRunning: false, hasUnread: false)
+        }
+        return (workspaceSessions + missing).filter { !store.archivedSessionIds.contains($0.id) && (ids.contains($0.id) || $0.title.localizedCaseInsensitiveContains(query) || $0.id.localizedCaseInsensitiveContains(query)) }
     }
 
     private var workspaceDisplayTitle: String {
@@ -577,7 +581,11 @@ struct WorkspaceView: View {
 
     private var sessionsList: some View {
         LazyVStack(spacing: 0) {
-            ForEach(displayedSessions.prefix(12)) { session in
+            if !searchQuery.isEmpty {
+                Text(store.searchCoverage).appFont(.caption).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            ForEach(displayedSessions.prefix(searchQuery.isEmpty ? 12 : 100)) { session in
                 Button {
                     sessionSearchIsFocused = false
                     onOpenSession(session)
@@ -590,9 +598,11 @@ struct WorkspaceView: View {
                             renamedTitle = session.title
                             renamingSession = session
                         } label: { Label("重命名", systemImage: "pencil") }
+                        .disabled(!connectionIsReady)
                         Button(role: .destructive) {
                             archivingSession = session
                         } label: { Label("删除（归档）", systemImage: "archivebox") }
+                        .disabled(!connectionIsReady)
                     }
                     .id("workspace-session-\(session.id)")
 
@@ -611,7 +621,11 @@ struct WorkspaceView: View {
                 .shadow(color: session.isRunning ? DSHColor.success : .clear, radius: 5)
             VStack(alignment: .leading, spacing: 3) {
                 Text(session.title).lineLimit(1).appFont(.subheadline.weight(.medium))
-                Text(String(session.id.prefix(16))).appFont(.caption2.monospaced()).foregroundStyle(.white.opacity(0.42))
+                if !searchQuery.isEmpty, let hit = store.searchResults.first(where: { $0.sessionId == session.id }) {
+                    Text(hit.snippet).lineLimit(2).appFont(.caption).foregroundStyle(.white.opacity(0.62))
+                } else {
+                    Text(String(session.id.prefix(16))).appFont(.caption2.monospaced()).foregroundStyle(.white.opacity(0.42))
+                }
             }
             Spacer()
             Text(session.isRunning ? String(localized: "运行中") : session.lastActivity.formatted(.relative(presentation: .named)))
@@ -1066,9 +1080,7 @@ private struct GatewayConnectionStatusText: View {
     private var color: Color {
         switch gateway.state {
         case .connected: DSHColor.success
-        case .connecting: DSHColor.amber
-        case .failed: .red.opacity(0.9)
-        case .disconnected: .white.opacity(0.5)
+        case .connecting, .failed, .disconnected: .red
         }
     }
 }

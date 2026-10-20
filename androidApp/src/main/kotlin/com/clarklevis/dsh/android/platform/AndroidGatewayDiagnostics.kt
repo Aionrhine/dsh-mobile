@@ -41,6 +41,21 @@ internal class AndroidGatewayDiagnostics private constructor(
             "closeCode=${closeCode ?: "none"}")
     }
 
+    fun offlineCatalog(stage: String, sessionCount: Int) {
+        val safeStage = stage.takeIf { it in setOf("restore", "miss", "skip-late", "saved", "skip-write") } ?: "unknown"
+        emit(Log.DEBUG, "offline-catalog stage=$safeStage sessions=${sessionCount.coerceIn(0, 4096)}")
+    }
+
+    fun chatPrefetch(stage: String, count: Int) {
+        val safeStage = stage.takeIf {
+            it in setOf(
+                "start", "hit", "complete", "skip-write", "skip-send", "skip-timeout", "skip-late", "skip-error", "skip-failure",
+                "cancel-disconnect", "cancel-foreground", "cancel-clear", "cancel-memory", "cancel-close", "cancel-timeout"
+            )
+        } ?: "unknown"
+        emit(Log.DEBUG, "chat-prefetch stage=$safeStage count=${count.coerceIn(0, 6)}")
+    }
+
     fun intent(action: GatewayDiagnosticAction, hasSession: Boolean = false, imageCount: Int = 0) {
         emit(Log.INFO, "intent action=${action.wireName} hasSession=$hasSession imageCount=$imageCount")
     }
