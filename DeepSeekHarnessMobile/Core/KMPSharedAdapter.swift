@@ -246,6 +246,15 @@ final class KMPConversationStoreAdapter {
         }
     }
 
+    func estimatedRetainedBytes(sessionID: String) -> Int64 {
+        (store as? SharedConversationStore)?.estimatedRetainedBytes(sessionId: sessionID) ?? 0
+    }
+
+    func releaseRetainedState(sessionID: String) {
+        itemsBySessionID[sessionID] = nil
+        lastSequenceBySessionID[sessionID] = nil
+    }
+
     func clear(sessionID: String) throws {
         try dispatch(.clear(sessionID: sessionID)) {
             store.clearSession(sessionId: sessionID)
@@ -694,6 +703,8 @@ final class KMPTrajectoryStoreAdapter {
             store.replaceSession(sessionId: sessionID, eventsJson: try encode(events))
         }
     }
+
+    func releaseRetainedState(sessionID: String) { nodesBySessionID[sessionID] = nil }
 
     func clear(sessionID: String) throws {
         try dispatch(.clear(sessionID: sessionID)) {
@@ -1184,6 +1195,60 @@ final class KMPHistoryStoreAdapter {
         return replacementRevision != previousRevision
     }
 
+    func cachedWindowJSON(sessionID: String, historyFormatVersion: Int?, persistentCursor: Int?) -> String? {
+        guard let shared = store as? SharedHistoryStore else { return nil }
+        return shared.cachedWindowJson(sessionId: sessionID,
+            historyFormatVersion: historyFormatVersion.map { KotlinInt(int: Int32($0)) },
+            persistentCursor: persistentCursor.map { KotlinInt(int: Int32($0)) })
+    }
+
+    func hydrateCachedWindow(sessionID: String, window: CachedHistoryWindow) throws -> Bool {
+        guard let shared = store as? SharedHistoryStore, eventsBySessionID[sessionID] == nil else { return false }
+        let previous = replacementRevision
+        try dispatch(.page(sessionID: sessionID)) { shared.hydrateTypedCachedWindow(sessionId: sessionID, window: window) }
+        return replacementRevision != previous
+    }
+
+    func canPrependCachedPage(sessionID: String) -> Bool {
+        (store as? SharedHistoryStore)?.canPrependCachedPage(sessionId: sessionID) ?? false
+    }
+    func prependCachedPage(sessionID: String, window: CachedHistoryWindow) throws {
+        guard let shared = store as? SharedHistoryStore else { return }
+        try dispatch(.page(sessionID: sessionID)) { shared.prependTypedCachedPage(sessionId: sessionID, window: window) }
+    }
+
+    func estimatedRetainedBytes(sessionID: String) -> Int64 {
+        (store as? SharedHistoryStore)?.estimatedRetainedBytes(sessionId: sessionID) ?? 0
+    }
+
+    func retainSessions(_ sessionIDs: Set<String>) -> [String] {
+        let candidates = Set(sessions.keys).union(eventsBySessionID.keys).subtracting(sessionIDs).filter {
+            $0 != pendingSessionID && sessions[$0]?.isLoading != true && sessions[$0]?.batchKind == nil
+        }
+        var removed: [String] = []
+        // 每次 clear 都经过 adapter intent，保持 Swift MVI event 与 intent 的严格对应。
+        for id in candidates {
+            do {
+                try clear(sessionID: id)
+                eventsBySessionID[id] = nil
+                sessions[id] = nil
+                removed.append(id)
+            } catch { break }
+        }
+        return removed
+    }
+
+    func hydrateCachedWindow(sessionID: String, json: String) throws -> Bool {
+        guard let shared = store as? SharedHistoryStore else { return false }
+        guard eventsBySessionID[sessionID] == nil else {
+            ChatCacheDiagnostics.shared.restoreSkipped(reason: .alreadyLoaded)
+            return false
+        }
+        let previous = replacementRevision
+        try dispatch(.page(sessionID: sessionID)) { shared.hydrateCachedWindow(sessionId: sessionID, windowJson: json) }
+        return replacementRevision != previous
+    }
+
     func clear(sessionID: String) throws {
         try dispatch(.clear(sessionID: sessionID)) { store.clearSession(sessionId: sessionID) }
     }
@@ -1560,6 +1625,7 @@ protocol KMPSessionListStoreBridging: AnyObject {
     ) -> SharedSessionListResult
     func addKnownSession(sessionId: String, insertedAtEpochSeconds: Double) -> SharedSessionListResult
     func receiveEvent(eventJson: String, insertedAtEpochSeconds: Double) -> SharedSessionListResult
+    func receiveHistory(sessionId: String, eventsJson: String) -> SharedSessionListResult
     func markRead(sessionId: String) -> SharedSessionListResult
 }
 
@@ -1647,6 +1713,8 @@ final class KMPSessionListStoreAdapter {
         pushedError = nil
         let result: SharedSessionListResult
         switch action {
+        case .restore(let snapshot):
+            result = store.restore(snapshotJson: try encode(snapshot))
         case .select(let sessionID):
             result = store.selectSession(sessionId: sessionID)
         case .setArchivedSessionIDs(let sessionIDs):
@@ -1669,6 +1737,8 @@ final class KMPSessionListStoreAdapter {
                 eventJson: try encode(event),
                 insertedAtEpochSeconds: now.timeIntervalSince1970
             )
+        case .historyReceived(let sessionID, let events):
+            result = store.receiveHistory(sessionId: sessionID, eventsJson: try encode(events))
         case .markRead(let sessionID):
             result = store.markRead(sessionId: sessionID)
         }

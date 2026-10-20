@@ -1,5 +1,6 @@
 package com.clarklevis.dsh.shared.facade
 
+import com.clarklevis.dsh.shared.cache.ChatCacheMemoryEstimator
 import com.clarklevis.dsh.shared.projection.ConversationItem
 import com.clarklevis.dsh.shared.projection.ConversationProjectionLabels
 import com.clarklevis.dsh.shared.projection.ConversationProjectionOperation
@@ -128,22 +129,31 @@ class SharedConversationStore(
         )
     }
 
-    fun replaceSession(sessionId: String, eventsJson: String): SharedMviDispatchResult =
-        dispatch("replace") {
+    fun replaceSession(sessionId: String, eventsJson: String): SharedMviDispatchResult = dispatch("replace") {
+        replaceSessionPatch(sessionId, wireJson.decodeFromString<List<SessionEvent>>(eventsJson))
+    }
+
+    fun replaceTypedSession(sessionId: String, records: List<SessionEvent>): SharedMviDispatchResult = dispatch("replace") {
+        replaceSessionPatch(sessionId, records)
+    }
+
+    private fun replaceSessionPatch(sessionId: String, records: List<SessionEvent>): SharedConversationPatch {
             require(sessionId.isNotBlank()) { "sessionId must not be blank" }
-            val records = wireJson.decodeFromString<List<SessionEvent>>(eventsJson)
             require(records.all { it.sessionId == sessionId }) { "baseline contains another session" }
             val normalized = records.associateBy(SessionEvent::seq).values.sortedBy(SessionEvent::seq)
             val projector = ConversationProjector(labels).apply { rebuild(normalized) }
             projector.replaceSteeringMessages(steeringRecords[sessionId].orEmpty())
             projectors[sessionId] = projector
-            SharedConversationPatch(
+            return SharedConversationPatch(
                 sessionId = sessionId,
                 replacesAll = true,
                 replacementItems = projector.items,
                 lastSequence = projector.lastSequence
             )
-        }
+    }
+
+    fun estimatedRetainedBytes(sessionId: String): Long =
+        ChatCacheMemoryEstimator.estimateProjection(projectors[sessionId]?.items.orEmpty())
 
     fun clearSession(sessionId: String): SharedMviDispatchResult = dispatch("clear") {
         require(sessionId.isNotBlank()) { "sessionId must not be blank" }

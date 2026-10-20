@@ -4,22 +4,20 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
-import android.text.SpannableStringBuilder
-import android.text.style.URLSpan
-import android.text.style.ClickableSpan
-import android.view.View
-import com.clarklevis.dsh.shared.facade.ConversationFileReferences
-import com.clarklevis.dsh.shared.protocol.PresentedFile
 import android.text.Layout
+import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.SpannedString
 import android.text.TextPaint
+import android.text.style.ClickableSpan
 import android.text.style.LeadingMarginSpan
 import android.text.style.MetricAffectingSpan
+import android.text.style.URLSpan
 import android.util.TypedValue
+import android.view.View
+import androidx.appcompat.widget.AppCompatTextView
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -34,7 +32,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.appcompat.widget.AppCompatTextView
+import com.clarklevis.dsh.shared.facade.ConversationFileReferences
+import com.clarklevis.dsh.shared.protocol.PresentedFile
 import io.noties.markwon.AbstractMarkwonPlugin
 import io.noties.markwon.Markwon
 import io.noties.markwon.MarkwonSpansFactory
@@ -49,12 +48,12 @@ import io.noties.markwon.ext.tables.TableTheme
 import io.noties.markwon.ext.tasklist.TaskListPlugin
 import io.noties.markwon.html.HtmlPlugin
 import io.noties.markwon.movement.MovementMethodPlugin
-import org.commonmark.node.Code
-import org.commonmark.node.ThematicBreak
-import org.commonmark.parser.Parser
 import java.util.concurrent.Executors
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.withContext
+import org.commonmark.node.Code
+import org.commonmark.node.ThematicBreak
+import org.commonmark.parser.Parser
 
 internal data class DshMarkdownPalette(
     val textColor: Int,
@@ -91,6 +90,12 @@ private object DshMarkdownRenderCache {
     private var sourceCharacters = 0
 
     @Synchronized
+    fun clear() {
+        values.clear()
+        sourceCharacters = 0
+    }
+
+    @Synchronized
     fun get(source: String, palette: DshMarkdownPalette): Spanned? =
         values[MarkdownRenderCacheKey(source, palette)]
 
@@ -124,6 +129,8 @@ private object DshAsyncMarkdownRenderer {
     }.asCoroutineDispatcher()
     private val markwons = mutableMapOf<DshMarkdownPalette, Markwon>()
 
+    suspend fun clear() = withContext(dispatcher) { markwons.clear() }
+
     suspend fun render(
         context: Context,
         markdown: String,
@@ -156,8 +163,19 @@ internal fun rememberDshMarkdownPreloader(): DshMarkdownPreloader {
 }
 
 /** 主线程只共享实例执行轻量的 TextView 插件回调，不参与 LazyColumn 的 Markdown 解析。 */
+internal suspend fun trimMarkdownMemory() {
+    DshAsyncMarkdownRenderer.clear()
+    DshMarkdownRenderCache.clear()
+    DshMarkdownTextApplier.clear()
+}
+
 private object DshMarkdownTextApplier {
     private val markwons = mutableMapOf<DshMarkdownPalette, Markwon>()
+
+    @Synchronized
+    fun clear() {
+        markwons.clear()
+    }
 
     @Synchronized
     fun get(context: Context, palette: DshMarkdownPalette): Markwon =

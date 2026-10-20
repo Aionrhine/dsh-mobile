@@ -71,12 +71,8 @@ struct ConnectionDot: View {
         switch state {
         case .connected:
             DSHColor.success
-        case .failed:
+        case .failed, .connecting, .disconnected:
             .red
-        case .connecting:
-            DSHColor.amber
-        case .disconnected:
-            .gray
         }
     }
 

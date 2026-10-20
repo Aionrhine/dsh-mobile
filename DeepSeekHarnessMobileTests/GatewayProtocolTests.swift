@@ -771,6 +771,106 @@ private struct HistoryHeightProbe: UIViewRepresentable {
 }
 
 final class ConversationViewportLayoutTests: XCTestCase {
+    @MainActor
+    func testWarmSessionRestoresReadingAnchorAndSearchDoesNotSnapBackToTail() async throws {
+        ConversationViewportController.clearReusableHeights()
+        defer { ConversationViewportController.clearReusableHeights() }
+        let rows = (0..<60).map { index in
+            ConversationViewportEntry(id: "row-\(index)", revision: 1,
+                content: AnyView(Text("消息 \(index)").frame(height: 70)))
+        }
+        func controller(target: String? = nil) -> ConversationViewportController {
+            let view = ConversationViewportController(onContentAvailabilityChanged: { _, _ in },
+                onPinnedToBottomChanged: { _ in }, onBottomAlignmentCompleted: {}, onApproachingTop: {})
+            view.cacheScope = "warm-anchor-gateway"
+            view.searchTargetID = target
+            view.loadViewIfNeeded()
+            view.view.frame = CGRect(x: 0, y: 0, width: 390, height: 320)
+            view.view.layoutIfNeeded()
+            return view
+        }
+        let old = controller()
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        window.frame = old.view.frame
+        window.rootViewController = old
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil; previous?.makeKeyAndVisible() }
+        func configure(_ controller: ConversationViewportController) {
+            controller.configure(sessionID: "warm-anchor-session", timeline: ConversationTimeline(),
+                supplementalEntries: rows, makeEntries: { _ in [] }, bottomInset: 0)
+        }
+        configure(old)
+        try await Task.sleep(for: .milliseconds(120))
+        let oldList = try XCTUnwrap(firstDescendant(of: UICollectionView.self, in: old.view))
+        old.scrollViewWillBeginDragging(oldList)
+        oldList.setContentOffset(CGPoint(x: 0, y: 600), animated: false)
+        old.scrollViewDidEndDragging(oldList, willDecelerate: false)
+        old.view.layoutIfNeeded()
+        let offset = oldList.contentOffset.y
+        old.persistReusableHeights()
+        let restored = controller()
+        window.rootViewController = restored
+        configure(restored)
+        try await Task.sleep(for: .milliseconds(120))
+        restored.view.layoutIfNeeded()
+        let restoredList = try XCTUnwrap(firstDescendant(of: UICollectionView.self, in: restored.view))
+        XCTAssertEqual(restoredList.contentOffset.y, offset, accuracy: 1)
+        let search = controller(target: "row-4")
+        window.rootViewController = search
+        configure(search)
+        try await Task.sleep(for: .milliseconds(120))
+        search.view.layoutIfNeeded()
+        let list = try XCTUnwrap(firstDescendant(of: UICollectionView.self, in: search.view))
+        XCTAssertTrue(list.indexPathsForVisibleItems.contains(IndexPath(item: 4, section: 0)))
+        XCTAssertLessThan(list.contentOffset.y, list.contentSize.height - list.bounds.height - 500)
+    }
+
+    @MainActor
+    func testReusableGeometryIsIsolatedByRevisionWidthFontAndGateway() async throws {
+        ConversationViewportController.clearReusableHeights()
+        let defaults = UserDefaults.standard
+        let previousScale = defaults.object(forKey: AppFontScale.key)
+        let previousSystem = defaults.object(forKey: AppFontScale.followsSystemKey)
+        defer {
+            defaults.set(previousScale, forKey: AppFontScale.key)
+            defaults.set(previousSystem, forKey: AppFontScale.followsSystemKey)
+            ConversationViewportController.clearReusableHeights()
+        }
+        defaults.set(false, forKey: AppFontScale.followsSystemKey)
+        defaults.set(1.0, forKey: AppFontScale.key)
+        func measured(scope: String, width: CGFloat, revision: Int, height: CGFloat) async throws -> CGFloat {
+            let controller = ConversationViewportController(onContentAvailabilityChanged: { _, _ in },
+                onPinnedToBottomChanged: { _ in }, onBottomAlignmentCompleted: {}, onApproachingTop: {})
+            controller.cacheScope = scope
+            controller.loadViewIfNeeded()
+            controller.view.frame = CGRect(x: 0, y: 0, width: width, height: 300)
+            controller.view.layoutIfNeeded()
+            controller.configure(sessionID: "reusable-geometry", timeline: ConversationTimeline(),
+                supplementalEntries: [.init(id: "row", revision: revision, content: AnyView(Text("内容").frame(height: height)))],
+                makeEntries: { _ in [] }, bottomInset: 0)
+            try await Task.sleep(for: .milliseconds(50))
+            controller.view.layoutIfNeeded()
+            let list = try XCTUnwrap(firstDescendant(of: UICollectionView.self, in: controller.view))
+            let frame = try XCTUnwrap(list.layoutAttributesForItem(at: IndexPath(item: 0, section: 0))).frame
+            controller.persistReusableHeights()
+            return frame.height
+        }
+        let first = try await measured(scope: "g1", width: 390, revision: 1, height: 80)
+        let hot = try await measured(scope: "g1", width: 390, revision: 1, height: 80)
+        XCTAssertEqual(first, hot, accuracy: 1)
+        let revised = try await measured(scope: "g1", width: 390, revision: 2, height: 160)
+        XCTAssertGreaterThan(revised, first + 50)
+        let resized = try await measured(scope: "g1", width: 280, revision: 2, height: 220)
+        XCTAssertGreaterThan(resized, revised + 40)
+        let otherGateway = try await measured(scope: "g2", width: 390, revision: 2, height: 260)
+        XCTAssertGreaterThan(otherGateway, revised + 80)
+        defaults.set(1.4, forKey: AppFontScale.key)
+        let differentFont = try await measured(scope: "g1", width: 390, revision: 2, height: 300)
+        XCTAssertGreaterThan(differentFont, revised + 100)
+    }
+
     func testLongInlineCodeCanWrapAtPathSeparatorsWithoutChangingSourceText() {
         let source = "主要产出目录：`/Users/lichaofan/测试 2/My_FirstApp/`。"
 
@@ -2315,6 +2415,24 @@ final class GatewayProtocolTests: XCTestCase {
     }
 
     @MainActor
+    func testRc2ReopeningCompletedSessionClearsStaleRunningState() async throws {
+        let (store, session) = try await makeRc2HistoryLoadingStore()
+        try await deliverHistoryLoadingFrame(store,
+            #"{"kind":"sessions","items":[{"sessionId":"mask-session","updatedAt":100,"running":true,"blank":false}]}"#)
+        XCTAssertTrue(store.selectedSession?.isRunning == true)
+        try await deliverHistoryLoadingFrame(store,
+            #"{"kind":"subscribed","sessionId":"mask-session","subscriptionId":"sub","assistantStream":true}"#)
+        try await deliverHistoryLoadingFrame(store,
+            #"{"kind":"session-snapshot","sessionId":"mask-session","subscriptionId":"sub","streamId":"stream","historyFormatVersion":3,"cursor":12,"events":[{"type":"turn/start","seq":10,"time":100,"data":{"turn":1}},{"type":"assistant/message","seq":11,"time":101,"data":{"message":{"content":[{"type":"text","text":"已完成"}]}}},{"type":"turn/end","seq":12,"time":102,"data":{"turn":1,"reason":"completed"}}],"hasMore":false}"#)
+        await store.awaitConversationProjectionForTesting(sessionID: session.id, expectedText: "已完成")
+        XCTAssertFalse(try XCTUnwrap(store.selectedSession).isRunning)
+        XCTAssertNil(store.lastError)
+        try await deliverHistoryLoadingFrame(store,
+            #"{"kind":"event","sessionId":"mask-session","subscriptionId":"sub","streamId":"stream","seq":13,"time":103,"event":{"type":"turn/start","turn":2}}"#)
+        XCTAssertTrue(store.selectedSession?.isRunning == true)
+    }
+
+    @MainActor
     func testRc2ColdHistoryWaitsForMatchingSnapshotAndPreservesPagination() async throws {
         let (store, _) = try await makeRc2HistoryLoadingStore()
         XCTAssertTrue(store.historyLoadingSessionIds.contains("mask-session"))
@@ -2411,6 +2529,35 @@ final class GatewayProtocolTests: XCTestCase {
         store.gateway.onConnectionFailure?("测试断连")
         await flushDeferredKMPEvents(in: store)
         XCTAssertTrue(store.historyLoadingSessionIds.isEmpty)
+    }
+
+    @MainActor
+    func testDisconnectPreservesVisibleAssistantPrefixAndOfflineNavigationDoesNotResubscribe() async throws {
+        let session = SessionSummary(id: "offline-prefix", title: "进行中的会话", lastActivity: .now,
+            isRunning: true, hasUnread: false)
+        let store = AppStore(preferences: AppPreferencesSpy(endpoint: "ws://127.0.0.1:3080/ws/mobile",
+            selectedWorkspaceID: nil, sessions: [session]), historyRequestTimeout: .milliseconds(20), chatHistoryCache: nil)
+        _ = await store.prepareConversation(for: session)
+        for json in [
+            #"{"kind":"hello","historyFormatVersion":3,"capabilities":["assistant-stream-v1"]}"#,
+            #"{"kind":"subscribed","sessionId":"offline-prefix","subscriptionId":"sub","assistantStream":true}"#,
+            #"{"kind":"session-snapshot","sessionId":"offline-prefix","subscriptionId":"sub","streamId":"stream","historyFormatVersion":3,"cursor":0,"events":[],"hasMore":false,"assistantStream":{"revision":2,"activeAttempt":{"attemptId":"attempt","turn":1,"step":1,"startedAfterSeq":0,"nextIndex":1,"stream":[{"type":"text-chunks","index":0,"time0":100,"texts":["断线前可见的生成内容"],"dt":[]}]}}}"#
+        ] {
+            try await deliverHistoryLoadingFrame(store, json)
+        }
+        await store.awaitConversationProjectionForTesting(sessionID: session.id, expectedText: "断线前可见的生成内容")
+        store.gateway.onConnectionFailure?("连接已中断")
+        store.disconnect()
+        store.resumeWorkspace()
+        _ = await store.prepareConversation(for: session)
+        try await Task.sleep(for: .milliseconds(70))
+        await flushDeferredKMPEvents(in: store)
+        XCTAssertEqual(store.selectedConversationItems.last?.text, "断线前可见的生成内容")
+        XCTAssertEqual(store.sessions.map(\.id), [session.id])
+        XCTAssertTrue(store.historyLoadingSessionIds.isEmpty)
+        XCTAssertFalse(store.isPreparingConversation(session.id))
+        XCTAssertNil(store.lastError)
+        store.deactivateGateway()
     }
 
     @MainActor
@@ -2520,7 +2667,8 @@ final class GatewayProtocolTests: XCTestCase {
         let session = SessionSummary(id: "mask-session", title: "History", lastActivity: Date(),
             isRunning: false, hasUnread: false)
         let store = AppStore(preferences: AppPreferencesSpy(endpoint: "ws://127.0.0.1:3080/ws/mobile",
-            selectedWorkspaceID: nil, sessions: [session]), historyRequestTimeout: timeout)
+            selectedWorkspaceID: nil, sessions: [session]), historyRequestTimeout: timeout, chatHistoryCache: nil)
+        store.gateway.installConnectedTransportForTesting()
         _ = await store.prepareConversation(for: session)
         try await deliverHistoryLoadingFrame(store,
             #"{"kind":"hello","historyFormatVersion":3,"capabilities":["assistant-stream-v1"]}"#)
@@ -4076,7 +4224,7 @@ final class GatewayProtocolTests: XCTestCase {
         XCTAssertEqual(preferences.savedSessionSnapshots.count, 1)
     }
 
-    func testImageAttachmentCachePersistsAndExpires() throws {
+    func testImageAttachmentCachePersistsAndExpires() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("image-cache-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -4090,12 +4238,15 @@ final class GatewayProtocolTests: XCTestCase {
         )
 
         cache.store(payload, for: "attachment/unsafe-path")
+        await cache.flushWrites()
         cache.removeAllFromMemory()
-        XCTAssertEqual(cache.data(for: "attachment/unsafe-path"), payload)
+        let loaded = await cache.loadData(for: "attachment/unsafe-path")
+        XCTAssertEqual(loaded, payload)
 
         cache.removeAllFromMemory()
         currentDate.addTimeInterval(61)
-        XCTAssertNil(cache.data(for: "attachment/unsafe-path"))
+        let expired = await cache.loadData(for: "attachment/unsafe-path")
+        XCTAssertNil(expired)
         XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
     }
 
@@ -5096,7 +5247,7 @@ final class GatewayProtocolTests: XCTestCase {
         XCTAssertEqual(transition.snapshot.sessionPermissions["session-1"]?.currentValue, "read-only")
         XCTAssertEqual(
             transition.snapshot.sessionPermissions["session-1"]?.options?.map(\.value),
-            ["read-only"]
+            ["read-only", "future"]
         )
     }
 
@@ -5515,7 +5666,8 @@ final class GatewayProtocolTests: XCTestCase {
                 ]
             ),
             sessionControlBridge: bridge,
-            sessionControlEffectExecutor: executor
+            sessionControlEffectExecutor: executor,
+            chatHistoryCache: nil
         )
 
         store.gateway.onFrame?(try GatewayWireDecoder.decode(Data(
@@ -6689,6 +6841,7 @@ private final class FailingRestoreSessionListBridge: KMPSessionListStoreBridging
     private(set) var nonRestoreCallCount = 0
 
     func snapshot() -> SharedSessionListResult { unexpectedCall() }
+    func receiveHistory(sessionId: String, eventsJson: String) -> SharedSessionListResult { unexpectedCall() }
 
     func restore(snapshotJson: String) -> SharedSessionListResult {
         SharedSessionListResult(
@@ -6742,6 +6895,7 @@ private final class MalformedMutationSessionListBridge: KMPSessionListStoreBridg
     private(set) var mutationCallCount = 0
 
     func snapshot() -> SharedSessionListResult { malformedMutation() }
+    func receiveHistory(sessionId: String, eventsJson: String) -> SharedSessionListResult { malformedMutation() }
 
     func restore(snapshotJson: String) -> SharedSessionListResult {
         SharedSessionListResult(
@@ -7884,6 +8038,27 @@ final class WorkspaceFilePreviewPresentationTests: XCTestCase {
         XCTAssertFalse(store.conversationFileIsOpening)
         XCTAssertEqual(store.workspaceFilePreviewProgress, 1)
         XCTAssertEqual(try String(contentsOf: XCTUnwrap(store.completedWorkspaceFile).url, encoding: .utf8), "hello")
+    }
+
+    func testCompletedTemporaryPreviewLivesUntilQuickLookReleasesIt() async throws {
+        let store = await makeStore()
+        defer { store.deactivateGateway() }
+        store.openWorkspaceFile(item, purpose: "preview")
+        let request = try XCTUnwrap(store.workspaceFilePreviewRequest)
+        try opened(store, requestID: request.id.uuidString)
+        try deliver(store, """
+            {"kind":"file-download-chunk","transferId":"t1","offset":0,"data":"aGVsbG8=","eof":true,"sha256":"\(digest)"}
+            """)
+        try await waitForCompletion(store)
+        let file = try XCTUnwrap(store.completedWorkspaceFile).url
+        XCTAssertTrue(file.path.hasPrefix(WorkspacePreviewCache.temporaryRoot.path))
+        var reader: WorkspaceQuickLookPreview.Coordinator? = .init(url: file)
+        XCTAssertNotNil(reader)
+        store.cancelWorkspaceFileDownload()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: file.path), "关闭动画中 QuickLook 仍持有读租约")
+        reader = nil
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.deletingLastPathComponent().path))
     }
 
     func testClosingMidDownloadIgnoresLateChunkAndAllowsReopening() async throws {

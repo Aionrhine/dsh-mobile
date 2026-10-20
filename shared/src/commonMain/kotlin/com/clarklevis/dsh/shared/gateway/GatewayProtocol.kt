@@ -65,7 +65,9 @@ data class GatewayRequest(
     val correlationId: String? = null,
     val lanePolicy: GatewayRequestLanePolicy = GatewayRequestLanePolicy.COALESCE_LATEST,
     val payload: String,
-    val timeoutMilliseconds: Long? = null
+    val timeoutMilliseconds: Long? = null,
+    // 仅 Runtime 本地关联元数据，永不写入网关 payload。
+    val isBackgroundHistory: Boolean = false
 ) {
     override fun toString(): String =
         "GatewayRequest(requestType=$requestType, responseKind=$responseKind, " +

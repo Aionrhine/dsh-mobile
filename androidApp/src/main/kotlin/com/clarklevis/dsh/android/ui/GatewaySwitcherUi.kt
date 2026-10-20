@@ -89,6 +89,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.clarklevis.dsh.android.AndroidMultiGatewayStore
 import com.clarklevis.dsh.android.DshAndroidApplication
+import com.clarklevis.dsh.shared.gateway.GatewayConnectionState
 import com.clarklevis.dsh.shared.gateway.GatewayProfile
 import kotlinx.coroutines.awaitCancellation
 
@@ -113,9 +114,9 @@ internal fun GatewaySwitcherBar() {
     ) {
         HostIcon(hosts.activeProfile?.server == true, Color.White, Modifier.size(15.dp))
         Text(hosts.activeProfile?.displayName ?: appText("选择主机"), color = Color.White, fontSize = 12.sp, maxLines = 1)
-        val activeOnline = hosts.activeId in hosts.onlineIds
+        val activeOnline = hosts.activeGraph.stateHolder.gatewayState.connection == GatewayConnectionState.CONNECTED
         StatusIndicatorDot(
-            color = if (activeOnline) DshColors.Success else Color.Gray,
+            color = if (activeOnline) DshColors.Success else Color.Red,
             modifier = Modifier.size(6.dp),
             glowing = activeOnline
         )
@@ -318,7 +319,7 @@ private fun GatewayHostRow(
         }
         val online = profile.localId in hosts.onlineIds
         StatusIndicatorDot(
-            color = if (online) DshColors.Success else Color.Gray,
+            color = if (online) DshColors.Success else Color.Red,
             modifier = Modifier.size(8.dp),
             glowing = online
         )

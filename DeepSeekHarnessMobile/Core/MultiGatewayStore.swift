@@ -93,7 +93,10 @@ final class MultiGatewayStore: ObservableObject {
     func select(_ profile: GatewayProfile, connect: Bool = true) {
         guard profiles.contains(where: { $0.id == profile.id }) else { return }
         cancelPairing()
-        if activeID == profile.id, activeStore.gateway.state.isConnected { return }
+        if activeID == profile.id {
+            if connect && !activeStore.gateway.state.isConnected { activeStore.connect() }
+            return
+        }
         activate(profile, connect: connect)
     }
 
@@ -246,7 +249,16 @@ final class MultiGatewayStore: ObservableObject {
             activeStore.interfaceStyle = style
             installPairingHandler(on: activeStore)
         }
-        knownIDs.forEach { GatewayClient.forgetCredential(for: $0) }
+        knownIDs.forEach {
+            GatewayClient.forgetCredential(for: $0)
+            ImageAttachmentCache.forgetGateway($0)
+        }
+        Task {
+            for id in knownIDs { await ChatHistoryCache.shared.forget(gatewayID: id) }
+            await Task.detached(priority: .utility) {
+                WorkspacePreviewCache(gatewayID: "maintenance").maintain(clear: true)
+            }.value
+        }
         profiles.removeAll { knownIDs.contains($0.id) }
         onlineIDs.subtract(knownIDs)
         persist()

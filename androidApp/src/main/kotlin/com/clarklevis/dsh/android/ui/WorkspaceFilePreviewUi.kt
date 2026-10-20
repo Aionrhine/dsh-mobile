@@ -8,14 +8,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,53 +23,55 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalBottomSheetProperties
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.clarklevis.dsh.android.localization.appText
-import com.clarklevis.dsh.android.R
-import com.clarklevis.dsh.android.AndroidWorkspaceDownloadRegistry
 import com.clarklevis.dsh.android.AndroidSharedStateHolder
+import com.clarklevis.dsh.android.AndroidWorkspaceDownloadRegistry
 import com.clarklevis.dsh.android.AndroidWorkspaceLocalFile
+import com.clarklevis.dsh.android.R
+import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.shared.facade.FileIconCatalog
 import com.clarklevis.dsh.shared.facade.WorkspaceCodePreviewSupport
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlin.math.min
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** 聊天和目录共用唯一预览监听器，下载导出仍由目录处理。 */
 @Composable
@@ -80,19 +80,32 @@ internal fun WorkspaceFilePreviewHost(stateHolder: AndroidSharedStateHolder) {
     val sessionId = stateHolder.snapshot.selectedSessionId
     val scope = rememberCoroutineScope()
     var pendingExport by remember { mutableStateOf<AndroidWorkspaceLocalFile?>(null) }
+    var pendingExportLease by remember { mutableStateOf<java.io.Closeable?>(null) }
     val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
         val exported = pendingExport
         pendingExport = null
-        if (uri != null && exported != null) scope.launch {
-            runCatching {
-                withContext(Dispatchers.IO) {
-                    requireNotNull(context.contentResolver.openOutputStream(uri, "w")).use { output ->
-                        exported.file.inputStream().use { it.copyTo(output) }
-                    }
-                    AndroidWorkspaceDownloadRegistry(context, stateHolder.gatewayLocalId)
-                        .record(exported.sessionId, exported.remotePath, uri)
+        val lease = pendingExportLease
+        pendingExportLease = null
+        if (uri != null && exported != null) {
+            scope.launch {
+                try {
+                    runCatching {
+                        withContext(Dispatchers.IO) {
+                            requireNotNull(context.contentResolver.openOutputStream(uri, "w")).use { output ->
+                                exported.file.inputStream().use { it.copyTo(output) }
+                            }
+                            AndroidWorkspaceDownloadRegistry(context, stateHolder.gatewayLocalId)
+                                .record(exported.sessionId, exported.remotePath, uri)
+                        }
+                    }.onFailure { stateHolder.showPlatformError(appText("保存文件失败：%1\$s", it.localizedMessage)) }
+                } finally {
+                    lease?.close()
+                    stateHolder.releaseWorkspaceTemporaryFile(exported.file)
                 }
-            }.onFailure { stateHolder.showPlatformError(appText("保存文件失败：%1\$s", it.localizedMessage)) }
+            }
+        } else {
+            lease?.close()
+            exported?.let { stateHolder.releaseWorkspaceTemporaryFile(it.file) }
         }
     }
     DisposableEffect(stateHolder, sessionId) {
@@ -107,7 +120,13 @@ internal fun WorkspaceFilePreviewHost(stateHolder: AndroidSharedStateHolder) {
         file = file,
         fileName = file?.name ?: request.name,
         onDismiss = stateHolder::cancelWorkspaceFileDownload,
-        onSave = file?.let { ready -> { pendingExport = ready; exporter.launch(ready.name) } }
+        onSave = file?.let { ready ->
+            {
+                pendingExport = ready
+                pendingExportLease = stateHolder.leaseWorkspaceFile(ready.file)
+                exporter.launch(ready.name)
+            }
+        }
     ) { contentPadding ->
         if (file == null) {
             WorkspaceFilePreviewLoadingContent(

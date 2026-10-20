@@ -700,6 +700,118 @@ class GatewayRuntimeIntegrationTest {
     }
 
     @Test
+    fun backgroundHistoryOriginStaysLocalAndSurvivesFramesErrorsFailuresAndCancellation() = runTest {
+        val transport = FakeTransport()
+        val runtime = newRuntime(transport)
+        val events = mutableListOf<GatewayRuntimeEvent>()
+        backgroundScope.launch { runtime.events.collect(events::add) }
+        runCurrent()
+        runtime.connect("wss://gateway.example/ws/mobile")
+        transport.opened()
+        transport.receive("""{"kind":"hello","authenticated":true}""")
+        runCurrent()
+        assertTrue(runtime.tryRequestHistoryInBackground("same-session"))
+        // 旧协议无显式 sessionId，Runtime 使用 active request 的精确本地归属。
+        transport.receive("""{"kind":"history","events":[],"hasMore":false,"bytes":0}""")
+        runCurrent()
+        val background = events.filterIsInstance<GatewayRuntimeEvent.Frame>().last { it.frame.kind == "history" }
+        assertTrue(background.isBackgroundHistory)
+        assertEquals("same-session", background.correlatedSessionId)
+        assertFalse(transport.sentPayloads.last().contains("isBackgroundHistory"))
+        runtime.requestHistory("same-session", beforeSequence = 10, historyFormatVersion = 1)
+        transport.receive("""{"kind":"history","events":[],"hasMore":false,"bytes":0}""")
+        runCurrent()
+        assertFalse(events.filterIsInstance<GatewayRuntimeEvent.Frame>().last { it.frame.kind == "history" }.isBackgroundHistory)
+        assertTrue(runtime.tryRequestHistoryInBackground("background-error"))
+        transport.receive("""{"kind":"error","requestType":"history","code":"history/unavailable"}""")
+        runCurrent()
+        assertTrue(events.filterIsInstance<GatewayRuntimeEvent.RequestRejected>().any {
+            it.isBackgroundHistory && it.targetSessionId == "background-error"
+        })
+        runtime.requestHistory("same-session", beforeSequence = 5, historyFormatVersion = 1)
+        transport.receive("""{"kind":"error","requestType":"history","code":"history/unavailable"}""")
+        runCurrent()
+        assertTrue(events.filterIsInstance<GatewayRuntimeEvent.RequestRejected>().any {
+            !it.isBackgroundHistory && it.targetSessionId == "same-session"
+        })
+        transport.failNextSend = true
+        assertFalse(runtime.tryRequestHistoryInBackground("background-send-failed"))
+        runCurrent()
+        assertTrue(events.filterIsInstance<GatewayRuntimeEvent.RequestRejected>().any {
+            it.isBackgroundHistory && it.targetSessionId == "background-send-failed"
+        })
+        assertTrue(runtime.tryRequestHistoryInBackground("background-cancelled"))
+        runtime.disconnect()
+        runCurrent()
+        assertTrue(events.filterIsInstance<GatewayRuntimeEvent.RequestCancelled>().any {
+            it.isBackgroundHistory && it.targetSessionId == "background-cancelled"
+        })
+    }
+
+    @Test
+    fun backgroundHistoryNeverQueuesOrCoalescesForegroundLane() = runTest {
+        val transport = FakeTransport()
+        val runtime = newRuntime(transport)
+        val events = mutableListOf<GatewayRuntimeEvent>()
+        backgroundScope.launch { runtime.events.collect(events::add) }
+        runCurrent()
+        // 离线尝试安静跳过，不产生前台业务错误。
+        assertFalse(runtime.tryRequestHistoryInBackground("background"))
+        runtime.connect("wss://gateway.example/ws/mobile")
+        transport.opened()
+        transport.receive("""{"kind":"hello","authenticated":true}""")
+        runCurrent()
+        runtime.requestHistory("foreground-active")
+        runtime.requestHistory("foreground-queued")
+        assertFalse(runtime.tryRequestHistoryInBackground("background"))
+        runCurrent()
+        assertTrue(events.filterIsInstance<GatewayRuntimeEvent.RequestCancelled>().none { it.targetSessionId == "foreground-queued" })
+        transport.receive("""{"kind":"history","sessionId":"foreground-active","events":[],"hasMore":false,"bytes":0}""")
+        runCurrent()
+        assertFalse(runtime.tryRequestHistoryInBackground("background"))
+        transport.receive("""{"kind":"history","sessionId":"foreground-queued","events":[],"hasMore":false,"bytes":0}""")
+        runCurrent()
+        assertEquals(2, transport.sentTypes.count { it == "history" })
+        assertTrue(runtime.tryRequestHistoryInBackground("background"))
+        runtime.requestHistory("foreground-next")
+        assertFalse(runtime.tryRequestHistoryInBackground("background-other"))
+        transport.receive("""{"kind":"history","sessionId":"background","events":[],"hasMore":false,"bytes":0}""")
+        runCurrent()
+        assertEquals(4, transport.sentTypes.count { it == "history" })
+        assertFalse(runtime.tryRequestHistoryInBackground("background-other"))
+        transport.receive("""{"kind":"history","sessionId":"foreground-next","events":[],"hasMore":false,"bytes":0}""")
+        runCurrent()
+        assertEquals(listOf("foreground-active", "foreground-queued", "background", "foreground-next"),
+            events.filterIsInstance<GatewayRuntimeEvent.Frame>().filter { it.frame.kind == "history" }.map { it.correlatedSessionId })
+    }
+
+    @Test
+    fun backgroundHistoryUsesBoundedTimeoutAndRecyclesLegacySocketBeforeNextForeground() = runTest {
+        val transport = FakeTransport()
+        val runtime = newRuntime(transport)
+        val events = mutableListOf<GatewayRuntimeEvent>()
+        backgroundScope.launch { runtime.events.collect(events::add) }
+        runCurrent()
+        runtime.connect("wss://gateway.example/ws/mobile")
+        transport.opened()
+        transport.receive("""{"kind":"hello","authenticated":true}""")
+        transport.receive("""{"kind":"workspaces","items":[]}""")
+        transport.receive("""{"kind":"sessions","items":[]}""")
+        runCurrent()
+        assertTrue(runtime.tryRequestHistoryInBackground("background"))
+        runtime.requestHistory("foreground")
+        advanceTimeBy(9_999)
+        runCurrent()
+        assertTrue(events.filterIsInstance<GatewayRuntimeEvent.RequestTimedOut>().none { it.requestType == "history" })
+        advanceTimeBy(1)
+        runCurrent()
+        assertTrue(events.filterIsInstance<GatewayRuntimeEvent.RequestTimedOut>().any { it.targetSessionId == "background" && it.isBackgroundHistory })
+        assertTrue(transport.closeCount > 0)
+        assertEquals(1, transport.sentTypes.count { it == "history" })
+        assertFalse(runtime.tryRequestHistoryInBackground("background-other"))
+    }
+
+    @Test
     fun sameKindUsesActiveThenLatestQueuedWithoutCrossSessionOverwrite() = runTest {
         val transport = FakeTransport()
         val runtime = newRuntime(transport)
@@ -1174,10 +1286,14 @@ class GatewayRuntimeIntegrationTest {
         transport.opened()
         transport.receive("""{"kind":"hello","authenticated":true}""")
         runCurrent()
+        transport.receive("""{"kind":"sessions","items":[]}""")
+        runCurrent()
+        val sessionsBeforeResume = transport.sentTypes.count { it == "sessions" }
         runtime.applicationDidEnterBackground()
         runtime.applicationDidBecomeActive()
         runCurrent()
         assertEquals(1, transport.sentTypes.count { it == "ping" })
+        assertEquals(sessionsBeforeResume + 1, transport.sentTypes.count { it == "sessions" })
         transport.receive("""{"kind":"pong"}""")
         runCurrent()
         advanceTimeBy(2_001)

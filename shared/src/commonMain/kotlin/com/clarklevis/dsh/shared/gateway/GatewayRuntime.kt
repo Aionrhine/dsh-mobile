@@ -62,7 +62,8 @@ sealed interface GatewayRuntimeEvent {
     data class Frame(
         val rawJson: String,
         val frame: GatewayFrame,
-        val correlatedSessionId: String?
+        val correlatedSessionId: String?,
+        val isBackgroundHistory: Boolean = false
     ) : GatewayRuntimeEvent {
         override fun toString(): String =
             "Frame(kind=${frame.kind}, correlatedSessionId=$correlatedSessionId, rawJson=<redacted>)"
@@ -74,18 +75,21 @@ sealed interface GatewayRuntimeEvent {
         val requestType: String,
         val targetSessionId: String?,
         val reason: String,
-        val correlationId: String? = null
+        val correlationId: String? = null,
+        val isBackgroundHistory: Boolean = false
     ) : GatewayRuntimeEvent
     data class RequestTimedOut(
         val requestType: String,
         val targetSessionId: String?,
-        val correlationId: String? = null
+        val correlationId: String? = null,
+        val isBackgroundHistory: Boolean = false
     ) : GatewayRuntimeEvent
     data class RequestRejected(
         val requestType: String,
         val reason: String,
         val targetSessionId: String? = null,
-        val correlationId: String? = null
+        val correlationId: String? = null,
+        val isBackgroundHistory: Boolean = false
     ) : GatewayRuntimeEvent
 }
 
@@ -277,7 +281,10 @@ class GatewayRuntime(
                 if (canReconnectLocked()) {
                     if (wasInBackground) startForegroundResumeLocked()
                     if (mutableState.value.connection == GatewayConnectionState.CONNECTED) {
-                        if (wasInBackground) probeForegroundConnectionLocked()
+                        if (wasInBackground) {
+                            probeForegroundConnectionLocked()
+                            sendRequestLocked(GatewayRequests.simple("sessions"))
+                        }
                     } else if (wasInBackground && foregroundResumeEndpoint != null) {
                         // An attempt started before backgrounding may be stuck on an unreachable fallback.
                         // A real foreground transition gets one fresh attempt at the last authenticated endpoint.
@@ -312,6 +319,21 @@ class GatewayRuntime(
         }
         sendRequestLocked(GatewayRequests.history(sessionId, beforeSequence, maxMessages, maxBytes, view,
             historyFormatVersion))
+    }
+
+    /** 后台预加载只允许占用空闲 lane，绝不入队、合并或取消前台请求。 */
+    suspend fun tryRequestHistoryInBackground(
+        sessionId: String,
+        maxMessages: Int = 80,
+        maxBytes: Int = 256 * 1024,
+        view: String? = null,
+        historyFormatVersion: Int? = null
+    ): Boolean = serialized {
+        if (mutableState.value.connection != GatewayConnectionState.CONNECTED || pendingLanes["history"] != null) {
+            return@serialized false
+        }
+        sendAsActiveLocked(GatewayRequests.history(sessionId, maxMessages = maxMessages, maxBytes = maxBytes,
+            view = view, historyFormatVersion = historyFormatVersion).copy(timeoutMilliseconds = 10_000, isBackgroundHistory = true))
     }
 
     suspend fun requestAttachment(sessionId: String, attachmentId: String): Boolean =
@@ -422,7 +444,8 @@ class GatewayRuntime(
                     request.requestType,
                     ERROR_SEND_FAILED,
                     request.targetSessionId,
-                    request.correlationId
+                    request.correlationId,
+                    request.isBackgroundHistory
                 )
                 false
             }
@@ -657,14 +680,15 @@ class GatewayRuntime(
         if (frame.kind == "error") {
             if (frame.resetRequired == true || frame.requestType?.startsWith("speech-") == true ||
                 frame.requestType in setOf("session-agent-preset", "select-agent-preset")) {
-                return FrameDelivery(GatewayRuntimeEvent.Frame(transportFrame.text, frame, correlation.sessionId),
+                return FrameDelivery(GatewayRuntimeEvent.Frame(transportFrame.text, frame, correlation.sessionId, correlation.isBackgroundHistory),
                     transportFrame.byteCount.toLong())
             }
             rejectLocked(
                 frame.requestType ?: "gateway",
                 ERROR_GATEWAY_REQUEST,
                 correlation.sessionId,
-                responseCorrelation(frame)
+                responseCorrelation(frame),
+                correlation.isBackgroundHistory
             )
             return null
         }
@@ -707,7 +731,7 @@ class GatewayRuntime(
         } else {
             transportFrame.byteCount.toLong() * FRAME_RETENTION_MULTIPLIER + FRAME_OBJECT_OVERHEAD_BYTES
         }
-        return FrameDelivery(GatewayRuntimeEvent.Frame(safeRaw, safeFrame, correlation.sessionId), estimatedBytes)
+        return FrameDelivery(GatewayRuntimeEvent.Frame(safeRaw, safeFrame, correlation.sessionId, correlation.isBackgroundHistory), estimatedBytes)
     }
 
     private suspend fun correlateLocked(frame: GatewayFrame): Correlation {
@@ -753,7 +777,7 @@ class GatewayRuntime(
             }
             if (requestType == "message") releaseTurnLocked(request.targetSessionId)
             completeLaneLocked(entry.key)
-            return Correlation(true, frame.sessionId ?: request.targetSessionId)
+            return Correlation(true, frame.sessionId ?: request.targetSessionId, request.isBackgroundHistory)
         }
         val lane = pendingLanes[frame.kind]
         if (lane == null) {
@@ -782,8 +806,9 @@ class GatewayRuntime(
             return Correlation(false, null)
         }
         val sessionId = frame.sessionId ?: lane.active.request.targetSessionId
+        val isBackgroundHistory = lane.active.request.isBackgroundHistory
         if (frame.kind != "attachment") completeLaneLocked(frame.kind)
-        return Correlation(true, sessionId)
+        return Correlation(true, sessionId, isBackgroundHistory)
     }
 
     private fun sessionMatches(request: GatewayRequest, explicitSessionId: String?): Boolean =
@@ -978,7 +1003,8 @@ class GatewayRuntime(
             GatewayRuntimeEvent.RequestTimedOut(
                 lane.active.request.requestType,
                 lane.active.request.targetSessionId,
-                lane.active.request.correlationId
+                lane.active.request.correlationId,
+                lane.active.request.isBackgroundHistory
             )
         )
         if (mutableState.value.connection != GatewayConnectionState.SUSPENDED) {
@@ -1033,7 +1059,8 @@ class GatewayRuntime(
                 request.requestType,
                 request.targetSessionId,
                 reason,
-                request.correlationId
+                request.correlationId,
+                request.isBackgroundHistory
             )
         )
     }
@@ -1216,14 +1243,16 @@ class GatewayRuntime(
         requestType: String,
         code: String,
         targetSessionId: String? = null,
-        correlationId: String? = null
+        correlationId: String? = null,
+        isBackgroundHistory: Boolean = false
     ) {
         emitEventLocked(
             GatewayRuntimeEvent.RequestRejected(
                 requestType,
                 code,
                 targetSessionId,
-                correlationId
+                correlationId,
+                isBackgroundHistory
             )
         )
     }
@@ -1284,7 +1313,7 @@ class GatewayRuntime(
         val active: PendingRequest,
         val queued: ArrayDeque<GatewayRequest>
     )
-    private data class Correlation(val accepted: Boolean, val sessionId: String?)
+    private data class Correlation(val accepted: Boolean, val sessionId: String?, val isBackgroundHistory: Boolean = false)
 
     private fun GatewayTransportState.Failed.stableErrorCode(): String = when {
         httpStatus == 401 -> ERROR_AUTH_REQUIRED

@@ -156,6 +156,8 @@ struct ConversationViewport: UIViewControllerRepresentable {
     @AppStorage(AppFontScale.followsSystemKey) private var fontFollowsSystem = false
     let proxy: ConversationViewportProxy
     let sessionID: String?
+    var cacheScope: String = ""
+    var searchTargetID: String? = nil
     let timeline: ConversationTimeline
     let supplementalEntries: [ConversationViewportEntry]
     let makeEntries: ([ConversationItem]) -> [ConversationViewportEntry]
@@ -185,6 +187,8 @@ struct ConversationViewport: UIViewControllerRepresentable {
         controller.onScrolledFromTopChanged = onScrolledFromTopChanged
         controller.onBottomAlignmentCompleted = onBottomAlignmentCompleted
         controller.onApproachingTop = onApproachingTop
+        controller.cacheScope = cacheScope
+        controller.searchTargetID = searchTargetID
         controller.configure(
             sessionID: sessionID,
             timeline: timeline,
@@ -204,6 +208,7 @@ struct ConversationViewport: UIViewControllerRepresentable {
         _ controller: ConversationViewportController,
         coordinator: Coordinator
     ) {
+        controller.persistReusableHeights()
         // Do not clear a proxy that has already been rebound to a replacement
         // controller during a SwiftUI identity transition.
         if controller === controller.proxyOwner?.controller {
@@ -286,6 +291,37 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
         bottomInset: CGFloat,
         hasConversationContent: Bool
     )?
+    var cacheScope = ""
+    var searchTargetID: String?
+    private var positionedSearchTargetID: String?
+    private struct ReusableHeights {
+        var heights: [CellMeasurementKey: CGFloat]
+        var accessed: UInt64
+        var anchor: VisibleAnchor?
+        var byteCost: Int { heights.keys.reduce(0) { $0 + $1.id.utf8.count + 96 } }
+    }
+    private var reusableReadingAnchor: VisibleAnchor?
+    private static var reusableHeights: [String: ReusableHeights] = [:]
+    private var reusableHeightKey: String {
+        "\(cacheScope)|\(sessionID ?? "")|\(UIFont.appPreferredFont(forTextStyle: .body).pointSize)"
+    }
+    static func clearReusableHeights() { reusableHeights.removeAll() }
+    func persistReusableHeights() {
+        guard sessionID != nil else { return }
+        // 仅保存几何数据，不持有 UIViewController、SwiftUI host 或消息正文。
+        let bounded = Dictionary(uniqueKeysWithValues: cellHeightCache.prefix(4096).map { ($0.key, $0.value) })
+        let anchor: VisibleAnchor?
+        if !isPinnedToBottom, let path = collectionView.indexPathsForVisibleItems.sorted().first,
+           let id = dataSource?.itemIdentifier(for: path),
+           let frame = collectionView.layoutAttributesForItem(at: path)?.frame {
+            anchor = VisibleAnchor(id: id, offsetFromViewportTop: frame.minY - collectionView.contentOffset.y)
+        } else { anchor = nil }
+        Self.reusableHeights[reusableHeightKey] = ReusableHeights(heights: bounded, accessed: DispatchTime.now().uptimeNanoseconds, anchor: anchor)
+        while Self.reusableHeights.count > 6 || Self.reusableHeights.values.reduce(0, { $0 + $1.byteCost }) > 8 * 1024 * 1024 {
+            guard let oldest = Self.reusableHeights.min(by: { $0.value.accessed < $1.value.accessed })?.key else { break }
+            Self.reusableHeights[oldest] = nil
+        }
+    }
     private var cellHeightCache: [CellMeasurementKey: CGFloat] = [:]
     private var historyHeightPreparation: (
         entries: [ConversationViewportEntry], nextIndex: Int, width: CGFloat
@@ -349,7 +385,7 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
             if historyHeightPreparation != nil { pendingApply = nil }
             cancelHistoryHeightPreparation()
             configuredBodyFontSize = UIFont.appPreferredFont(forTextStyle: .body).pointSize
-            cellHeightCache.removeAll()
+            cellHeightCache = Self.reusableHeights[reusableHeightKey]?.heights ?? [:]
             streamingHeightMeasurers.removeAll()
             previousRevisions = [:]
             lastAppliedRevision = -1
@@ -360,6 +396,7 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
         self.bottomInset = bottomInset
 
         if self.timeline !== timeline {
+            positionedSearchTargetID = nil
             if let oldTimeline = self.timeline, let timelineObserverID {
                 oldTimeline.removeObserver(timelineObserverID)
             }
@@ -394,6 +431,7 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
 
     func setSessionID(_ newSessionID: String?) {
         guard newSessionID != sessionID else { return }
+        persistReusableHeights()
         sessionGeneration &+= 1
         cancelHistoryHeightPreparation()
         sessionID = newSessionID
@@ -420,10 +458,18 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
 #if DEBUG
         streamingLayoutInvalidationCount = 0
 #endif
-        cellHeightCache.removeAll(keepingCapacity: true)
+        cellHeightCache = Self.reusableHeights[reusableHeightKey]?.heights ?? [:]
+        reusableReadingAnchor = Self.reusableHeights[reusableHeightKey]?.anchor
         streamingHeightMeasurers.removeAll(keepingCapacity: true)
         pendingLiveHeightCorrections.removeAll(keepingCapacity: true)
         isLiveHeightCorrectionScheduled = false
+    }
+
+    override func didReceiveMemoryWarning() {
+        super.didReceiveMemoryWarning()
+        Self.clearReusableHeights()
+        cellHeightCache.removeAll()
+        streamingHeightMeasurers.removeAll()
     }
 
     override func viewDidLoad() {
@@ -676,10 +722,9 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
                 cacheableRevisions[key.id] == key.revision
             }
         }
-        // Finish every height calculation before entering UIKit's diffable
-        // commit. `sizeForItem` and `preferredLayoutAttributesFitting` will
-        // therefore return the same exact value throughout the batch.
-        let prewarmResult = prewarmHeights(in: entries)
+        // 首帧只预热可见尾部。其他行由 sizeForItem 按需精确测量；历史插入仍按帧准备并保留阅读锚点。
+        let prewarmEntries = hasAppliedSnapshot ? entries.filter { changed.contains($0.id) } : Array(entries.suffix(32))
+        let prewarmResult = prewarmHeights(in: prewarmEntries)
         guard hasStructureChange || !changed.isEmpty else {
             invalidatePrewarmedItems(prewarmResult.measuredIDs)
             hasAppliedSnapshot = true
@@ -802,6 +847,16 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
                       !self.collectionView.isDecelerating {
                 self.followStreamingTail()
             }
+            if let target = self.searchTargetID, target != self.positionedSearchTargetID,
+               let path = self.dataSource.indexPath(for: target) {
+                self.needsBottomAlignment = false
+                self.bottomAlignmentGeneration &+= 1
+                self.collectionView.layoutIfNeeded()
+                self.collectionView.scrollToItem(at: path, at: .centeredVertically, animated: false)
+                self.onBottomAlignmentCompleted()
+                self.positionedSearchTargetID = target
+                self.setPinned(false)
+            }
             if let pending = self.pendingApply {
                 self.pendingApply = nil
                 self.apply(
@@ -883,10 +938,8 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
         }
     }
 
-    /// Premeasure every cacheable row before diffable data source starts a
-    /// batch update. Measuring only the visible tail was insufficient for
-    /// restored history: UICollectionView can provisionally create a row from
-    /// either end while calculating its new content offset.
+    /// 首屏尾部提前测量；UICollectionView 请求其他行时 sizeForItem 仍返回精确高度。
+    /// 历史前插沿用分帧预热，防止阅读锚点因估计高度发生跳动。
     private func prewarmHeights(in entries: [ConversationViewportEntry]) -> HeightPrewarmResult {
         let width = chatLayout.layoutFrame.width > 0
             ? chatLayout.layoutFrame.width
@@ -1465,7 +1518,16 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
               view.bounds.height > 0 else { return }
         hasPlacedInitialPosition = true
         needsInitialBottomPlacement = false
-        scrollToBottom()
+        if let anchor = reusableReadingAnchor, dataSource.indexPath(for: anchor.id) != nil, searchTargetID == nil {
+            reusableReadingAnchor = nil
+            restore(anchor)
+            setPinned(false)
+            onBottomAlignmentCompleted()
+        } else if let target = searchTargetID, dataSource.indexPath(for: target) != nil {
+            setPinned(false)
+        } else {
+            scrollToBottom()
+        }
     }
 
     private func setPinned(_ value: Bool) {
