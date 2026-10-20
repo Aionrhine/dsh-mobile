@@ -53,8 +53,14 @@ enum GenuiArtifact {
         var assets: [String] = []
         if types.contains("mermaid") { assets.append("mermaid") }
         if types.contains("scene3d") { assets.append("three") }
-        if types.contains("echart") || usesRawOption { assets.append("echarts-full") }
-        if types.contains("chart") { assets.append("echarts-core") }
+        // The runtime picks `echarts-core` for the built-in presets and
+        // `echarts-full` when a raw `option` is present, and the two bundles
+        // register different keys, so both have to be copied whenever any chart
+        // component appears. Copying only one leaves the other set of charts
+        // failing inside the card.
+        if types.contains("echart") || types.contains("chart") || usesRawOption {
+            assets.append(contentsOf: ["echarts-core", "echarts-full"])
+        }
         return assets
     }
 
@@ -175,6 +181,9 @@ private struct GenuiBlockWebView: UIViewRepresentable {
         let controller = webView.configuration.userContentController
         controller.removeScriptMessageHandler(forName: "genuiHeight")
         controller.removeScriptMessageHandler(forName: "genuiFailure")
+        // Drop the delegate first: `stopLoading()` reports -999 to it, and a
+        // recycled row must not inherit a failure from its previous fence.
+        webView.navigationDelegate = nil
         webView.stopLoading()
     }
 
@@ -207,20 +216,27 @@ private struct GenuiBlockWebView: UIViewRepresentable {
         }
 
         /// Links inside a card belong to the reader, not to the 180 pt frame:
-        /// hand http(s)/mailto to the system, keep in-page anchors in place.
+        /// hand the schemes we can actually service to the system, keep in-page
+        /// anchors in place, and never navigate the embedded view elsewhere.
         func webView(
             _ webView: WKWebView,
             decidePolicyFor navigationAction: WKNavigationAction,
             decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
         ) {
             guard navigationAction.navigationType == .linkActivated,
-                  let url = navigationAction.request.url,
-                  !url.isFileURL
+                  let url = navigationAction.request.url
             else {
                 decisionHandler(.allow)
                 return
             }
-            UIApplication.shared.open(url)
+            if url.isFileURL {
+                decisionHandler(.allow)
+                return
+            }
+            let scheme = url.scheme?.lowercased() ?? ""
+            if ["http", "https", "mailto", "tel"].contains(scheme) {
+                UIApplication.shared.open(url)
+            }
             decisionHandler(.cancel)
         }
 
@@ -229,7 +245,11 @@ private struct GenuiBlockWebView: UIViewRepresentable {
             didFailProvisionalNavigation navigation: WKNavigation!,
             withError error: Error
         ) {
-            fail(error.localizedDescription)
+            // `stopLoading()` and a cancelled redirect both surface as -999; they
+            // mean the load was torn down on purpose, not that the fence broke.
+            let nsError = error as NSError
+            guard nsError.code != NSURLErrorCancelled else { return }
+            fail(nsError.localizedDescription)
         }
 
         func userContentController(
@@ -267,11 +287,27 @@ private struct GenuiBlockWebView: UIViewRepresentable {
 /// Base files are refreshed once per launch; engine bundles are added the first
 /// time any fence asks for them, because neighbouring messages routinely need
 /// different engines and a single early return would leave the later ones blank.
-private enum GenuiRuntime {
+enum GenuiRuntime {
+    /// Serializes every copy, so the launch-time warm-up and a fence's first
+    /// mount can never write the same bundle at the same time.
+    private static let queue = DispatchQueue(label: "genui.runtime", qos: .utility)
     private static var preparedDirectory: URL?
     private static var copiedFiles: Set<String> = []
 
+    /// Copies every bundle the standalone runtime can ask for, off the main
+    /// thread: the engines are several megabytes and must not be read while the
+    /// conversation is scrolling.
+    static func warmUp() {
+        queue.async {
+            _ = prepareLocked(assets: ["mermaid", "three", "echarts-core", "echarts-full"])
+        }
+    }
+
     static func prepare(assets: [String]) -> URL? {
+        queue.sync { prepareLocked(assets: assets) }
+    }
+
+    private static func prepareLocked(assets: [String]) -> URL? {
         let fileManager = FileManager.default
         guard let directory = directoryForWrites(fileManager) else { return nil }
 

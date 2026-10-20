@@ -23,6 +23,12 @@ struct DeepSeekHarnessMobileApp: App {
     @UIApplicationDelegateAdaptor(AgentNotificationAppDelegate.self) private var notificationAppDelegate
     @StateObject private var hosts = MultiGatewayStore()
 
+    init() {
+        // Cost the GenUI engine copies once, off the main thread, instead of on
+        // the first ```dsh-ui fence that needs them.
+        GenuiRuntime.warmUp()
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()
