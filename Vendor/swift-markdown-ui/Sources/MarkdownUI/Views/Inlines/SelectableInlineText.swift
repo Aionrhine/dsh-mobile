@@ -9,10 +9,15 @@ import UIKit
 /// range. SwiftUI's `Text` + `.textSelection(.enabled)` only offers whole-view
 /// selection and loses the drag gesture to the hosting scroll/collection view,
 /// which is why long-press produced "Copy / Share" with no handles.
+///
+/// The incoming AttributedString is *unresolved*: it still carries MarkdownUI's
+/// `fontProperties` instead of a SwiftUI `Font`, because `NSAttributedString`
+/// cannot bridge SwiftUI fonts (that mismatch made text fall back to 12 pt).
 struct SelectableInlineText: UIViewRepresentable {
   let attributed: AttributedString
 
   @Environment(\.openURL) private var openURL
+  @Environment(\.colorScheme) private var colorScheme
 
   func makeUIView(context: Context) -> UITextView {
     let view = UITextView()
@@ -35,7 +40,7 @@ struct SelectableInlineText: UIViewRepresentable {
 
   func updateUIView(_ view: UITextView, context: Context) {
     context.coordinator.openURL = self.openURL
-    let rendered = NSAttributedString(self.attributed)
+    let rendered = Self.makeAttributedString(self.attributed)
     if view.attributedText != rendered {
       view.attributedText = rendered
     }
@@ -63,10 +68,100 @@ struct SelectableInlineText: UIViewRepresentable {
       interaction: UITextItemInteraction
     ) -> Bool {
       guard let openURL else { return true }
-      // Mirror MarkdownUI's SwiftUI behaviour: hand the URL to the environment
-      // action so host-app link routing (file references, external links) works.
       Task { @MainActor in _ = openURL(URL) }
       return false
+    }
+  }
+
+  // MARK: - AttributedString -> NSAttributedString
+
+  static func makeAttributedString(_ source: AttributedString) -> NSAttributedString {
+    let baseFont = UIFont.preferredFont(forTextStyle: .body)
+    let paragraphStyle = NSMutableParagraphStyle()
+    paragraphStyle.lineSpacing = (baseFont.lineHeight * 0.22).rounded()
+
+    let output = NSMutableAttributedString()
+    for run in source.runs {
+      let slice = source[run.range]
+      let text = String(slice.characters)
+      guard !text.isEmpty else { continue }
+
+      var attributes: [NSAttributedString.Key: Any] = [
+        .paragraphStyle: paragraphStyle,
+      ]
+
+      if let properties = slice[FontPropertiesAttribute.self] {
+        attributes[.font] = uiFont(from: properties)
+      } else {
+        attributes[.font] = baseFont
+      }
+
+      if let color = slice[AttributeScopes.SwiftUIAttributes.ForegroundColorAttribute.self] {
+        attributes[.foregroundColor] = UIColor(color)
+      } else {
+        attributes[.foregroundColor] = UIColor.label
+      }
+
+      if let link = slice[AttributeScopes.FoundationAttributes.LinkAttribute.self] {
+        attributes[.link] = link
+      }
+
+      output.append(NSAttributedString(string: text, attributes: attributes))
+    }
+    return output
+  }
+
+  private static func uiFont(from properties: FontProperties) -> UIFont {
+    let size = properties.scaledSize
+    let weight = uiWeight(properties.weight)
+
+    var font: UIFont
+    switch properties.family {
+    case .system(let design):
+      font = UIFont.systemFont(ofSize: size, weight: weight)
+      if let systemDesign = uiDesign(design),
+         let descriptor = font.fontDescriptor.withDesign(systemDesign) {
+        font = UIFont(descriptor: descriptor, size: size)
+      }
+    case .custom(let name):
+      font = UIFont(name: name, size: size) ?? UIFont.systemFont(ofSize: size, weight: weight)
+    }
+
+    if properties.familyVariant == .monospaced,
+       let descriptor = font.fontDescriptor.withDesign(.monospaced) {
+      font = UIFont(descriptor: descriptor, size: size)
+    }
+
+    if case .italic = properties.style,
+       let descriptor = font.fontDescriptor.withSymbolicTraits(
+         font.fontDescriptor.symbolicTraits.union(.traitItalic)
+       ) {
+      font = UIFont(descriptor: descriptor, size: size)
+    }
+
+    return font
+  }
+
+  private static func uiWeight(_ weight: Font.Weight) -> UIFont.Weight {
+    switch weight {
+    case .ultraLight: return .ultraLight
+    case .thin: return .thin
+    case .light: return .light
+    case .medium: return .medium
+    case .semibold: return .semibold
+    case .bold: return .bold
+    case .heavy: return .heavy
+    case .black: return .black
+    default: return .regular
+    }
+  }
+
+  private static func uiDesign(_ design: Font.Design) -> UIFontDescriptor.SystemDesign? {
+    switch design {
+    case .monospaced: return .monospaced
+    case .serif: return .serif
+    case .rounded: return .rounded
+    default: return nil
     }
   }
 }
@@ -79,7 +174,8 @@ extension Array where Element == InlineNode {
     baseURL: URL?,
     textStyles: InlineTextStyles,
     softBreakMode: SoftBreak.Mode,
-    attributes: AttributeContainer
+    attributes: AttributeContainer,
+    resolveFonts: Bool = true
   ) -> AttributedString {
     self.reduce(into: AttributedString()) { result, inline in
       result.append(
@@ -87,7 +183,8 @@ extension Array where Element == InlineNode {
           baseURL: baseURL,
           textStyles: textStyles,
           softBreakMode: softBreakMode,
-          attributes: attributes
+          attributes: attributes,
+          resolveFonts: resolveFonts
         )
       )
     }

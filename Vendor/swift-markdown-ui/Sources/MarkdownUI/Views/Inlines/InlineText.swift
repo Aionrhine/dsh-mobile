@@ -30,7 +30,8 @@ struct InlineText: View {
               link: self.theme.link
             ),
             softBreakMode: self.softBreakMode,
-            attributes: attributes
+            attributes: attributes,
+            resolveFonts: false
           )
         )
       } else {
