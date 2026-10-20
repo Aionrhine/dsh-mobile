@@ -4590,6 +4590,7 @@ private struct ToolOutputView: View {
 
 struct MarkdownContent: View {
     @AppStorage(AppFontScale.key) private var fontScale = 1.0
+    @Environment(\.colorScheme) private var colorScheme
     @AppStorage(AppFontScale.followsSystemKey) private var fontFollowsSystem = false
     let text: String
     var compact = false
@@ -4631,6 +4632,7 @@ struct MarkdownContent: View {
             // MarkdownUI 会自行应用 Dynamic Type。主题已合并系统与应用倍率，避免重复缩放。
             .dynamicTypeSize(.large)
             .markdownTextSelectionObserver(selectionObserver)
+            .markdownCodeBlockOverride(codeBlockOverride)
     }
 
     /// Bound from storage rather than through `Optional.map`, so the escaping
@@ -4638,6 +4640,17 @@ struct MarkdownContent: View {
     private var selectionObserver: MarkdownTextSelectionObserver? {
         guard let onSelectionChange else { return nil }
         return MarkdownTextSelectionObserver(handler: onSelectionChange)
+    }
+
+    /// ```dsh-ui fences become live GenUI blocks; every other fence, and any
+    /// fence whose body is not a JSON object, keeps the plain code block.
+    private var codeBlockOverride: MarkdownCodeBlockOverride {
+        MarkdownCodeBlockOverride { language, content in
+            guard GenuiArtifact.matchesFence(language),
+                  let artifact = GenuiArtifact.json(fromFence: content, isDark: colorScheme == .dark)
+            else { return nil }
+            return AnyView(GenuiBlockContainer(artifactJSON: artifact))
+        }
     }
 
     private var codeDestinations: [String: String] {

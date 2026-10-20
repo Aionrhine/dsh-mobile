@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<link rel="stylesheet" href="theme.css">
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; }
+  body { font: 16px/1.55 -apple-system, system-ui, "PingFang SC", sans-serif; }
+  #root { padding: 1px 2px 3px 2px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="standalone-runtime.js"></script>
+<script>
+  function reportHeight() {
+    var root = document.getElementById('root');
+    var height = Math.max(
+      document.documentElement.getBoundingClientRect().height,
+      document.body ? document.body.scrollHeight : 0,
+      root ? root.scrollHeight : 0
+    );
+    var handler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.genuiHeight;
+    if (handler) { handler.postMessage(Math.ceil(height)); }
+  }
+
+  // The host calls this once the page is ready; returning false lets Swift fall
+  // back to the plain code block instead of showing an empty box.
+  window.__mountGenui = function (artifact) {
+    try {
+      window.__GenuiStandalone__.mount(document.getElementById('root'), artifact);
+    } catch (error) {
+      return String(error && error.message ? error.message : error);
+    }
+    reportHeight();
+    setTimeout(reportHeight, 120);
+    setTimeout(reportHeight, 480);
+    return null;
+  };
+
+  window.addEventListener('load', reportHeight);
+  if (window.ResizeObserver) {
+    new ResizeObserver(reportHeight).observe(document.getElementById('root'));
+  }
+</script>
+</body>
+</html>
