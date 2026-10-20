@@ -403,6 +403,8 @@ final class AppStore: ObservableObject {
     @Published private(set) var workspaceFileDownloadProgress: Double?
     @Published private(set) var workspaceFileDownloadPath: String?
     @Published private(set) var workspaceFileDownloadPurpose: String?
+    @Published private(set) var workspaceFilePreviewProgress: Double = 0
+    @Published private(set) var workspaceFilePreviewRequest: WorkspaceFilePreviewRequest?
     @Published var completedWorkspaceFile: WorkspaceLocalFile?
     @Published private(set) var conversationFilePreviewRequested = false
     @Published private(set) var conversationFileIsOpening = false
@@ -1377,12 +1379,18 @@ final class AppStore: ObservableObject {
     }
 
     func openWorkspaceFile(_ item: GatewayDirectoryItem, purpose: String) {
+        guard item.kind == "file", let sessionID = selectedSessionId,
+              workspaceFilePreviewRequest == nil, !conversationFileIsOpening else { return }
         conversationFilePreviewRequested = false
-        guard item.kind == "file", let sessionID = selectedSessionId else { return }
         completedWorkspaceFile = nil
         if purpose == "preview" {
+            lastError = nil
+            conversationFileIsOpening = true
+            let request = WorkspaceFilePreviewRequest(sessionID: sessionID, path: item.path)
+            workspaceFilePreviewProgress = 0
+            workspaceFilePreviewRequest = request
             beginWorkspaceFileTransition(kmpWorkspaceFileStore.resolve(
-                sessionId: sessionID, path: item.path, requestId: UUID().uuidString,
+                sessionId: sessionID, path: item.path, requestId: request.id.uuidString,
                 supportsResolve: supportsFileReferences, useCache: true
             ))
             return
@@ -1399,7 +1407,7 @@ final class AppStore: ObservableObject {
     func openConversationFile(gatewayID: String, sessionID: String, path: String) {
         guard gatewayID == gatewayLocalID, sessionID == selectedSessionId else { return }
         // 后台准备预览时忽略重复点击，避免弹出非必要的 download-busy 提示。
-        guard !conversationFileIsOpening else { return }
+        guard workspaceFilePreviewRequest == nil, !conversationFileIsOpening else { return }
         guard gateway.state.isConnected, supportsFileDownloads else {
             lastError = "请先连接支持文件下载的 Mobile Gateway。"
             return
@@ -1407,8 +1415,12 @@ final class AppStore: ObservableObject {
         completedWorkspaceFile = nil
         conversationFilePreviewRequested = true
         conversationFileIsOpening = true
+        lastError = nil
+        let request = WorkspaceFilePreviewRequest(sessionID: sessionID, path: path)
+        workspaceFilePreviewProgress = 0
+        workspaceFilePreviewRequest = request
         beginWorkspaceFileTransition(kmpWorkspaceFileStore.resolve(
-            sessionId: sessionID, path: path, requestId: UUID().uuidString,
+            sessionId: sessionID, path: path, requestId: request.id.uuidString,
             supportsResolve: supportsFileReferences, useCache: true
         ))
     }
@@ -1416,7 +1428,11 @@ final class AppStore: ObservableObject {
     func cancelWorkspaceFileDownload() {
         workspaceFileOperationID = UUID()
         conversationFileIsOpening = false
+        workspaceFilePreviewRequest = nil
+        workspaceFilePreviewProgress = 0
+        if completedWorkspaceFile?.purpose == "preview" { completedWorkspaceFile = nil }
         applyWorkspaceFileTransition(kmpWorkspaceFileStore.cancel())
+        closeWorkspaceTemporaryFile(remove: true)
     }
     func createDirectory(parentPath: String, name: String) {
         guard gateway.state.isConnected else {
@@ -2155,6 +2171,15 @@ final class AppStore: ObservableObject {
             closeWorkspaceTemporaryFile(remove: true)
         }
         let snapshot = transition.snapshot
+        if workspaceFilePreviewRequest != nil {
+            if let active = snapshot.activeDownload, active.purpose == "preview", active.size > 0 {
+                workspaceFilePreviewProgress = min(1, max(0, Double(active.receivedBytes) / Double(active.size)))
+            } else if snapshot.lastError == nil,
+                      transition.appendBase64Data != nil || transition.completion?.purpose == "preview" || transition.cacheHit != nil {
+                // 最后一块已校验完成，远端版本检查和缓存复制期间保持 100%。
+                workspaceFilePreviewProgress = 1
+            }
+        }
         if snapshot.activeDownload != nil, workspaceFileHandle == nil {
             do {
                 try openWorkspaceTemporaryFile(name: snapshot.activeDownload?.name ?? "download")

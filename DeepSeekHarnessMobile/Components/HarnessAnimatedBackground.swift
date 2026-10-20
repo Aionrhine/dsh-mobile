@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-/// iPhone 保留旧版背景；iPad 的构图和粒子调优独立生效。
+/// 手机和平板分别使用各自的背景构图与粒子参数。
 enum HarnessBackgroundStyle {
     case phone
     case pad
@@ -46,7 +46,7 @@ struct HarnessAnimatedBackground: View {
     }
 }
 
-/// 平板随窗口宽高比调整构图；手机独立使用旧版尺寸和位置。
+/// 平板随窗口宽高比调整构图；手机使用独立的尺寸和位置。
 struct HarnessBackgroundComposition {
     let whaleSize: CGFloat
     let whaleCenter: CGPoint
@@ -155,6 +155,8 @@ private struct HarnessWhaleField: View {
 
             let composition = HarnessBackgroundComposition(size: size, style: style)
             let square = composition.whaleSize
+            // 鲸鱼轮廓以中心为基准横向舒展 8%。
+            let whaleWidth = square * 1.08
             let center = composition.whaleCenter
             let motionScale: CGFloat = style == .pad ? min(2, max(1, square / 460)) : 1
             let driftAmplitude = style == .pad
@@ -175,7 +177,7 @@ private struct HarnessWhaleField: View {
                 let shimmer = 0.90 + 0.10 * sin(t * 1.5 + particle.x * 15 + particle.y * 9)
 
                 let point = CGPoint(
-                    x: center.x + (particle.x - 0.5) * square + driftX,
+                    x: center.x + (particle.x - 0.5) * whaleWidth + driftX,
                     y: center.y + (particle.y - 0.5) * square + driftY + tailWave
                 )
                 let dotSize = baseDot * (0.72 + particle.luminance * 0.58)

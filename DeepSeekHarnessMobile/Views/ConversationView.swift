@@ -433,8 +433,8 @@ struct ConversationView: View {
         .onDisappear {
             if store.conversationFileIsOpening { store.cancelWorkspaceFileDownload() }
         }
-        .sheet(item: conversationPreviewBinding) { file in
-            WorkspaceFilePreview(file: file, gatewayID: store.gatewayLocalID)
+        .sheet(item: conversationPreviewBinding) { request in
+            WorkspaceFilePreviewLoadingSheet(store: store, request: request)
         }
         .sheet(isPresented: $showsSessionStats) {
             SessionStatsSheet(
@@ -444,15 +444,14 @@ struct ConversationView: View {
         }
     }
 
-    private var conversationPreviewBinding: Binding<WorkspaceLocalFile?> {
+    private var conversationPreviewBinding: Binding<WorkspaceFilePreviewRequest?> {
         Binding(
             get: {
                 guard store.conversationFilePreviewRequested,
-                      let file = store.completedWorkspaceFile,
-                      file.purpose == "preview", file.sessionID == store.selectedSessionId else { return nil }
-                return file
+                      store.workspaceFilePreviewRequest?.sessionID == store.selectedSessionId else { return nil }
+                return store.workspaceFilePreviewRequest
             },
-            set: { if $0 == nil { store.completedWorkspaceFile = nil } }
+            set: { if $0 == nil { store.cancelWorkspaceFileDownload() } }
         )
     }
 
@@ -1732,38 +1731,25 @@ struct ConversationView: View {
 
     @ViewBuilder
     private var modelControl: some View {
+        // 独立 View 为泛型视图建立边界，避免菜单的完整类型嵌入输入框构建链。
         if store.selectedSessionId == nil {
-            HStack(spacing: 5) {
-                if defaultModelIsLoading && store.defaultModelSelection == nil {
-                    ProgressView().controlSize(.mini)
-                    Text("读取默认模型…")
-                } else {
-                    Text(defaultModelTitle)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.72)
-                        .allowsTightening(true)
-                    if let effort = defaultModelEffortTitle {
-                        Text(effort)
-                            .appFont(.caption2.weight(.semibold))
-                            .foregroundStyle(.primary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(DSHColor.purple.opacity(0.14), in: Capsule())
-                    }
-                }
-            }
-            .appFont(.caption.weight(.medium))
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .trailing)
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel(
-                String(
-                    localized: "a11y.defaults.model",
-                    defaultValue: "新会话默认模型：\(defaultModelTitle)\(defaultModelEffortTitle.map { String(localized: "defaults.effort.suffix", defaultValue: "，推理等级 \($0)") } ?? "")"
-                )
+            ConversationDefaultModelSummary(
+                title: defaultModelTitle,
+                effortTitle: defaultModelEffortTitle,
+                isLoading: defaultModelIsLoading && store.defaultModelSelection == nil
             )
         } else {
-            modelMenu
+            ConversationModelMenu(
+                groups: modelGroups,
+                selection: currentModelSelection,
+                efforts: currentEfforts,
+                title: currentModelTitle,
+                effortTitle: currentEffortTitle,
+                isLoading: modelIsLoading,
+                isDisabled: modelGroups.isEmpty || store.selectedModelCatalog?.routable == false,
+                onSelectModel: { group, model in select(group: group, model: model) },
+                onSelectEffort: { effort in select(effort: effort) }
+            )
         }
     }
 
@@ -1798,78 +1784,6 @@ struct ConversationView: View {
             .contentShape(Rectangle())
         }
         .disabled(permissionOptions.isEmpty)
-    }
-
-    private var modelMenu: some View {
-        Menu {
-            if modelGroups.isEmpty {
-                Text("正在读取模型…")
-            } else {
-                // Keep model selection in one native menu. Presenting a
-                // submenu before the outer Menu finishes its animation makes
-                // UIKit resolve the child against a transient anchor, which
-                // intermittently offsets and clips it near the composer.
-                ForEach(modelGroups) { group in
-                    Section(group.name) {
-                        ForEach(group.models) { model in
-                            Button {
-                                select(group: group, model: model)
-                            } label: {
-                                Label(
-                                    model.name,
-                                    systemImage: isCurrent(group: group, model: model) ? "checkmark" : "circle"
-                                )
-                            }
-                        }
-                    }
-                }
-                if !currentEfforts.isEmpty {
-                    Section("推理等级") {
-                        ForEach(currentEfforts) { effort in
-                            Button {
-                                select(effort: effort)
-                            } label: {
-                                Label(
-                                    effort.name,
-                                    systemImage: effort.id == currentModelSelection?.reasoningEffort ? "checkmark" : "circle"
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        } label: {
-            HStack(spacing: 5) {
-                if modelIsLoading {
-                    ProgressView().controlSize(.mini)
-                } else {
-                    Text(currentModelTitle)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.72)
-                        .allowsTightening(true)
-                        .layoutPriority(1)
-                    if let effort = currentEffortTitle {
-                        Text(effort)
-                            .appFont(.caption2.weight(.semibold))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
-                            .layoutPriority(2)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(DSHColor.purple.opacity(0.16), in: Capsule())
-                    }
-                }
-                Image(systemName: "chevron.up.chevron.down")
-                    .appFont(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(.tertiary)
-            }
-            .appFont(.caption.weight(.medium))
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .trailing)
-            .contentShape(Rectangle())
-        }
-        .disabled(modelGroups.isEmpty || store.selectedModelCatalog?.routable == false)
     }
 
     private var permissionOptions: [GatewayPermissionOption] { store.selectedPermissions?.options ?? [] }
@@ -1953,9 +1867,6 @@ struct ConversationView: View {
         case "danger-full-access": "exclamationmark.shield"
         default: "shield"
         }
-    }
-    private func isCurrent(group: GatewayModelGroup, model: GatewayModelItem) -> Bool {
-        currentModelSelection?.provider == group.id && currentModelSelection?.model == model.id
     }
     private func select(group: GatewayModelGroup, model: GatewayModelItem) {
         let efforts = model.reasoning?.efforts ?? []
@@ -2522,6 +2433,154 @@ private struct TaskGoalPanels: View {
         case "blocked": "受阻的目标"
         default: "当前目标"
         }
+    }
+}
+
+private struct ConversationDefaultModelSummary: View {
+    let title: String
+    let effortTitle: String?
+    let isLoading: Bool
+
+    var body: some View {
+        HStack(spacing: 5) {
+            if isLoading {
+                ProgressView().controlSize(.mini)
+                Text("读取默认模型…")
+            } else {
+                Text(title)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                    .allowsTightening(true)
+                if let effortTitle {
+                    Text(effortTitle)
+                        .appFont(.caption2.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(DSHColor.purple.opacity(0.14), in: Capsule())
+                }
+            }
+        }
+        .appFont(.caption.weight(.medium))
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            String(
+                localized: "a11y.defaults.model",
+                defaultValue: "新会话默认模型：\(title)\(effortTitle.map { String(localized: "defaults.effort.suffix", defaultValue: "，推理等级 \($0)") } ?? "")"
+            )
+        )
+    }
+}
+
+private struct ConversationModelMenu: View {
+    let groups: [GatewayModelGroup]
+    let selection: GatewayModelSelection?
+    let efforts: [GatewayReasoningEffort]
+    let title: String
+    let effortTitle: String?
+    let isLoading: Bool
+    let isDisabled: Bool
+    let onSelectModel: (GatewayModelGroup, GatewayModelItem) -> Void
+    let onSelectEffort: (GatewayReasoningEffort) -> Void
+
+    var body: some View {
+        Menu {
+            ConversationModelMenuContent(
+                groups: groups,
+                selection: selection,
+                efforts: efforts,
+                onSelectModel: onSelectModel,
+                onSelectEffort: onSelectEffort
+            )
+        } label: {
+            ConversationModelMenuLabel(title: title, effortTitle: effortTitle, isLoading: isLoading)
+        }
+        .disabled(isDisabled)
+    }
+}
+
+private struct ConversationModelMenuContent: View {
+    let groups: [GatewayModelGroup]
+    let selection: GatewayModelSelection?
+    let efforts: [GatewayReasoningEffort]
+    let onSelectModel: (GatewayModelGroup, GatewayModelItem) -> Void
+    let onSelectEffort: (GatewayReasoningEffort) -> Void
+
+    var body: some View {
+        if groups.isEmpty {
+            Text("正在读取模型…")
+        } else {
+            // 保持单层原生菜单，避免子菜单在外层动画结束前解析临时锚点而偏移或裁切。
+            ForEach(groups) { group in
+                Section(group.name) {
+                    ForEach(group.models) { model in
+                        Button {
+                            onSelectModel(group, model)
+                        } label: {
+                            Label(
+                                model.name,
+                                systemImage: selection?.provider == group.id && selection?.model == model.id
+                                    ? "checkmark" : "circle"
+                            )
+                        }
+                    }
+                }
+            }
+            if !efforts.isEmpty {
+                Section("推理等级") {
+                    ForEach(efforts) { effort in
+                        Button {
+                            onSelectEffort(effort)
+                        } label: {
+                            Label(
+                                effort.name,
+                                systemImage: effort.id == selection?.reasoningEffort ? "checkmark" : "circle"
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct ConversationModelMenuLabel: View {
+    let title: String
+    let effortTitle: String?
+    let isLoading: Bool
+
+    var body: some View {
+        HStack(spacing: 5) {
+            if isLoading {
+                ProgressView().controlSize(.mini)
+            } else {
+                Text(title)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                    .allowsTightening(true)
+                    .layoutPriority(1)
+                if let effortTitle {
+                    Text(effortTitle)
+                        .appFont(.caption2.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .layoutPriority(2)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(DSHColor.purple.opacity(0.16), in: Capsule())
+                }
+            }
+            Image(systemName: "chevron.up.chevron.down")
+                .appFont(.system(size: 8, weight: .semibold))
+                .foregroundStyle(.tertiary)
+        }
+        .appFont(.caption.weight(.medium))
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .contentShape(Rectangle())
     }
 }
 

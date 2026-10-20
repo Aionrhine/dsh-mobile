@@ -95,38 +95,71 @@ internal fun WorkspaceFilePreviewHost(stateHolder: AndroidSharedStateHolder) {
             }.onFailure { stateHolder.showPlatformError(appText("保存文件失败：%1\$s", it.localizedMessage)) }
         }
     }
-    var preview by remember(sessionId, stateHolder.gatewayLocalId) { mutableStateOf<AndroidWorkspaceLocalFile?>(null) }
-    LaunchedEffect(stateHolder.completedWorkspaceFile) {
-        val file = stateHolder.completedWorkspaceFile ?: return@LaunchedEffect
-        if (file.purpose != "preview") return@LaunchedEffect
-        if (file.sessionId == sessionId) preview = file
-        stateHolder.consumeCompletedWorkspaceFile()
-    }
     DisposableEffect(stateHolder, sessionId) {
         onDispose { stateHolder.cancelWorkspaceFileDownload() }
     }
-    val file = preview ?: return
-    val external = { openWorkspaceFileExternally(context, stateHolder, file) }
-    when {
-        WorkspaceCodePreviewSupport.isSupported(file.name, file.mediaType) -> WorkspaceCodePreviewSheet(
-            file, onDismiss = { preview = null }, onOpenExternal = external,
-            onSave = { pendingExport = file; exporter.launch(file.name) }
-        )
-        file.mediaType == "application/pdf" || file.name.endsWith(".pdf", true) -> WorkspacePdfPreviewSheet(
-            file, onDismiss = { preview = null }, onOpenExternal = external,
-            onSave = { pendingExport = file; exporter.launch(file.name) }
-        )
-        else -> WorkspaceFilePreviewSheet(
-            file, onDismiss = { preview = null },
-            onSave = { pendingExport = file; exporter.launch(file.name) }
-        ) { contentPadding ->
-            Column(Modifier.fillMaxSize().padding(contentPadding).verticalScroll(rememberScrollState()).padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally) {
-                FileTypeIcon(FileIconCatalog.resolve(file.name, file.mediaType), Modifier.size(64.dp))
-                Text(appText("此文件可使用其他应用打开或保存。"), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                TextButton(onClick = external) { Text(appText("使用其他应用打开")) }
+    val request = stateHolder.workspaceFilePreviewRequest ?: return
+    if (request.sessionId != sessionId) return
+    val file = stateHolder.completedWorkspaceFile?.takeIf {
+        it.purpose == "preview" && it.sessionId == request.sessionId
+    }
+    WorkspaceFilePreviewSheet(
+        file = file,
+        fileName = file?.name ?: request.name,
+        onDismiss = stateHolder::cancelWorkspaceFileDownload,
+        onSave = file?.let { ready -> { pendingExport = ready; exporter.launch(ready.name) } }
+    ) { contentPadding ->
+        if (file == null) {
+            WorkspaceFilePreviewLoadingContent(
+                stateHolder.conversationFileIsOpening, stateHolder.platformError,
+                contentPadding, stateHolder.workspaceFilePreviewProgress
+            )
+        } else {
+            val external = { openWorkspaceFileExternally(context, stateHolder, file) }
+            when {
+                WorkspaceCodePreviewSupport.isSupported(file.name, file.mediaType) ->
+                    WorkspaceCodePreviewContent(file, external, contentPadding)
+                file.mediaType == "application/pdf" || file.name.endsWith(".pdf", true) ->
+                    WorkspacePdfPreviewContent(file, external, contentPadding)
+                else -> Column(
+                    Modifier.fillMaxSize().padding(contentPadding).verticalScroll(rememberScrollState()).padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    FileTypeIcon(FileIconCatalog.resolve(file.name, file.mediaType), Modifier.size(64.dp))
+                    Text(appText("此文件可使用其他应用打开或保存。"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TextButton(onClick = external) { Text(appText("使用其他应用打开")) }
+                }
             }
+        }
+    }
+}
+
+@Composable
+internal fun WorkspaceFilePreviewLoadingContent(
+    isLoading: Boolean,
+    error: String?,
+    contentPadding: PaddingValues,
+    progress: Float
+) {
+    Column(
+        Modifier.fillMaxSize().padding(contentPadding).padding(24.dp).testTag("workspace-preview-loading"),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically)
+    ) {
+        Text(
+            if (isLoading) appText("正在加载中") else error ?: appText("文件加载失败"),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+        if (isLoading) {
+            WorkspaceLoadingLogo()
+            Text(
+                "${(progress.coerceIn(0f, 1f) * 100).toInt()}%",
+                modifier = Modifier.testTag("workspace-preview-progress"),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum")
+            )
         }
     }
 }
@@ -135,9 +168,10 @@ internal fun WorkspaceFilePreviewHost(stateHolder: AndroidSharedStateHolder) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun WorkspaceFilePreviewSheet(
-    file: AndroidWorkspaceLocalFile,
+    file: AndroidWorkspaceLocalFile?,
     onDismiss: () -> Unit,
     onSave: (() -> Unit)? = null,
+    fileName: String = file?.name.orEmpty(),
     overlay: @Composable BoxScope.(PaddingValues) -> Unit = {},
     content: @Composable (PaddingValues) -> Unit
 ) {
@@ -146,7 +180,7 @@ internal fun WorkspaceFilePreviewSheet(
     val closeWithAnimation = rememberWorkspaceSheetDismiss(sheetState, onDismiss)
     val density = LocalDensity.current
     var headerHeight by remember { mutableStateOf(76.dp) }
-    var showsMenu by remember(file.file) { mutableStateOf(false) }
+    var showsMenu by remember(file?.file) { mutableStateOf(false) }
     ModalBottomSheet(
         modifier = Modifier.adaptiveSheetBounds(),
         sheetMaxWidth = adaptiveSheetWidth(),
@@ -177,7 +211,7 @@ internal fun WorkspaceFilePreviewSheet(
             ) {
                 WorkspaceSheetIconButton(R.drawable.ic_close, appText("关闭文件预览"), closeWithAnimation)
                 Text(
-                    file.name,
+                    fileName,
                     modifier = Modifier.weight(1f).testTag("workspace-preview-title"),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
@@ -220,6 +254,17 @@ internal fun WorkspacePdfPreviewSheet(
     onOpenExternal: () -> Unit,
     onSave: (() -> Unit)? = null
 ) {
+    WorkspaceFilePreviewSheet(file, onDismiss, onSave) { contentPadding ->
+        WorkspacePdfPreviewContent(file, onOpenExternal, contentPadding)
+    }
+}
+
+@Composable
+internal fun WorkspacePdfPreviewContent(
+    file: AndroidWorkspaceLocalFile,
+    onOpenExternal: () -> Unit,
+    contentPadding: PaddingValues
+) {
     var pageCount by remember(file.file) { mutableIntStateOf(0) }
     var error by remember(file.file) { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
@@ -245,22 +290,7 @@ internal fun WorkspacePdfPreviewSheet(
             error = appText("无法预览 PDF：%1\$s", failure.localizedMessage)
         }
     }
-    WorkspaceFilePreviewSheet(file, onDismiss, onSave, overlay = { contentPadding ->
-        if (pageCount > 0 && error == null) {
-            Row(
-                modifier = Modifier.align(Alignment.TopStart)
-                    .padding(start = 16.dp, top = contentPadding.calculateTopPadding() + 12.dp)
-                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(24.dp))
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-                    .testTag("workspace-pdf-page-indicator"),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Icon(painterResource(R.drawable.ic_pdf_pages), null, Modifier.size(18.dp))
-                Text("$currentPage/$pageCount", style = MaterialTheme.typography.labelLarge)
-            }
-        }
-    }) { contentPadding ->
+    Box(Modifier.fillMaxSize()) {
         when {
             error != null -> Column(Modifier.fillMaxSize().padding(contentPadding).padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
@@ -279,6 +309,20 @@ internal fun WorkspacePdfPreviewSheet(
                 ) {
                     items(pageCount, key = { it }) { page -> WorkspacePdfPage(file, page) }
                 }
+            }
+        }
+        if (pageCount > 0 && error == null) {
+            Row(
+                modifier = Modifier.align(Alignment.TopStart)
+                    .padding(start = 16.dp, top = contentPadding.calculateTopPadding() + 12.dp)
+                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(24.dp))
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .testTag("workspace-pdf-page-indicator"),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(painterResource(R.drawable.ic_pdf_pages), null, Modifier.size(18.dp))
+                Text("$currentPage/$pageCount", style = MaterialTheme.typography.labelLarge)
             }
         }
     }

@@ -154,7 +154,9 @@ final class AgentBackgroundKeepAliveManager: NSObject, AgentLongRunningKeepAlive
             didRequestAlwaysAuthorization = true
             locationManager.requestAlwaysAuthorization()
         case .authorizedAlways:
-            ensureBackgroundActivitySession()
+            // Always 授权和 location 后台模式已允许持续定位；额外的
+            // CLBackgroundActivitySession 会独立占用系统的蓝色定位入口。
+            endBackgroundActivitySession()
         case .restricted, .denied:
             break
         @unknown default:
@@ -167,6 +169,11 @@ final class AgentBackgroundKeepAliveManager: NSObject, AgentLongRunningKeepAlive
               !applicationIsInBackground,
               backgroundActivitySession == nil else { return }
         backgroundActivitySession = CLBackgroundActivitySession()
+    }
+
+    private func endBackgroundActivitySession() {
+        backgroundActivitySession?.invalidate()
+        backgroundActivitySession = nil
     }
 
     private func startBackgroundResources() {
@@ -332,8 +339,7 @@ final class AgentBackgroundKeepAliveManager: NSObject, AgentLongRunningKeepAlive
         locationStartTask = nil
         stopPulseTimer()
         stopLocationUpdates()
-        backgroundActivitySession?.invalidate()
-        backgroundActivitySession = nil
+        endBackgroundActivitySession()
         stopSilentAudio()
     }
 
@@ -368,7 +374,14 @@ extension AgentBackgroundKeepAliveManager: @preconcurrency CLLocationManagerDele
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         guard agentWorkIsActive else { return }
         switch manager.authorizationStatus {
-        case .authorizedAlways, .authorizedWhenInUse:
+        case .authorizedAlways:
+            endBackgroundActivitySession()
+            if applicationIsInBackground {
+                startLocationUpdatesIfAuthorized()
+            } else {
+                prepareLocationAuthorizationAndSession()
+            }
+        case .authorizedWhenInUse:
             if applicationIsInBackground {
                 startLocationUpdatesIfAuthorized()
             } else {
@@ -376,8 +389,7 @@ extension AgentBackgroundKeepAliveManager: @preconcurrency CLLocationManagerDele
             }
         case .restricted, .denied:
             stopLocationUpdates()
-            backgroundActivitySession?.invalidate()
-            backgroundActivitySession = nil
+            endBackgroundActivitySession()
         case .notDetermined:
             break
         @unknown default:

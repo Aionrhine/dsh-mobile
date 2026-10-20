@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -66,6 +67,17 @@ internal fun WorkspaceCodePreviewSheet(
     onOpenExternal: () -> Unit,
     onSave: (() -> Unit)? = null
 ) {
+    WorkspaceFilePreviewSheet(file, onDismiss, onSave) { contentPadding ->
+        WorkspaceCodePreviewContent(file, onOpenExternal, contentPadding)
+    }
+}
+
+@Composable
+internal fun WorkspaceCodePreviewContent(
+    file: AndroidWorkspaceLocalFile,
+    onOpenExternal: () -> Unit,
+    contentPadding: PaddingValues
+) {
     var loadState by remember(file.file) {
         mutableStateOf<CodePreviewLoadState>(CodePreviewLoadState.Loading)
     }
@@ -88,35 +100,33 @@ internal fun WorkspaceCodePreviewSheet(
         }
     }
 
-    WorkspaceFilePreviewSheet(file, onDismiss, onSave) { contentPadding ->
-        Box(Modifier.fillMaxSize().padding(contentPadding)) {
-            when (val state = loadState) {
-                CodePreviewLoadState.Loading -> Box(
-                    Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
+    Box(Modifier.fillMaxSize().padding(contentPadding)) {
+        when (val state = loadState) {
+            CodePreviewLoadState.Loading -> Box(
+                Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        CircularProgressIndicator()
-                        Text(appText("正在准备代码预览…"), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f))
-                    }
+                    CircularProgressIndicator()
+                    Text(appText("正在准备代码预览…"), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f))
                 }
-                is CodePreviewLoadState.Failed -> Box(
-                    Modifier.fillMaxSize().padding(32.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Text(state.message, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f))
-                        TextButton(onClick = onOpenExternal) { Text(appText("使用系统应用打开")) }
-                    }
-                }
-                is CodePreviewLoadState.Ready -> CodePreviewDocument(state.document)
             }
+            is CodePreviewLoadState.Failed -> Box(
+                Modifier.fillMaxSize().padding(32.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(state.message, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f))
+                    TextButton(onClick = onOpenExternal) { Text(appText("使用系统应用打开")) }
+                }
+            }
+            is CodePreviewLoadState.Ready -> CodePreviewDocument(state.document)
         }
     }
 }

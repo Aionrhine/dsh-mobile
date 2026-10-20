@@ -29,6 +29,7 @@ import com.clarklevis.dsh.shared.gateway.GatewayPairingPayloadException
 import com.clarklevis.dsh.shared.gateway.GatewayRuntimeEvent
 import com.clarklevis.dsh.shared.gateway.GatewayRuntimeState
 import com.clarklevis.dsh.shared.gateway.GatewayRequests
+import com.clarklevis.dsh.shared.gateway.GatewayRequestLanePolicy
 import com.clarklevis.dsh.shared.gateway.gatewayAttachmentCacheKey
 import com.clarklevis.dsh.shared.protocol.GatewayDirectoryItem
 import com.clarklevis.dsh.shared.protocol.GatewayFrame
@@ -197,6 +198,10 @@ class AndroidSharedStateHolder(
     var workspaceFileDownloadPurpose: String? by mutableStateOf(null)
         private set
     var conversationFileIsOpening: Boolean by mutableStateOf(false)
+        private set
+    var workspaceFilePreviewProgress: Float by mutableStateOf(0f)
+        private set
+    var workspaceFilePreviewRequest: AndroidWorkspaceFilePreviewRequest? by mutableStateOf(null)
         private set
     var completedWorkspaceFile: AndroidWorkspaceLocalFile? by mutableStateOf(null)
         private set
@@ -1207,17 +1212,26 @@ class AndroidSharedStateHolder(
     fun openWorkspaceFile(entry: GatewayDirectoryItem, purpose: String) {
         val appGraph = graph ?: return
         val sessionId = snapshot.selectedSessionId ?: return
-        if (entry.kind != "file") return
+        if (entry.kind != "file" || workspaceFilePreviewRequest != null || conversationFileIsOpening) return
         completedWorkspaceFile = null
+        val previewsFile = purpose == "preview" && !entry.name.endsWith(".apk", ignoreCase = true)
+        if (previewsFile) {
+            platformError = null
+            conversationFileIsOpening = true
+            workspaceFilePreviewProgress = 0f
+            workspaceFilePreviewRequest = AndroidWorkspaceFilePreviewRequest(sessionId, entry.path, entry.name)
+        }
+        val operationId = UUID.randomUUID().also { workspaceFileOperationId = it }
         appGraph.gatewayScope.launch {
+            if (operationId != workspaceFileOperationId || sessionId != snapshot.selectedSessionId) return@launch
             if (purpose == "preview" && !entry.name.endsWith(".apk", ignoreCase = true)) {
-                beginWorkspaceFileTransition(appGraph, workspaceFileStore.resolve(
+                applyWorkspaceFileTransition(appGraph, workspaceFileStore.resolve(
                     sessionId, entry.path, UUID.randomUUID().toString(),
                     "file-references-v1" in gatewayState.capabilities, useCache = true
                 ))
                 return@launch
             }
-            beginWorkspaceFileTransition(
+            applyWorkspaceFileTransition(
                 appGraph,
                 workspaceFileStore.download(
                     sessionId,
@@ -1233,7 +1247,7 @@ class AndroidSharedStateHolder(
         val appGraph = graph ?: return
         if (gatewayId != gatewayLocalId || sessionId != snapshot.selectedSessionId) return
         // 后台准备预览时忽略重复点击，避免弹出非必要的 download-busy 提示。
-        if (conversationFileIsOpening) return
+        if (workspaceFilePreviewRequest != null || conversationFileIsOpening) return
         if (gatewayState.connection != GatewayConnectionState.CONNECTED) {
             platformError = appText("请先连接 DeepSeek Harness")
             return
@@ -1244,9 +1258,13 @@ class AndroidSharedStateHolder(
         }
         completedWorkspaceFile = null
         conversationFileIsOpening = true
+        platformError = null
+        workspaceFilePreviewProgress = 0f
+        workspaceFilePreviewRequest = AndroidWorkspaceFilePreviewRequest(sessionId, path, path.substringAfterLast('/'))
+        val operationId = UUID.randomUUID().also { workspaceFileOperationId = it }
         appGraph.gatewayScope.launch {
-            if (sessionId != snapshot.selectedSessionId) return@launch
-            beginWorkspaceFileTransition(appGraph, workspaceFileStore.resolve(
+            if (operationId != workspaceFileOperationId || sessionId != snapshot.selectedSessionId) return@launch
+            applyWorkspaceFileTransition(appGraph, workspaceFileStore.resolve(
                 sessionId, path, UUID.randomUUID().toString(),
                 "file-references-v1" in gatewayState.capabilities, useCache = true
             ))
@@ -1256,9 +1274,13 @@ class AndroidSharedStateHolder(
     fun cancelWorkspaceFileDownload() {
         workspaceFileOperationId = UUID.randomUUID()
         conversationFileIsOpening = false
+        workspaceFilePreviewRequest = null
+        workspaceFilePreviewProgress = 0f
+        if (completedWorkspaceFile?.purpose == "preview") completedWorkspaceFile = null
         val appGraph = graph ?: return
         appGraph.gatewayScope.launch {
             applyWorkspaceFileTransition(appGraph, workspaceFileStore.cancel())
+            closeWorkspaceTemporaryFile(remove = true)
         }
     }
 
@@ -2219,24 +2241,14 @@ class AndroidSharedStateHolder(
         }
     }
 
-    private suspend fun beginWorkspaceFileTransition(
-        appGraph: AndroidAppGraph,
-        transition: SharedWorkspaceFileTransition
-    ) {
-        if (transition.request != null && transition.snapshot.lastError == null) {
-            workspaceFileOperationId = UUID.randomUUID()
-        }
-        applyWorkspaceFileTransition(appGraph, transition)
-    }
-
     private suspend fun applyWorkspaceFileTransition(
         appGraph: AndroidAppGraph,
         transition: SharedWorkspaceFileTransition,
         cachedFile: File? = null
     ) {
+        val operationId = workspaceFileOperationId
         val cache = AndroidWorkspacePreviewCache(File(appGraph.application.cacheDir, "workspace-previews"), gatewayLocalId)
         transition.cacheLookup?.let { lookup ->
-            val operationId = workspaceFileOperationId
             val file = withContext(Dispatchers.IO) { cache.find(lookup) }
             if (operationId != workspaceFileOperationId) return
             val next = workspaceFileStore.completeCacheLookup(lookup.requestId, file != null)
@@ -2274,7 +2286,6 @@ class AndroidSharedStateHolder(
                 file, hit.sessionId, hit.path, hit.name, hit.mediaType, "preview"
             ) }
         }
-        val operationId = workspaceFileOperationId
         transition.completion?.let { completion ->
             workspaceFileOutput?.fd?.sync()
             closeWorkspaceTemporaryFile(remove = false)
@@ -2312,6 +2323,16 @@ class AndroidSharedStateHolder(
         }
 
         withContext(Dispatchers.Main.immediate) {
+            if (operationId != workspaceFileOperationId) return@withContext
+            if (workspaceFilePreviewRequest != null) {
+                val active = snapshot.activeDownload
+                if (active?.purpose == "preview" && active.size > 0) {
+                    workspaceFilePreviewProgress = (active.receivedBytes.toFloat() / active.size).coerceIn(0f, 1f)
+                } else if (snapshot.lastError == null && (transition.appendBase64Data != null ||
+                        transition.completion?.purpose == "preview" || transition.cacheHit != null)) {
+                    workspaceFilePreviewProgress = 1f
+                }
+            }
             workspaceFilePath = snapshot.path
             workspaceFileEntries = snapshot.entries
             workspaceFilesAreLoading = snapshot.isLoading
@@ -2335,7 +2356,16 @@ class AndroidSharedStateHolder(
             }
         }
         transition.request?.let { request ->
-            gatewayFollowUps?.submit { appGraph.gatewayRuntime.sendRequest(request) }
+            gatewayFollowUps?.submit {
+                // 取消指令始终发送，快速重开也不能让服务端旧 transfer 残留。
+                if (request.requestType == "file-download-cancel" || operationId == workspaceFileOperationId) {
+                    // 快速重开时，旧的 stat 响应可能仍在途中；解析请求排队，避免误报 request-busy。
+                    val next = if (request.requestType == "file-resolve") {
+                        request.copy(lanePolicy = GatewayRequestLanePolicy.COALESCE_LATEST)
+                    } else request
+                    appGraph.gatewayRuntime.sendRequest(next)
+                }
+            }
         }
     }
 
@@ -2647,6 +2677,13 @@ internal fun resolveWorkspaceSelection(
 }
 
 enum class AttachmentLoadState { IDLE, LOADING, LOADED, FAILED, DEFERRED }
+
+data class AndroidWorkspaceFilePreviewRequest(
+    val sessionId: String,
+    val path: String,
+    val name: String,
+    val id: UUID = UUID.randomUUID()
+)
 
 data class AndroidWorkspaceLocalFile(
     val file: File,

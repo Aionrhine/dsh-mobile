@@ -544,6 +544,8 @@ internal object AndroidStrings {
         "正在从 Mobile Gateway 同步会话内容…" to "Syncing conversation from Mobile Gateway…",
         "正在准备代码预览…" to "Preparing code preview…",
         "正在创建文件夹…" to "Creating folder…",
+        "正在加载中" to "Loading…",
+        "文件加载失败" to "Unable to load file",
         "正在加载历史记录" to "Loading history",
         "正在加载历史记录 · %1\$s/%2\$s" to "Loading history · %1\$s/%2\$s",
         "正在加载图片…" to "Loading image…",

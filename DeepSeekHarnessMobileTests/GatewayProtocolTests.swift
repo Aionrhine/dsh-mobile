@@ -7855,3 +7855,238 @@ final class ConversationFileReferencesTests: XCTestCase {
         XCTAssertTrue(html.contains("<pre><code>report.pdf"))
     }
 }
+
+
+@MainActor
+final class WorkspaceFilePreviewPresentationTests: XCTestCase {
+    private let digest = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+    private let item = GatewayDirectoryItem(name: "a.txt", path: "a.txt", kind: "file", bytes: 5)
+
+    func testRequestPresentsImmediatelyAndKeepsIdentityThroughDownload() async throws {
+        let store = await makeStore()
+        defer { store.cancelWorkspaceFileDownload() }
+        store.openWorkspaceFile(item, purpose: "preview")
+        let request = try XCTUnwrap(store.workspaceFilePreviewRequest)
+        XCTAssertTrue(store.conversationFileIsOpening)
+        XCTAssertEqual(store.workspaceFilePreviewProgress, 0)
+        XCTAssertNil(store.completedWorkspaceFile)
+        try opened(store, requestID: request.id.uuidString)
+        try deliver(store, #"{"kind":"file-download-chunk","transferId":"t1","offset":0,"data":"aGVs","eof":false}"#)
+        XCTAssertEqual(store.workspaceFileDownloadProgress, 0.6)
+        XCTAssertEqual(store.workspaceFilePreviewProgress, 0.6)
+        XCTAssertEqual(store.workspaceFilePreviewRequest?.id, request.id)
+        XCTAssertNil(store.completedWorkspaceFile)
+        try deliver(store, """
+            {"kind":"file-download-chunk","transferId":"t1","offset":3,"data":"bG8=","eof":true,"sha256":"\(digest)"}
+            """)
+        try await waitForCompletion(store)
+        XCTAssertEqual(store.workspaceFilePreviewRequest?.id, request.id)
+        XCTAssertFalse(store.conversationFileIsOpening)
+        XCTAssertEqual(store.workspaceFilePreviewProgress, 1)
+        XCTAssertEqual(try String(contentsOf: XCTUnwrap(store.completedWorkspaceFile).url, encoding: .utf8), "hello")
+    }
+
+    func testClosingMidDownloadIgnoresLateChunkAndAllowsReopening() async throws {
+        let store = await makeStore()
+        defer { store.cancelWorkspaceFileDownload() }
+        store.openWorkspaceFile(item, purpose: "preview")
+        let request = try XCTUnwrap(store.workspaceFilePreviewRequest)
+        try opened(store, requestID: request.id.uuidString)
+        try deliver(store, #"{"kind":"file-download-chunk","transferId":"t1","offset":0,"data":"aGVs","eof":false}"#)
+        store.cancelWorkspaceFileDownload()
+        XCTAssertNil(store.workspaceFilePreviewRequest)
+        XCTAssertEqual(store.workspaceFilePreviewProgress, 0)
+        XCTAssertNil(store.workspaceFileDownloadProgress)
+        XCTAssertFalse(store.conversationFileIsOpening)
+        try deliver(store, """
+            {"kind":"file-download-chunk","transferId":"t1","offset":3,"data":"bG8=","eof":true,"sha256":"\(digest)"}
+            """)
+        XCTAssertNil(store.completedWorkspaceFile)
+        store.openWorkspaceFile(item, purpose: "preview")
+        let reopened = try XCTUnwrap(store.workspaceFilePreviewRequest)
+        XCTAssertNotEqual(request.id, reopened.id)
+        try opened(store, requestID: reopened.id.uuidString)
+        try deliver(store, """
+            {"kind":"file-download-chunk","transferId":"t1","offset":0,"data":"aGVsbG8=","eof":true,"sha256":"\(digest)"}
+            """)
+        try await waitForCompletion(store)
+        store.cancelWorkspaceFileDownload()
+        XCTAssertNil(store.workspaceFilePreviewRequest)
+        XCTAssertNil(store.completedWorkspaceFile)
+    }
+
+    func testClosingDuringCacheLookupDoesNotReopenAndNextTapUsesCache() async throws {
+        let store = await makeStore()
+        defer { store.cancelWorkspaceFileDownload() }
+        try deliver(store, #"{"kind":"hello","protocol":3,"capabilities":["file-downloads","file-references-v1"]}"#)
+        let source = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try Data("hello".utf8).write(to: source)
+        defer { try? FileManager.default.removeItem(at: source) }
+        let cache = WorkspacePreviewCache(gatewayID: store.gatewayLocalID)
+        let entry = WorkspacePreviewCacheEntry(sessionID: "preview-session", path: "a.txt", name: "a.txt",
+                                              size: 5, modifiedAt: 10.5, sha256: digest)
+        let cachedURL = try XCTUnwrap(cache.store(source, entry: entry))
+        defer { try? FileManager.default.removeItem(at: cachedURL.deletingLastPathComponent()) }
+        store.openWorkspaceFile(item, purpose: "preview")
+        let first = try XCTUnwrap(store.workspaceFilePreviewRequest)
+        try resolved(store, requestID: first.id.uuidString)
+        store.cancelWorkspaceFileDownload()
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertNil(store.workspaceFilePreviewRequest)
+        XCTAssertNil(store.completedWorkspaceFile)
+        store.openWorkspaceFile(item, purpose: "preview")
+        let second = try XCTUnwrap(store.workspaceFilePreviewRequest)
+        try resolved(store, requestID: second.id.uuidString)
+        try await waitForCompletion(store)
+        XCTAssertEqual(store.completedWorkspaceFile?.url, cachedURL)
+        XCTAssertEqual(store.workspaceFilePreviewRequest?.id, second.id)
+    }
+
+    func testLoadingSheetStaysPresentedWhenContentBecomesReady() async throws {
+        let store = await makeStore()
+        let host = UIHostingController(rootView: WorkspacePreviewPresentationHarness(store: store))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer {
+            store.cancelWorkspaceFileDownload()
+            window.isHidden = true
+            window.rootViewController = nil
+            previous?.makeKeyAndVisible()
+        }
+        host.view.layoutIfNeeded()
+        store.openWorkspaceFile(item, purpose: "preview")
+        let request = try XCTUnwrap(store.workspaceFilePreviewRequest)
+        for _ in 0..<100 {
+            if host.presentedViewController != nil { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let sheet = try XCTUnwrap(host.presentedViewController)
+        try await Task.sleep(for: .milliseconds(450))
+        XCTAssertTrue(store.conversationFileIsOpening, "弹窗展示不能触发父页面消失后误取消")
+        XCTAssertNil(store.completedWorkspaceFile)
+        for _ in 0..<100 {
+            if logoPlayer(in: sheet.view) != nil { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let player = try XCTUnwrap(logoPlayer(in: sheet.view))
+        XCTAssertEqual(player.animationImages?.count, 48)
+        XCTAssertEqual(player.animationDuration, 2.4, accuracy: 0.001)
+        XCTAssertTrue(player.isAnimating)
+        let loading = XCTAttachment(image: UIGraphicsImageRenderer(size: window.bounds.size).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        })
+        loading.name = "文件预览：先显示加载面板"
+        loading.lifetime = .keepAlways
+        add(loading)
+        try opened(store, requestID: request.id.uuidString)
+        try deliver(store, """
+            {"kind":"file-download-chunk","transferId":"t1","offset":0,"data":"aGVsbG8=","eof":true,"sha256":"\(digest)"}
+            """)
+        try await waitForCompletion(store)
+        try await Task.sleep(for: .milliseconds(250))
+        XCTAssertTrue(host.presentedViewController === sheet, "加载完成应更新内容，不能重新弹出面板")
+        XCTAssertFalse(player.isAnimating, "预览就绪后应停止 Logo 动画")
+        XCTAssertEqual(store.workspaceFilePreviewRequest?.id, request.id)
+        store.cancelWorkspaceFileDownload()
+        XCTAssertNil(store.workspaceFilePreviewRequest)
+        for _ in 0..<100 {
+            if host.presentedViewController == nil { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertNil(host.presentedViewController)
+    }
+
+    func testFailedDownloadEndsLoadingAndSheetRemainsClosable() async throws {
+        let store = await makeStore()
+        defer { store.cancelWorkspaceFileDownload() }
+        store.openWorkspaceFile(item, purpose: "preview")
+        let request = try XCTUnwrap(store.workspaceFilePreviewRequest)
+        try deliver(store, """
+            {"kind":"error","requestType":"file-download-open","requestId":"\(request.id.uuidString)","message":"missing-file"}
+            """)
+        XCTAssertFalse(store.conversationFileIsOpening)
+        XCTAssertNotNil(store.lastError)
+        XCTAssertNotNil(store.workspaceFilePreviewRequest)
+        XCTAssertNil(store.completedWorkspaceFile)
+    }
+
+    func testLogoApngKeepsAlphaTimingAndStopsWhenPlaybackDisabled() async throws {
+        let animation = try XCTUnwrap(WorkspaceLoadingLogoAnimation.shared)
+        XCTAssertEqual(animation.frames.count, 48)
+        XCTAssertEqual(animation.duration, 2.4, accuracy: 0.001)
+        XCTAssertEqual(animation.frames.first?.cgImage?.width, 192)
+        XCTAssertEqual(animation.frames.first?.cgImage?.height, 192)
+        XCTAssertNotEqual(animation.frames[0].pngData(), animation.frames[12].pngData())
+        let host = UIHostingController(rootView: WorkspaceLoadingLogoPlayer(animation: animation, plays: false))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil; previous?.makeKeyAndVisible() }
+        host.view.layoutIfNeeded()
+        for _ in 0..<100 {
+            if logoPlayer(in: host.view) != nil { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let player = try XCTUnwrap(logoPlayer(in: host.view))
+        XCTAssertFalse(player.isAnimating)
+    }
+
+    private func logoPlayer(in view: UIView) -> UIImageView? {
+        if let image = view as? UIImageView, image.accessibilityIdentifier == "workspace-loading-logo-player" {
+            return image
+        }
+        return view.subviews.lazy.compactMap { self.logoPlayer(in: $0) }.first
+    }
+
+    private func makeStore() async -> AppStore {
+        let session = SessionSummary(id: "preview-session", title: "Preview", lastActivity: Date(),
+                                     isRunning: false, hasUnread: false)
+        let store = AppStore(preferences: AppPreferencesSpy(endpoint: "", selectedWorkspaceID: nil, sessions: [session]),
+                             gatewayLocalID: "preview-test-\(UUID().uuidString)")
+        _ = await store.prepareConversation(for: session)
+        return store
+    }
+
+    private func deliver(_ store: AppStore, _ json: String) throws {
+        store.gateway.onFrame?(try GatewayWireDecoder.decode(Data(json.utf8)))
+    }
+
+    private func opened(_ store: AppStore, requestID: String) throws {
+        try deliver(store, """
+            {"kind":"file-download-opened","requestId":"\(requestID)","transferId":"t1","sessionId":"preview-session","path":"a.txt","name":"a.txt","mediaType":"text/plain","size":5,"chunkBytes":100}
+            """)
+    }
+
+    private func resolved(_ store: AppStore, requestID: String) throws {
+        try deliver(store, """
+            {"kind":"file-resolved","requestId":"\(requestID)","sessionId":"preview-session","path":"a.txt","name":"a.txt","mediaType":"text/plain","size":5,"modifiedAt":10.5}
+            """)
+    }
+
+    private func waitForCompletion(_ store: AppStore) async throws {
+        for _ in 0..<100 {
+            if store.completedWorkspaceFile != nil { return }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTFail("文件应在原有弹窗中完成预览：\(store.lastError ?? "无错误")")
+    }
+}
+
+private struct WorkspacePreviewPresentationHarness: View {
+    @ObservedObject var store: AppStore
+
+    var body: some View {
+        Color.white.sheet(item: Binding(
+            get: { store.workspaceFilePreviewRequest },
+            set: { if $0 == nil { store.cancelWorkspaceFileDownload() } }
+        )) { request in
+            WorkspaceFilePreviewLoadingSheet(store: store, request: request)
+                .environment(\.scenePhase, .active)
+        }
+    }
+}

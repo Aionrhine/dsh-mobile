@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -53,8 +54,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
@@ -64,6 +70,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.Velocity
 import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.android.AndroidSharedStateHolder
 import com.clarklevis.dsh.android.R
@@ -205,10 +212,28 @@ private fun MenuVectorIcon(resource: Int, tint: Color) {
 @Composable
 internal fun WorkspaceDirectoryBrowserSheet(
     stateHolder: AndroidSharedStateHolder,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    contentModifier: Modifier = Modifier
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    // 高度和顶部留白只依赖窗口；拖动柄与系统底部区域均包含在这个固定高度内。
+    val windowHeight = adaptiveWindowSize().height
+    val statusBarHeight = with(LocalDensity.current) { WindowInsets.statusBars.getTop(this).toDp() }
+    val sheetHeight = minOf(windowHeight * 0.94f, (windowHeight - statusBarHeight).coerceAtLeast(1.dp))
     val listState = rememberLazyListState()
+    val listBoundary = remember(listState) {
+        object : NestedScrollConnection {
+            // 列表到底后消耗向上的余量，阻止父弹窗继续接管上滑；向下仍交给原生关闭手势。
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset =
+                Offset(0f, available.y.coerceAtMost(0f))
+
+            override suspend fun onPreFling(available: Velocity): Velocity =
+                if (!listState.canScrollForward) Velocity(0f, available.y.coerceAtMost(0f)) else Velocity.Zero
+
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity =
+                Velocity(0f, available.y.coerceAtMost(0f))
+        }
+    }
     val dark = isSystemInDarkTheme()
     val sheetBackground = if (dark) Color(0xFF171A20) else Color(0xFFF3F3F8)
     val cardBackground = if (dark) Color(0xFF22262D) else Color.White
@@ -250,22 +275,24 @@ internal fun WorkspaceDirectoryBrowserSheet(
         sheetState = sheetState,
         containerColor = sheetBackground,
         contentColor = foreground,
-        dragHandle = {
+        dragHandle = null,
+        // 自行处理稳定的系统区域，避免 M3 按 sheet offset 消费顶部 Insets 后改变高度。
+        contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
+        modifier = Modifier.adaptiveSheetBounds().testTag("directory-browser-sheet")
+    ) {
+        Column(
+            contentModifier
+                .fillMaxWidth()
+                .height(sheetHeight)
+                .navigationBarsPadding()
+                .imePadding()
+        ) {
             BottomSheetDefaults.DragHandle(
+                modifier = Modifier.align(Alignment.CenterHorizontally),
                 width = 38.dp,
                 height = 5.dp,
                 color = foreground.copy(alpha = 0.30f)
             )
-        },
-        modifier = Modifier.adaptiveSheetBounds().testTag("directory-browser-sheet")
-    ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.94f)
-                .navigationBarsPadding()
-                .imePadding()
-        ) {
             DirectoryBrowserHeader(
                 enabled = stateHolder.directoryPath != null &&
                     !stateHolder.directoryIsLoading &&
@@ -315,6 +342,7 @@ internal fun WorkspaceDirectoryBrowserSheet(
                     }
                 } else {
                     LazyColumn(
+                        modifier = Modifier.nestedScroll(listBoundary).testTag("directory-browser-list"),
                         state = listState,
                         userScrollEnabled = !stateHolder.directoryIsLoading &&
                             !stateHolder.directoryCreationIsLoading,

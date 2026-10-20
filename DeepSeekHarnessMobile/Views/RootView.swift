@@ -995,9 +995,10 @@ private struct WorkspaceFilesSheet: View {
         .onDisappear {
             if store.workspaceFileDownloadProgress != nil { store.cancelWorkspaceFileDownload() }
         }
-        .sheet(item: previewBinding) { file in
-            WorkspaceFilePreview(file: file, gatewayID: store.gatewayLocalID) {
-                if file.sessionID == sessionID { downloadedPaths.insert(file.remotePath) }
+        .sheet(item: previewBinding) { request in
+            WorkspaceFilePreviewLoadingSheet(store: store, request: request) {
+                if request.sessionID == sessionID,
+                   let file = store.completedWorkspaceFile { downloadedPaths.insert(file.remotePath) }
             }
         }
         .sheet(item: exportBinding) { file in
@@ -1030,14 +1031,14 @@ private struct WorkspaceFilesSheet: View {
         .background(.thinMaterial)
     }
 
-    private var previewBinding: Binding<WorkspaceLocalFile?> {
+    private var previewBinding: Binding<WorkspaceFilePreviewRequest?> {
         Binding(
             get: {
-                guard let file = store.completedWorkspaceFile,
-                      file.purpose == "preview" else { return nil }
-                return file
+                guard !store.conversationFilePreviewRequested,
+                      store.workspaceFilePreviewRequest?.sessionID == sessionID else { return nil }
+                return store.workspaceFilePreviewRequest
             },
-            set: { if $0 == nil { store.completedWorkspaceFile = nil } }
+            set: { if $0 == nil { store.cancelWorkspaceFileDownload() } }
         )
     }
 
@@ -1152,6 +1153,56 @@ private struct WorkspaceFileRow: View {
 
 }
 
+/// 同一个 Sheet 从加载切换为预览；关闭即停止当前文件请求。
+struct WorkspaceFilePreviewLoadingSheet: View {
+    @ObservedObject var store: AppStore
+    let request: WorkspaceFilePreviewRequest
+    var onSaved: (() -> Void)? = nil
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        Group {
+            if let file = store.completedWorkspaceFile,
+               file.purpose == "preview", file.sessionID == request.sessionID {
+                WorkspaceFilePreview(file: file, gatewayID: store.gatewayLocalID, onSaved: onSaved)
+            } else {
+                VStack(spacing: 0) {
+                    WorkspaceFilePreviewHeader(fileName: request.name, onClose: close, onSave: nil)
+                    VStack(spacing: 12) {
+                        if store.conversationFileIsOpening {
+                            Text("正在加载中")
+                            WorkspaceLoadingLogo()
+                            Text(store.workspaceFilePreviewProgress, format: .percent.precision(.fractionLength(0)))
+                                .appFont(.caption.monospacedDigit())
+                                .accessibilityIdentifier("workspace-preview-progress")
+                        } else {
+                            Text(store.lastError ?? String(localized: "文件加载失败"))
+                                .multilineTextAlignment(.center)
+                        }
+                    }
+                    .foregroundStyle(.secondary)
+                    .padding(24)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .accessibilityIdentifier("workspace-preview-loading")
+                }
+                .background(Color(uiColor: .systemBackground))
+            }
+        }
+        .presentationDetents([.large])
+        .presentationDragIndicator(.hidden)
+        .onDisappear {
+            // 保存面板等子页面不结束外层预览；关闭按钮和交互式关闭均由绑定取消请求。
+            if store.workspaceFilePreviewRequest?.id == request.id,
+               store.conversationFileIsOpening { store.cancelWorkspaceFileDownload() }
+        }
+    }
+
+    private func close() {
+        store.cancelWorkspaceFileDownload()
+        dismiss()
+    }
+}
+
 /// 聊天和工作区共用的预览容器，Header 始终位于可滚动内容上方。
 struct WorkspaceFilePreview: View {
     let file: WorkspaceLocalFile
@@ -1215,7 +1266,7 @@ struct WorkspaceFilePreview: View {
 struct WorkspaceFilePreviewHeader: View {
     let fileName: String
     let onClose: () -> Void
-    let onSave: () -> Void
+    let onSave: (() -> Void)?
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
@@ -1238,7 +1289,8 @@ struct WorkspaceFilePreviewHeader: View {
                 .accessibilityIdentifier("workspace-preview-title")
 
             Menu {
-                Button("保存", systemImage: "square.and.arrow.down", action: onSave)
+                Button("保存", systemImage: "square.and.arrow.down") { onSave?() }
+                    .disabled(onSave == nil)
                     .accessibilityIdentifier("workspace-preview-save")
             } label: {
                 Image(systemName: "ellipsis")

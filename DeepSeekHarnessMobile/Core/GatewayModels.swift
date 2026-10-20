@@ -769,6 +769,14 @@ struct GatewayDirectoryItem: Codable, Hashable, Sendable, Identifiable {
     }
 }
 
+/// 弹窗生命周期独立于下载结果，加载完成不会重新呈现 Sheet。
+struct WorkspaceFilePreviewRequest: Identifiable, Equatable {
+    let id = UUID()
+    let sessionID: String
+    let path: String
+    var name: String { (path as NSString).lastPathComponent }
+}
+
 struct WorkspaceLocalFile: Identifiable, Equatable {
     var url: URL
     var sessionID: String

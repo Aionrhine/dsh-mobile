@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AF19C0000000000000000001 /* WorkspaceLoadingLogo.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF19C0000000000000000002 /* WorkspaceLoadingLogo.swift */; };
         AF18C0000000000000000001 /* WorkspacePreviewCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF18C0000000000000000002 /* WorkspacePreviewCache.swift */; };
         AF18C0000000000000000003 /* WorkspacePreviewCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF18C0000000000000000004 /* WorkspacePreviewCacheTests.swift */; };
 		AF17C0000000000000000001 /* FileTypeIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF17C0000000000000000002 /* FileTypeIcon.swift */; };
@@ -105,6 +106,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		AF19C0000000000000000002 /* WorkspaceLoadingLogo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceLoadingLogo.swift; sourceTree = "<group>"; };
         AF18C0000000000000000002 /* WorkspacePreviewCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspacePreviewCache.swift; sourceTree = "<group>"; };
         AF18C0000000000000000004 /* WorkspacePreviewCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspacePreviewCacheTests.swift; sourceTree = "<group>"; };
 		AF17C0000000000000000002 /* FileTypeIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileTypeIcon.swift; sourceTree = "<group>"; };
@@ -332,6 +334,7 @@
 				8B77DEC008C0209D814CD7BE /* VoiceRipplePanel.swift */,
 				FCF581253EBCFEB43865AB51 /* Glass.swift */,
 				AF17C0000000000000000002 /* FileTypeIcon.swift */,
+				AF19C0000000000000000002 /* WorkspaceLoadingLogo.swift */,
 				A0C0FFEE0000000000000002 /* ConversationViewport.swift */,
 				B0C0FFEE0000000000000002 /* HarnessAnimatedBackground.swift */,
 			);
@@ -644,6 +647,7 @@
 				991D4FD90B81F84A0B8B79AD /* Theme.swift in Sources */,
 				E20191A4C7B1C0A8FF57CAC1 /* Glass.swift in Sources */,
 				AF17C0000000000000000001 /* FileTypeIcon.swift in Sources */,
+				AF19C0000000000000000001 /* WorkspaceLoadingLogo.swift in Sources */,
 				A0C0FFEE0000000000000001 /* ConversationViewport.swift in Sources */,
 				B0C0FFEE0000000000000001 /* HarnessAnimatedBackground.swift in Sources */,
 				605DCE79952E970820A95606 /* ConversationView.swift in Sources */,
@@ -908,7 +912,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 28;
+				CURRENT_PROJECT_VERSION = 29;
 				DEVELOPMENT_TEAM = "$(LOCAL_DEVELOPMENT_TEAM)";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AgentLiveActivityWidget/Info.plist;
@@ -918,7 +922,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.7.7;
+				MARKETING_VERSION = 1.7.8;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(LOCAL_BUNDLE_IDENTIFIER).AgentLiveActivityWidget";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -935,7 +939,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 28;
+				CURRENT_PROJECT_VERSION = 29;
 				DEVELOPMENT_TEAM = T58RY5HUA7;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AgentLiveActivityWidget/Info.plist;
@@ -945,7 +949,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.7.7;
+				MARKETING_VERSION = 1.7.8;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lichaofan.dshmobile.AgentLiveActivityWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;

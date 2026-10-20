@@ -229,6 +229,8 @@ private fun WhaleParticleField(time: () -> Float, isStatic: Boolean, largeWindow
         val wideProgress = ((size.width / size.height - 0.65f) / 0.75f).coerceIn(0f, 1f)
         val square = if (largeWindow) minOf(max(size.width * 1.15f, size.height * 0.48f), size.height * 1.12f) * 0.82f
             else max(size.width * 1.15f, size.height * 0.48f)
+        // 与 iOS 一致，鲸鱼轮廓以中心为基准横向舒展 8%。
+        val whaleWidth = square * 1.08f
         val center = if (largeWindow) Offset(size.width * (0.55f + 0.05f * wideProgress), size.height * (0.34f + 0.12f * wideProgress))
             else Offset(size.width * 0.55f, size.height * 0.34f)
         // 加密采样后同步缩小点，维持原有留白和整体亮度。
@@ -258,7 +260,7 @@ private fun WhaleParticleField(time: () -> Float, isStatic: Boolean, largeWindow
             val tailWave = sin(t * 1.10f - particle.x * 7f) * tailAmplitude * tail
             val shimmer = 0.90f + 0.10f * sin(t * 1.5f + particle.x * 15f + particle.y * 9f)
             val point = Offset(
-                center.x + (particle.x - 0.5f) * square + driftX + staggerX,
+                center.x + (particle.x - 0.5f) * whaleWidth + driftX + staggerX,
                 center.y + (particle.y - 0.5f) * square + driftY + staggerY + tailWave
             )
             val dot = baseDot * (0.72f + particle.luminance * 0.58f)

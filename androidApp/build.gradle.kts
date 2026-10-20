@@ -11,8 +11,8 @@ android {
         applicationId = "com.clarklevis.dsh.android"
         minSdk = 24
         targetSdk = 36
-        versionCode = 28
-        versionName = "1.7.7"
+        versionCode = 29
+        versionName = "1.7.8"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

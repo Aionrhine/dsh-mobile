@@ -3,6 +3,16 @@ package com.clarklevis.dsh.android
 import android.app.Application
 import android.graphics.Bitmap
 import android.os.Looper
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.createComposeRule
+import com.clarklevis.dsh.android.ui.WorkspaceFilePreviewHost
+import com.clarklevis.dsh.android.ui.decodeWorkspaceLoadingLogo
+import androidx.compose.ui.graphics.toPixelMap
+import com.clarklevis.dsh.shared.protocol.GatewayDirectoryItem
+import java.util.UUID
+import java.util.Locale
+import org.junit.Rule
 import android.util.Base64
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -40,6 +50,166 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class AndroidAppGraphFakeIntegrationDeviceTest {
+    @get:Rule val compose = createComposeRule()
+
+    @Test
+    fun previewAppearsBeforeDownloadAndBecomesCodeWithoutReopeningSheet() = runBlocking {
+        withFilePreview { holder, transport ->
+            onMain { holder.openWorkspaceFile(fileEntry(), "preview") }
+            val request = requireNotNull(holder.workspaceFilePreviewRequest)
+            compose.onNodeWithText("正在加载中").assertIsDisplayed()
+            compose.onNodeWithText("0%").assertIsDisplayed()
+            compose.onNodeWithTag("workspace-loading-logo").assertIsDisplayed()
+            compose.onNodeWithTag("workspace-code-document").assertDoesNotExist()
+            val loadingBounds = compose.onNodeWithTag("workspace-file-preview-sheet").fetchSemanticsNode().boundsInRoot
+            completePreviewDownload(transport)
+            compose.waitUntil(10_000) { compose.onAllNodesWithTag("workspace-code-document").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("hello").assertIsDisplayed()
+            assertEquals(request.id, holder.workspaceFilePreviewRequest?.id)
+            assertEquals(loadingBounds, compose.onNodeWithTag("workspace-file-preview-sheet").fetchSemanticsNode().boundsInRoot)
+            compose.onNodeWithTag("workspace-preview-loading").assertDoesNotExist()
+            compose.onNodeWithContentDescription("关闭文件预览").performClick()
+            compose.onNodeWithTag("workspace-file-preview-sheet").assertDoesNotExist()
+            assertTrue(holder.workspaceFilePreviewRequest == null && holder.completedWorkspaceFile == null)
+            assertEquals(0f, holder.workspaceFilePreviewProgress)
+        }
+    }
+
+    @Test
+    fun closingDuringResolveIgnoresLateResponsesAndAllowsReopen() = runBlocking {
+        withFilePreview { holder, transport ->
+            onMain { holder.openConversationFile(holder.gatewayLocalId, "android-demo", "a.txt") }
+            waitUntil("transport.payloadsOfType(\"file-resolve\").isNotEmpty()") { transport.payloadsOfType("file-resolve").isNotEmpty() }
+            val firstId = transport.payloadsOfType("file-resolve").last().getValue("requestId").jsonPrimitive.content
+            compose.onNodeWithText("正在加载中").assertIsDisplayed()
+            compose.onNodeWithContentDescription("关闭文件预览").performClick()
+            compose.onNodeWithTag("workspace-file-preview-sheet").assertDoesNotExist()
+            assertTrue(transport.payloadsOfType("file-download-open").isEmpty())
+            onMain { holder.openConversationFile(holder.gatewayLocalId, "android-demo", "a.txt") }
+            compose.onNodeWithText("0%").assertIsDisplayed()
+            transport.receive(resolvedFile(firstId))
+            waitUntil("transport.payloadsOfType(\"file-resolve\").size == 2") { transport.payloadsOfType("file-resolve").size == 2 }
+            assertTrue(firstId != transport.payloadsOfType("file-resolve").last().getValue("requestId").jsonPrimitive.content)
+            completePreviewDownload(transport)
+            compose.waitUntil(10_000) { compose.onAllNodesWithTag("workspace-code-document").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("hello").assertIsDisplayed()
+        }
+    }
+
+    @Test
+    fun closingDuringTransferCancelsReadsAndCacheHitStillUsesSamePreviewRequest() = runBlocking {
+        withFilePreview { holder, transport ->
+            onMain { holder.openWorkspaceFile(fileEntry(), "preview") }
+            waitUntil("transport.payloadsOfType(\"file-resolve\").isNotEmpty()") { transport.payloadsOfType("file-resolve").isNotEmpty() }
+            val requestId = transport.payloadsOfType("file-resolve").last().getValue("requestId").jsonPrimitive.content
+            transport.receive(resolvedFile(requestId))
+            waitUntil("transport.payloadsOfType(\"file-download-open\").isNotEmpty()") { transport.payloadsOfType("file-download-open").isNotEmpty() }
+            transport.receive(openedFile("$requestId-download", "cancel-transfer"))
+            waitUntil("transport.payloadsOfType(\"file-download-read\").isNotEmpty()") { transport.payloadsOfType("file-download-read").isNotEmpty() }
+            transport.receive("""{"kind":"file-download-chunk","transferId":"cancel-transfer","offset":0,"data":"aGVs","eof":false}""")
+            waitUntil("holder.workspaceFileDownloadProgress == 0.6f") { holder.workspaceFileDownloadProgress == 0.6f }
+            compose.onNodeWithText("60%").assertIsDisplayed()
+            assertEquals(0.6f, holder.workspaceFilePreviewProgress)
+            compose.onNodeWithContentDescription("关闭文件预览").performClick()
+            compose.onNodeWithTag("workspace-file-preview-sheet").assertDoesNotExist()
+            waitUntil("transport.payloadsOfType(\"file-download-cancel\").isNotEmpty()") { transport.payloadsOfType("file-download-cancel").isNotEmpty() }
+            val reads = transport.payloadsOfType("file-download-read").size
+            transport.receive("""{"kind":"file-download-chunk","transferId":"cancel-transfer","offset":3,"data":"bG8=","eof":true,"sha256":"$HELLO_DIGEST"}""")
+            compose.waitForIdle()
+            assertTrue(holder.completedWorkspaceFile == null)
+            assertEquals(reads, transport.payloadsOfType("file-download-read").size)
+            compose.onNodeWithTag("workspace-file-preview-sheet").assertDoesNotExist()
+            onMain { holder.openWorkspaceFile(fileEntry(), "preview") }
+            waitUntil("transport.payloadsOfType(\"file-resolve\").size == 2") { transport.payloadsOfType("file-resolve").size == 2 }
+            completePreviewDownload(transport)
+            waitUntil("holder.completedWorkspaceFile != null") { holder.completedWorkspaceFile != null }
+            compose.onNodeWithContentDescription("关闭文件预览").performClick()
+            compose.onNodeWithTag("workspace-file-preview-sheet").assertDoesNotExist()
+            val opens = transport.payloadsOfType("file-download-open").size
+            val resolves = transport.payloadsOfType("file-resolve").size
+            onMain { holder.openWorkspaceFile(fileEntry(), "preview") }
+            val cachedRequest = requireNotNull(holder.workspaceFilePreviewRequest)
+            compose.onNodeWithText("正在加载中").assertIsDisplayed()
+            waitUntil("transport.payloadsOfType(\"file-resolve\").size > resolves") { transport.payloadsOfType("file-resolve").size > resolves }
+            transport.receive(resolvedFile(transport.payloadsOfType("file-resolve").last().getValue("requestId").jsonPrimitive.content))
+            waitUntil("holder.completedWorkspaceFile != null") { holder.completedWorkspaceFile != null }
+            compose.waitUntil(10_000) { compose.onAllNodesWithTag("workspace-code-document").fetchSemanticsNodes().isNotEmpty() }
+            assertEquals(opens, transport.payloadsOfType("file-download-open").size)
+            assertEquals(cachedRequest.id, holder.workspaceFilePreviewRequest?.id)
+            assertEquals(1f, holder.workspaceFilePreviewProgress)
+        }
+    }
+
+    @Test
+    fun logoApngPreservesFramesTransparencyAndLoopTiming() {
+        val resources = InstrumentationRegistry.getInstrumentation().targetContext.resources
+        val data = resources.openRawResource(R.raw.whaleness_loading).use { it.readBytes() }
+        val animation = decodeWorkspaceLoadingLogo(data)
+        assertEquals(48, animation.frames.size)
+        assertEquals(50, animation.frameMilliseconds)
+        assertTrue(animation.frames.all { it.width == 192 && it.height == 192 })
+        assertTrue(animation.frames.all { it.toPixelMap()[0, 0].alpha == 0f })
+        val first = IntArray(192 * 192).also { animation.frames[0].readPixels(it) }
+        val later = IntArray(192 * 192).also { animation.frames[12].readPixels(it) }
+        assertTrue(!first.contentEquals(later))
+        val corrupted = data.copyOf().also { it[100] = (it[100].toInt() xor 1).toByte() }
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) { decodeWorkspaceLoadingLogo(corrupted) }
+    }
+
+    private suspend fun withFilePreview(block: suspend (AndroidSharedStateHolder, FakeTransport) -> Unit) {
+        val originalLocale = Locale.getDefault()
+        Locale.setDefault(Locale.SIMPLIFIED_CHINESE)
+        val transport = FakeTransport()
+        val graph = AndroidAppGraph(
+            application = ApplicationProvider.getApplicationContext<Application>(),
+            transportOverride = transport, preferencesOverride = FakePreferences(),
+            credentialStoreOverride = FakeCredentials, attachmentCacheOverride = FakeCache(),
+            networkMonitorOverride = FakeNetwork, clockOverride = FakeClock,
+            gatewayLocalId = "preview-test-${UUID.randomUUID()}"
+        )
+        val holder = graph.stateHolder
+        try {
+            waitUntil("transport.specs.isNotEmpty()") { transport.specs.isNotEmpty() }
+            transport.open()
+            transport.receive("""{"kind":"hello","authenticated":true,"protocol":3,"capabilities":["file-downloads","file-references-v1"]}""")
+            waitUntil("holder.gatewayState.connection.name == \"CONNECTED\"") { holder.gatewayState.connection.name == "CONNECTED" }
+            onMain { holder.loadFixture() }
+            waitUntil("holder.snapshot.selectedSessionId == \"android-demo\"") { holder.snapshot.selectedSessionId == "android-demo" }
+            compose.setContent { MaterialTheme { WorkspaceFilePreviewHost(holder) } }
+            try {
+                block(holder, transport)
+            } catch (failure: Throwable) {
+                throw AssertionError("预览状态：${holder.workspaceFilePreviewRequest}, opening=${holder.conversationFileIsOpening}, progress=${holder.workspaceFileDownloadProgress}, error=${holder.platformError}; 请求：${transport.sentTypes}", failure)
+            }
+        } finally {
+            onMain { holder.close() }
+            Locale.setDefault(originalLocale)
+        }
+    }
+
+    private fun fileEntry() = GatewayDirectoryItem(name = "a.txt", path = "a.txt", kind = "file", bytes = 5)
+    private fun resolvedFile(requestId: String) =
+        """{"kind":"file-resolved","requestId":"$requestId","sessionId":"android-demo","path":"a.txt","name":"a.txt","mediaType":"text/plain","size":5,"modifiedAt":10.5}"""
+    private fun openedFile(requestId: String, transferId: String) =
+        """{"kind":"file-download-opened","requestId":"$requestId","transferId":"$transferId","sessionId":"android-demo","path":"a.txt","name":"a.txt","mediaType":"text/plain","size":5,"chunkBytes":100}"""
+
+    private suspend fun completePreviewDownload(transport: FakeTransport) {
+        waitUntil("transport.payloadsOfType(\"file-resolve\").isNotEmpty()") { transport.payloadsOfType("file-resolve").isNotEmpty() }
+        val requestId = transport.payloadsOfType("file-resolve").last().getValue("requestId").jsonPrimitive.content
+        transport.receive(resolvedFile(requestId))
+        waitUntil("transport.payloadsOfType(\"file-download-open\").any { it.getValue(\"requestId\").jsonPrimitive.content == \"$requestId-download\" }") { transport.payloadsOfType("file-download-open").any { it.getValue("requestId").jsonPrimitive.content == "$requestId-download" } }
+        val transferId = UUID.randomUUID().toString()
+        transport.receive(openedFile("$requestId-download", transferId))
+        waitUntil("transport.payloadsOfType(\"file-download-read\").any { it.getValue(\"transferId\").jsonPrimitive.content == transferId }") { transport.payloadsOfType("file-download-read").any { it.getValue("transferId").jsonPrimitive.content == transferId } }
+        transport.receive("""{"kind":"file-download-chunk","transferId":"$transferId","offset":0,"data":"aGVsbG8=","eof":true,"sha256":"$HELLO_DIGEST"}""")
+        waitUntil("transport.payloadsOfType(\"file-resolve\").any { it.getValue(\"requestId\").jsonPrimitive.content == \"$transferId-verify\" }") { transport.payloadsOfType("file-resolve").any { it.getValue("requestId").jsonPrimitive.content == "$transferId-verify" } }
+        transport.receive(resolvedFile("$transferId-verify"))
+    }
+
+    private companion object {
+        const val HELLO_DIGEST = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+    }
+
     @Test
     fun queueRoundTripKeepsDraftUntilAckAndEditResubmitsThenSteers() = runBlocking {
         val transport = FakeTransport()
@@ -179,9 +349,13 @@ class AndroidAppGraphFakeIntegrationDeviceTest {
         assertTrue(gatewayAttachmentCacheKey("android-demo", "same-id") in cache.values)
     }
 
-    private suspend fun waitUntil(predicate: () -> Boolean) {
-        withTimeout(5_000) {
-            while (!predicate()) delay(20)
+    private suspend fun waitUntil(description: String = "状态更新", predicate: () -> Boolean) {
+        try {
+            withTimeout(5_000) {
+                while (!predicate()) delay(20)
+            }
+        } catch (failure: kotlinx.coroutines.TimeoutCancellationException) {
+            throw AssertionError("等待超时：$description", failure)
         }
     }
 
