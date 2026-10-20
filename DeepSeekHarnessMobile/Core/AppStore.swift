@@ -1647,6 +1647,14 @@ final class AppStore: ObservableObject {
     func composedSlashMessage(arguments: String) -> String {
         arguments
     }
+    /// Whether `text` is dispatched as a slash command instead of a prompt.
+    /// Attached context must not be prepended in that case, or the command line
+    /// stops matching and silently degrades to a normal message.
+    func isSlashCommandInput(_ text: String) -> Bool {
+        kmpSlashCommandStore.commandExecutionForInput(
+            text: text.trimmingCharacters(in: .whitespacesAndNewlines)
+        ) != nil
+    }
     @discardableResult
     func send(_ text: String, images: [GatewayOutgoingImage] = [], mode: String = "queue") -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)

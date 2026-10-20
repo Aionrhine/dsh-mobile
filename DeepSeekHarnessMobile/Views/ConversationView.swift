@@ -354,6 +354,8 @@ struct ConversationView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var activeView = 0
     @State private var draft = ""
+    @ObservedObject private var quoteInbox = ConversationQuoteInbox.shared
+    @State private var quotesExpanded = false
     @State private var voiceSnapshot: SharedVoiceInputSnapshot?
     @State private var voiceTouchActive = false
     @State private var voiceToast: String?
@@ -1036,6 +1038,10 @@ struct ConversationView: View {
             hint: store.slashCommands.argumentHint
         )
         return VStack(alignment: .leading, spacing: 12) {
+            if !quoteInbox.quotes.isEmpty {
+                quoteStrip
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
             if !pendingImages.isEmpty {
                 pendingImageStrip
             }
@@ -1113,9 +1119,16 @@ struct ConversationView: View {
                         store.voiceInput.setVoiceMode(enteringVoice)
                         return
                     }
-                    let content = store.composedSlashMessage(arguments: draft)
+                    let composed = store.composedSlashMessage(arguments: draft)
+                    // A slash command has to stay the whole message, so quotes
+                    // are only folded into ordinary prompts.
+                    let content = store.isSlashCommandInput(composed)
+                        ? composed
+                        : quoteInbox.applying(to: composed)
                     let images = pendingImages
                     guard store.send(content, images: images) else { return }
+                    // The excerpts are inside the payload now; nothing survives a send.
+                    quoteInbox.clear()
                     if store.messageSubmissionPending {
                         submittedQueueDraft = draft
                         submittedQueueImages = images
@@ -1211,6 +1224,8 @@ struct ConversationView: View {
         .onChange(of: store.queueRevision) { _, _ in restoreQueuedDraft() }
         .onChange(of: store.selectedSessionId) { _, _ in
             queueExpanded = false
+            quotesExpanded = false
+            quoteInbox.clear()
             restoreQueuedDraft()
         }
         .onAppear { restoreQueuedDraft() }
@@ -1435,11 +1450,71 @@ struct ConversationView: View {
     }
 
     private var composerHasContent: Bool {
-        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !pendingImages.isEmpty
+        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !pendingImages.isEmpty
+            || !quoteInbox.isEmpty
     }
 
     private var showsSessionStopButton: Bool {
         store.supportsSessionCancel && store.selectedSession?.isRunning == true && !composerHasContent
+    }
+
+    /// Excerpts captured from message text by the selection menu. They stay
+    /// parked here until the next prompt carries them out.
+    private var quoteStrip: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                quotesExpanded.toggle()
+            } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: "text.quote")
+                        .appFont(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(DSHColor.ocean)
+                    Text("\(quoteInbox.count) 条对话引用")
+                        .appFont(.caption.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Spacer(minLength: 0)
+                    Image(systemName: quotesExpanded ? "chevron.up" : "chevron.down")
+                        .appFont(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(String(localized: "a11y.quote.count", defaultValue: "已引用 \(quoteInbox.count) 段文字"))
+
+            if quotesExpanded {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(quoteInbox.quotes) { quote in
+                        HStack(alignment: .top, spacing: 6) {
+                            Text(quote.summary)
+                                .appFont(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(3)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Button {
+                                quoteInbox.remove(quote.id)
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .appFont(.caption)
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(String(localized: "移除引用"))
+                        }
+                    }
+                }
+                .transition(.opacity)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            Color(uiColor: .secondarySystemFill),
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        )
+        .animation(reduceMotion ? nil : Animation.easeInOut(duration: 0.18), value: quotesExpanded)
+        .animation(reduceMotion ? nil : Animation.easeInOut(duration: 0.18), value: quoteInbox.count)
     }
 
     private var pendingImageStrip: some View {
@@ -4198,8 +4273,17 @@ struct ConversationRow: View {
                     AttachmentImageGrid(attachments: item.images, imageData: imageData)
                 }
                 if !item.text.isEmpty {
-                    MarkdownContent(item.text, knownFiles: item.knownFiles, onOpenFile: onOpenFile)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    MarkdownContent(
+                        item.text,
+                        knownFiles: item.knownFiles,
+                        onOpenFile: onOpenFile,
+                        onQuote: { excerpt in
+                            // The message id is carried along for the structured
+                            // quote the gateway does not accept yet.
+                            ConversationQuoteInbox.shared.capture(excerpt, sourceMessageID: item.id)
+                        }
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 ForEach(item.files, id: \.path) { file in
                     FileReferenceCard(path: file.path, description: file.description) {
@@ -4433,12 +4517,21 @@ struct MarkdownContent: View {
     var compact = false
     var knownFiles: [PresentedFile] = []
     var onOpenFile: ((String) -> Void)?
+    /// Installed only where quoting makes sense; `nil` keeps the stock edit menu.
+    var onQuote: ((String) -> Void)?
 
-    init(_ text: String, compact: Bool = false, knownFiles: [PresentedFile] = [], onOpenFile: ((String) -> Void)? = nil) {
+    init(
+        _ text: String,
+        compact: Bool = false,
+        knownFiles: [PresentedFile] = [],
+        onOpenFile: ((String) -> Void)? = nil,
+        onQuote: ((String) -> Void)? = nil
+    ) {
         self.text = text
         self.compact = compact
         self.knownFiles = knownFiles
         self.onOpenFile = onOpenFile
+        self.onQuote = onQuote
     }
 
     var body: some View {
@@ -4459,6 +4552,17 @@ struct MarkdownContent: View {
             .markdownCodeSyntaxHighlighter(DSHCodeSyntaxHighlighter())
             // MarkdownUI 会自行应用 Dynamic Type。主题已合并系统与应用倍率，避免重复缩放。
             .dynamicTypeSize(.large)
+            .markdownTextSelectionQuote(quoteAction)
+    }
+
+    /// `Optional.map` would hand us a non-escaping parameter, so the stored
+    /// closure is bound directly and only the value is optional.
+    private var quoteAction: MarkdownTextSelectionQuote? {
+        guard let onQuote else { return nil }
+        return MarkdownTextSelectionQuote(
+            title: String(localized: "引用这段", defaultValue: "引用这段"),
+            handler: onQuote
+        )
     }
 
     private var codeDestinations: [String: String] {

@@ -6,6 +6,7 @@ struct InlineText: View {
   @Environment(\.imageBaseURL) private var imageBaseURL
   @Environment(\.softBreakMode) private var softBreakMode
   @Environment(\.theme) private var theme
+  @Environment(\.markdownTextSelectionQuote) private var quote
 
   @State private var inlineImages: [String: Image] = [:]
 
@@ -32,7 +33,9 @@ struct InlineText: View {
             softBreakMode: self.softBreakMode,
             attributes: attributes,
             resolveFonts: false
-          )
+          ),
+          onQuote: self.quote?.handler,
+          quoteTitle: self.quote?.title
         )
       } else {
         // Inline images need the SwiftUI renderer; those runs stay non-selectable.

@@ -28,6 +28,7 @@
 		991D4FD90B81F84A0B8B79AD /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12863E736F832D8F502B94A0 /* Theme.swift */; };
 		A0C0FFEE0000000000000001 /* ConversationViewport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0C0FFEE0000000000000002 /* ConversationViewport.swift */; };
 		A0C0FFEE0000000000000003 /* ConversationTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0C0FFEE0000000000000004 /* ConversationTimeline.swift */; };
+		A0C0FFEE0000000000000011 /* MessageQuote.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0C0FFEE0000000000000012 /* MessageQuote.swift */; };
 		A1A0C0000000000000000001 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = A1A0C0000000000000000002 /* LaunchScreen.storyboard */; };
 		A1B2C3D4E5F60718293A4B5C /* ApprovalRequestView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5D /* ApprovalRequestView.swift */; };
 		A9F100000000000000000001 /* AppPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9F100000000000000000002 /* AppPreferences.swift */; };
@@ -125,6 +126,7 @@
 		954FCEA4A6E71F3D1A22BB53 /* GatewayModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GatewayModels.swift; sourceTree = "<group>"; };
 		A0C0FFEE0000000000000002 /* ConversationViewport.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ConversationViewport.swift; sourceTree = "<group>"; };
 		A0C0FFEE0000000000000004 /* ConversationTimeline.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ConversationTimeline.swift; sourceTree = "<group>"; };
+		A0C0FFEE0000000000000012 /* MessageQuote.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MessageQuote.swift; sourceTree = "<group>"; };
 		A1A0C0000000000000000002 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A4B5D /* ApprovalRequestView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ApprovalRequestView.swift; sourceTree = "<group>"; };
 		A9F100000000000000000002 /* AppPreferences.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppPreferences.swift; sourceTree = "<group>"; };
@@ -231,6 +233,7 @@
 				CA11E0000000000000000002 /* ImageAttachmentCache.swift */,
 				CA11E0000000000000000004 /* ImagePreprocessor.swift */,
 				A0C0FFEE0000000000000004 /* ConversationTimeline.swift */,
+				A0C0FFEE0000000000000012 /* MessageQuote.swift */,
 				E61E231D0CD3E07857F861B0 /* GatewayClient.swift */,
 				954FCEA4A6E71F3D1A22BB53 /* GatewayModels.swift */,
 				CA11E000000000000000000A /* L10n.swift */,
@@ -641,6 +644,7 @@
 				CA11E0000000000000000001 /* ImageAttachmentCache.swift in Sources */,
 				CA11E0000000000000000003 /* ImagePreprocessor.swift in Sources */,
 				A0C0FFEE0000000000000003 /* ConversationTimeline.swift in Sources */,
+				A0C0FFEE0000000000000011 /* MessageQuote.swift in Sources */,
 				80E777AC0855635BC3D12EA7 /* GatewayClient.swift in Sources */,
 				AFAE90EEB4462AD84169D356 /* GatewayModels.swift in Sources */,
 				CA11E0000000000000000009 /* L10n.swift in Sources */,
