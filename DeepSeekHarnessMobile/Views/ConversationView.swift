@@ -4649,7 +4649,7 @@ struct MarkdownContent: View {
             guard GenuiArtifact.matchesFence(language),
                   let plan = GenuiArtifact.plan(fromFence: content, isDark: colorScheme == .dark)
             else { return nil }
-            return AnyView(GenuiBlockContainer(plan: plan))
+            return AnyView(GenuiBlockContainer(plan: plan, source: content))
         }
     }
 

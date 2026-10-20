@@ -49,11 +49,27 @@
     });
   };
 
+  // A silent blank box is worse than the raw fence, so every failure path
+  // reports upward and the SwiftUI side swaps in the source text.
+  function postFailure(message) {
+    var handler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.genuiFailure;
+    if (!handler) { return; }
+    var text = String(message || '');
+    if (!text) { text = 'unknown error'; }
+    handler.postMessage(text.slice(0, 300));
+  }
+
   window.__mountGenui = function (artifact) {
+    if (!window.__GenuiStandalone__ || typeof window.__GenuiStandalone__.mount !== 'function') {
+      postFailure('standalone runtime missing');
+      return 'standalone runtime missing';
+    }
     try {
       window.__GenuiStandalone__.mount(document.getElementById('root'), artifact);
     } catch (error) {
-      return String(error && error.message ? error.message : error);
+      var message = String(error && error.message ? error.message : error);
+      postFailure(message);
+      return message;
     }
     reportHeight();
     setTimeout(reportHeight, 120);
@@ -64,6 +80,8 @@
   window.__mountGenuiWithAssets = function (artifact, names) {
     return window.__loadGenuiAssets(names).then(function () {
       return window.__mountGenui(artifact);
+    }).catch(function (error) {
+      postFailure(error && error.message ? error.message : error);
     });
   };
 

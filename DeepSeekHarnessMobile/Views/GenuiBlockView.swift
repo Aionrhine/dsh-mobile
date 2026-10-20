@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import WebKit
 
 /// Everything needed to draw one ```dsh-ui fence.
@@ -81,18 +82,60 @@ enum GenuiArtifact {
 }
 
 /// One rendered fence: a shell that grows once the web view reports its content
-/// height, so the row never clips a long table or chart.
+/// height, so the row never clips a long table or chart. When the runtime cannot
+/// mount the spec, the fence falls back to its own source instead of a blank box.
 struct GenuiBlockContainer: View {
     let plan: GenuiRenderPlan
+    /// Raw fence body, kept so a failed mount still shows something readable.
+    let source: String
 
     @State private var height: CGFloat = 180
+    @State private var failure: String?
 
     var body: some View {
-        GenuiBlockWebView(plan: plan, height: $height)
-            .frame(height: max(height, 64))
-            // The runtime reads the presentation theme once, at mount time, so a
-            // theme switch needs a fresh document rather than a style tweak.
-            .id(plan.artifactJSON)
+        Group {
+            if let failure {
+                failureView(failure)
+            } else {
+                GenuiBlockWebView(plan: plan, height: $height, failure: $failure)
+                    .frame(height: max(height, 64))
+                    // The runtime reads the presentation theme once, at mount
+                    // time, so a theme switch needs a fresh document rather than
+                    // a style tweak.
+                    .id(plan.artifactJSON)
+            }
+        }
+        // A recycled row must not inherit the previous fence's verdict.
+        .onChange(of: plan.artifactJSON) { _, _ in
+            failure = nil
+            height = 180
+        }
+    }
+
+    private func failureView(_ message: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label {
+                Text(String(localized: "genui.failed", defaultValue: "GenUI 渲染失败"))
+            } icon: {
+                Image(systemName: "exclamationmark.triangle")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                Text(source)
+                    .font(.system(.footnote, design: .monospaced))
+                    .textSelection(.enabled)
+            }
+
+            Text(message)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(3)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
     }
 }
 
@@ -104,14 +147,16 @@ struct GenuiBlockContainer: View {
 private struct GenuiBlockWebView: UIViewRepresentable {
     let plan: GenuiRenderPlan
     @Binding var height: CGFloat
+    @Binding var failure: String?
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(height: $height, plan: plan)
+        Coordinator(height: $height, failure: $failure, plan: plan)
     }
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.userContentController.add(context.coordinator, name: "genuiHeight")
+        configuration.userContentController.add(context.coordinator, name: "genuiFailure")
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
@@ -127,23 +172,30 @@ private struct GenuiBlockWebView: UIViewRepresentable {
     func updateUIView(_ webView: WKWebView, context: Context) {}
 
     static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
-        webView.configuration.userContentController.removeScriptMessageHandler(forName: "genuiHeight")
+        let controller = webView.configuration.userContentController
+        controller.removeScriptMessageHandler(forName: "genuiHeight")
+        controller.removeScriptMessageHandler(forName: "genuiFailure")
         webView.stopLoading()
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         private let height: Binding<CGFloat>
+        private let failure: Binding<String?>
         private let plan: GenuiRenderPlan
 
-        init(height: Binding<CGFloat>, plan: GenuiRenderPlan) {
+        init(height: Binding<CGFloat>, failure: Binding<String?>, plan: GenuiRenderPlan) {
             self.height = height
+            self.failure = failure
             self.plan = plan
         }
 
         func loadPage(in webView: WKWebView) {
             guard let directory = GenuiRuntime.prepare(assets: plan.assets),
                   let page = GenuiRuntime.pageURL(in: directory)
-            else { return }
+            else {
+                fail(String(localized: "genui.failed.resources", defaultValue: "渲染资源缺失"))
+                return
+            }
             webView.loadFileURL(page, allowingReadAccessTo: directory)
         }
 
@@ -154,33 +206,74 @@ private struct GenuiBlockWebView: UIViewRepresentable {
             webView.evaluateJavaScript(script) { _, _ in }
         }
 
+        /// Links inside a card belong to the reader, not to the 180 pt frame:
+        /// hand http(s)/mailto to the system, keep in-page anchors in place.
+        func webView(
+            _ webView: WKWebView,
+            decidePolicyFor navigationAction: WKNavigationAction,
+            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+        ) {
+            guard navigationAction.navigationType == .linkActivated,
+                  let url = navigationAction.request.url,
+                  !url.isFileURL
+            else {
+                decisionHandler(.allow)
+                return
+            }
+            UIApplication.shared.open(url)
+            decisionHandler(.cancel)
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            didFailProvisionalNavigation navigation: WKNavigation!,
+            withError error: Error
+        ) {
+            fail(error.localizedDescription)
+        }
+
         func userContentController(
             _ userContentController: WKUserContentController,
             didReceive message: WKScriptMessage
         ) {
-            guard message.name == "genuiHeight", let value = message.body as? NSNumber else { return }
-            let reported = CGFloat(truncating: value)
-            guard reported.isFinite, reported > 0 else { return }
+            switch message.name {
+            case "genuiHeight":
+                guard let value = message.body as? NSNumber else { return }
+                let reported = CGFloat(truncating: value)
+                guard reported.isFinite, reported > 0 else { return }
+                DispatchQueue.main.async {
+                    guard abs(self.height.wrappedValue - reported) > 0.5 else { return }
+                    self.height.wrappedValue = reported
+                }
+            case "genuiFailure":
+                let text = (message.body as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                fail(text.isEmpty ? String(localized: "genui.failed.unknown", defaultValue: "未知错误") : text)
+            default:
+                break
+            }
+        }
+
+        private func fail(_ message: String) {
             DispatchQueue.main.async {
-                guard abs(self.height.wrappedValue - reported) > 0.5 else { return }
-                self.height.wrappedValue = reported
+                guard self.failure.wrappedValue == nil else { return }
+                self.failure.wrappedValue = message
             }
         }
     }
 }
 
 /// Copies the GenUI web runtime out of the app bundle into a writable folder.
+///
+/// Base files are refreshed once per launch; engine bundles are added the first
+/// time any fence asks for them, because neighbouring messages routinely need
+/// different engines and a single early return would leave the later ones blank.
 private enum GenuiRuntime {
     private static var preparedDirectory: URL?
+    private static var copiedFiles: Set<String> = []
 
     static func prepare(assets: [String]) -> URL? {
-        if let preparedDirectory { return preparedDirectory }
-
         let fileManager = FileManager.default
-        guard let caches = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first else {
-            return nil
-        }
-        let directory = caches.appendingPathComponent("GenUI", isDirectory: true)
+        guard let directory = directoryForWrites(fileManager) else { return nil }
 
         var names: [(String, String)] = [
             ("genui", "html"),
@@ -189,20 +282,40 @@ private enum GenuiRuntime {
         ]
         names.append(contentsOf: assets.map { ($0, "js") })
 
+        for (name, ext) in names {
+            guard let source = Bundle.main.url(forResource: name, withExtension: ext) else { continue }
+            let filename = source.lastPathComponent
+            let destination = directory.appendingPathComponent(filename)
+            if copiedFiles.contains(filename), fileManager.fileExists(atPath: destination.path) {
+                continue
+            }
+            do {
+                if fileManager.fileExists(atPath: destination.path) {
+                    try fileManager.removeItem(at: destination)
+                }
+                try fileManager.copyItem(at: source, to: destination)
+                copiedFiles.insert(filename)
+            } catch {
+                // One missing engine only costs that engine's fence, which the
+                // runtime reports through `genuiFailure`.
+                continue
+            }
+        }
+
+        return directory
+    }
+
+    private static func directoryForWrites(_ fileManager: FileManager) -> URL? {
+        if let preparedDirectory { return preparedDirectory }
+        guard let caches = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first else {
+            return nil
+        }
+        let directory = caches.appendingPathComponent("GenUI", isDirectory: true)
         do {
             try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-            for (name, ext) in names {
-                guard let source = Bundle.main.url(forResource: name, withExtension: ext) else { continue }
-                let destination = directory.appendingPathComponent(source.lastPathComponent)
-                // Always overwrite: a new build must not keep serving last
-                // version's runtime.
-                try? fileManager.removeItem(at: destination)
-                try fileManager.copyItem(at: source, to: destination)
-            }
         } catch {
             return nil
         }
-
         preparedDirectory = directory
         return directory
     }
