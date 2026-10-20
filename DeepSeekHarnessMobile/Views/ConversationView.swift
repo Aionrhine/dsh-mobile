@@ -355,6 +355,7 @@ struct ConversationView: View {
     @State private var activeView = 0
     @State private var draft = ""
     @ObservedObject private var quoteInbox = ConversationQuoteInbox.shared
+    @ObservedObject private var selectionOffer = ConversationSelectionObserver.shared
     @State private var quotesExpanded = false
     @State private var voiceSnapshot: SharedVoiceInputSnapshot?
     @State private var voiceTouchActive = false
@@ -1041,6 +1042,10 @@ struct ConversationView: View {
             hint: store.slashCommands.argumentHint
         )
         return VStack(alignment: .leading, spacing: 12) {
+            if selectionOffer.excerpt != nil {
+                selectionOfferBar
+                    .transition(.opacity)
+            }
             if !quoteInbox.quotes.isEmpty {
                 quoteStrip
                     .transition(.opacity.combined(with: .move(edge: .top)))
@@ -1132,6 +1137,7 @@ struct ConversationView: View {
                     guard store.send(content, images: images) else { return }
                     // The excerpts are inside the payload now; nothing survives a send.
                     quoteInbox.clear()
+                    selectionOffer.clear()
                     if store.messageSubmissionPending {
                         submittedQueueDraft = draft
                         submittedQueueImages = images
@@ -1229,6 +1235,7 @@ struct ConversationView: View {
             queueExpanded = false
             quotesExpanded = false
             quoteInbox.clear()
+            selectionOffer.clear()
             restoreQueuedDraft()
         }
         .onAppear { restoreQueuedDraft() }
@@ -1462,8 +1469,54 @@ struct ConversationView: View {
         store.supportsSessionCancel && store.selectedSession?.isRunning == true && !composerHasContent
     }
 
-    /// Excerpts captured from message text by the selection menu. They stay
-    /// parked here until the next prompt carries them out.
+    /// Offers the text currently selected in a message. Nothing is drawn over
+    /// the message itself, so the selection stays readable and extendable.
+    private var selectionOfferBar: some View {
+        HStack(spacing: 8) {
+            Button {
+                if let excerpt = selectionOffer.excerpt {
+                    quoteInbox.capture(excerpt)
+                }
+                selectionOffer.clear()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "text.quote")
+                        .appFont(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(DSHColor.ocean)
+                    Text("引用选中文字")
+                        .appFont(.caption.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text(selectionOffer.preview)
+                        .appFont(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(String(localized: "a11y.quote.selection", defaultValue: "引用选中的文字"))
+
+            Spacer(minLength: 0)
+
+            Button {
+                selectionOffer.clear()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .appFont(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(String(localized: "取消引用选中文字"))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            Color(uiColor: .secondarySystemFill),
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        )
+    }
+
+    /// Captured excerpts waiting for the next prompt.
     private var quoteStrip: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
@@ -4304,10 +4357,8 @@ struct ConversationRow: View {
                         item.text,
                         knownFiles: item.knownFiles,
                         onOpenFile: onOpenFile,
-                        onQuote: { excerpt in
-                            // The message id is carried along for the structured
-                            // quote the gateway does not accept yet.
-                            ConversationQuoteInbox.shared.capture(excerpt, sourceMessageID: item.id)
+                        onSelectionChange: { excerpt in
+                            ConversationSelectionObserver.shared.offer(excerpt)
                         }
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -4544,21 +4595,21 @@ struct MarkdownContent: View {
     var compact = false
     var knownFiles: [PresentedFile] = []
     var onOpenFile: ((String) -> Void)?
-    /// Installed only where quoting makes sense; `nil` keeps the stock edit menu.
-    var onQuote: ((String) -> Void)?
+    /// Reports selections made inside this block; `nil` disables reporting.
+    var onSelectionChange: ((String?) -> Void)?
 
     init(
         _ text: String,
         compact: Bool = false,
         knownFiles: [PresentedFile] = [],
         onOpenFile: ((String) -> Void)? = nil,
-        onQuote: ((String) -> Void)? = nil
+        onSelectionChange: ((String?) -> Void)? = nil
     ) {
         self.text = text
         self.compact = compact
         self.knownFiles = knownFiles
         self.onOpenFile = onOpenFile
-        self.onQuote = onQuote
+        self.onSelectionChange = onSelectionChange
     }
 
     var body: some View {
@@ -4579,17 +4630,14 @@ struct MarkdownContent: View {
             .markdownCodeSyntaxHighlighter(DSHCodeSyntaxHighlighter())
             // MarkdownUI 会自行应用 Dynamic Type。主题已合并系统与应用倍率，避免重复缩放。
             .dynamicTypeSize(.large)
-            .markdownTextSelectionQuote(quoteAction)
+            .markdownTextSelectionObserver(selectionObserver)
     }
 
-    /// `Optional.map` would hand us a non-escaping parameter, so the stored
-    /// closure is bound directly and only the value is optional.
-    private var quoteAction: MarkdownTextSelectionQuote? {
-        guard let onQuote else { return nil }
-        return MarkdownTextSelectionQuote(
-            title: String(localized: "引用这段", defaultValue: "引用这段"),
-            handler: onQuote
-        )
+    /// Bound from storage rather than through `Optional.map`, so the escaping
+    /// rule stays obvious at the call site.
+    private var selectionObserver: MarkdownTextSelectionObserver? {
+        guard let onSelectionChange else { return nil }
+        return MarkdownTextSelectionObserver(handler: onSelectionChange)
     }
 
     private var codeDestinations: [String: String] {

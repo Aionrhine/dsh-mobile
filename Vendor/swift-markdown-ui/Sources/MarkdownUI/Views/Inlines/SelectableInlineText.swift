@@ -4,159 +4,6 @@ import SwiftUI
 #if canImport(UIKit)
 import UIKit
 
-/// Offers a host-supplied action while text is selected in a non-editable text
-/// view.
-///
-/// Two delivery paths are used because neither is reliable on its own once
-/// `isEditable` is `false`: the edit menu is asked for an extra item through
-/// `buildMenu(with:)`, and a small capsule button is pinned above the selection
-/// so the action is reachable even when the system menu ignores the request.
-/// `UITextViewDelegate.textView(_:editMenuForTextIn:suggestedActions:)` is never
-/// consulted in this configuration, which is why it is not used here.
-final class QuoteMenuTextView: UITextView {
-  var quoteTitle: String? {
-    didSet { refreshQuoteAffordance() }
-  }
-  var onQuote: ((String) -> Void)?
-
-  /// Paragraphs are separate text views, so only one capsule may be visible at
-  /// a time; the previous one is torn down when a new selection takes over.
-  private static weak var activeView: QuoteMenuTextView?
-
-  private var buttonStorage: UIButton?
-
-  private var quoteButton: UIButton {
-    if let button = self.buttonStorage { return button }
-    let button = self.makeQuoteButton()
-    self.buttonStorage = button
-    return button
-  }
-
-  override func layoutSubviews() {
-    super.layoutSubviews()
-    self.placeQuoteButton()
-  }
-
-  /// Recomputes the capsule from the current selection.
-  func refreshQuoteAffordance() {
-    guard let title = self.quoteTitle,
-          !title.isEmpty,
-          self.onQuote != nil,
-          self.selectedExcerpt() != nil
-    else {
-      self.hideQuoteAffordance()
-      return
-    }
-
-    if let active = Self.activeView, active !== self {
-      active.hideQuoteAffordance()
-    }
-    Self.activeView = self
-
-    if self.quoteButton.superview == nil {
-      self.addSubview(self.quoteButton)
-    }
-    self.quoteButton.configuration?.title = title
-    self.quoteButton.isHidden = false
-    self.placeQuoteButton()
-  }
-
-  private func hideQuoteAffordance() {
-    self.buttonStorage?.isHidden = true
-    if Self.activeView === self {
-      Self.activeView = nil
-    }
-  }
-
-  override func buildMenu(with builder: UIMenuBuilder) {
-    super.buildMenu(with: builder)
-    guard let title = self.quoteTitle,
-          !title.isEmpty,
-          let onQuote = self.onQuote,
-          let excerpt = self.selectedExcerpt()
-    else { return }
-
-    let action = UIAction(title: title, image: UIImage(systemName: "text.quote")) { _ in
-      onQuote(excerpt)
-    }
-    builder.insertChild(
-      UIMenu(title: "", options: .displayInline, children: [action]),
-      atStartOfMenu: .standardEdit
-    )
-  }
-
-  // MARK: - Selection plumbing
-
-  /// The selected text, or `nil` when the selection is empty or whitespace only.
-  private func selectedExcerpt() -> String? {
-    guard self.selectedRange.length > 0,
-          let text = self.text,
-          let range = Range(self.selectedRange, in: text)
-    else { return nil }
-
-    let excerpt = String(text[range])
-    guard excerpt.contains(where: { !$0.isWhitespace }) else { return nil }
-    return excerpt
-  }
-
-  private func makeQuoteButton() -> UIButton {
-    var configuration = UIButton.Configuration.filled()
-    configuration.image = UIImage(systemName: "text.quote")
-    configuration.imagePadding = 5
-    configuration.cornerStyle = .capsule
-    // Opaque, so the paragraph underneath never shows through the capsule.
-    configuration.baseBackgroundColor = UIColor { traits in
-      traits.userInterfaceStyle == .dark ? UIColor(white: 0.24, alpha: 1) : UIColor(white: 0.97, alpha: 1)
-    }
-    configuration.baseForegroundColor = .label
-    configuration.contentInsets = NSDirectionalEdgeInsets(top: 5, leading: 11, bottom: 5, trailing: 11)
-
-    let button = UIButton(configuration: configuration, primaryAction: UIAction { [weak self] _ in
-      guard let self, let onQuote = self.onQuote, let excerpt = self.selectedExcerpt() else { return }
-      self.selectedRange = NSRange(location: 0, length: 0)
-      self.hideQuoteAffordance()
-      onQuote(excerpt)
-    })
-    button.isHidden = true
-    button.layer.borderWidth = 0.5
-    button.layer.borderColor = UIColor.separator.cgColor
-    button.layer.shadowColor = UIColor.black.cgColor
-    button.layer.shadowOpacity = 0.16
-    button.layer.shadowRadius = 8
-    button.layer.shadowOffset = CGSize(width: 0, height: 3)
-    return button
-  }
-
-  private func placeQuoteButton() {
-    guard let button = self.buttonStorage,
-          !button.isHidden,
-          let anchor = self.quoteAnchorRect()
-    else { return }
-
-    let size = self.quoteButton.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize)
-    var origin = CGPoint(x: anchor.midX - size.width / 2, y: anchor.minY - size.height - 6)
-    if origin.y < 0 {
-      // Selections on the first line have no room above them.
-      origin.y = min(anchor.maxY + 6, max(0, self.bounds.height - size.height))
-    }
-    origin.x = max(0, min(origin.x, max(0, self.bounds.width - size.width)))
-    self.quoteButton.frame = CGRect(origin: origin, size: size)
-  }
-
-  /// Rect of the selection's first line, in this view's coordinate space.
-  private func quoteAnchorRect() -> CGRect? {
-    guard self.selectedRange.length > 0,
-          let start = self.position(from: self.beginningOfDocument, offset: self.selectedRange.location),
-          let end = self.position(from: start, offset: self.selectedRange.length),
-          let range = self.textRange(from: start, to: end)
-    else { return nil }
-
-    let rect = self.firstRect(for: range)
-    guard !rect.isNull, !rect.isInfinite, rect.height > 0 else { return nil }
-    return rect
-  }
-}
-
 /// Renders one inline run (a Markdown paragraph line) inside a real `UITextView`
 /// so iOS shows the native selection handles and lets the user drag a partial
 /// range. SwiftUI's `Text` + `.textSelection(.enabled)` only offers whole-view
@@ -168,16 +15,14 @@ final class QuoteMenuTextView: UITextView {
 /// cannot bridge SwiftUI fonts (that mismatch made text fall back to 12 pt).
 struct SelectableInlineText: UIViewRepresentable {
   let attributed: AttributedString
-  /// Host reaction to the quote menu item; `nil` keeps the stock edit menu.
-  var onQuote: ((String) -> Void)? = nil
-  /// Menu item title supplied by the host, applied when `onQuote` is set.
-  var quoteTitle: String? = nil
+  /// Host reaction to a text selection; `nil` when the selection collapses.
+  var onSelectionChange: ((String?) -> Void)? = nil
 
   @Environment(\.openURL) private var openURL
   @Environment(\.colorScheme) private var colorScheme
 
   func makeUIView(context: Context) -> UITextView {
-    let view = QuoteMenuTextView()
+    let view = UITextView()
     view.isEditable = false
     view.isSelectable = true
     view.isScrollEnabled = false
@@ -197,11 +42,7 @@ struct SelectableInlineText: UIViewRepresentable {
 
   func updateUIView(_ view: UITextView, context: Context) {
     context.coordinator.openURL = self.openURL
-    if let quoting = view as? QuoteMenuTextView {
-      quoting.quoteTitle = self.quoteTitle
-      quoting.onQuote = self.onQuote
-      quoting.refreshQuoteAffordance()
-    }
+    context.coordinator.onSelectionChange = self.onSelectionChange
     let rendered = Self.makeAttributedString(self.attributed)
     if view.attributedText != rendered {
       view.attributedText = rendered
@@ -222,9 +63,18 @@ struct SelectableInlineText: UIViewRepresentable {
 
   final class Coordinator: NSObject, UITextViewDelegate {
     var openURL: OpenURLAction?
+    var onSelectionChange: ((String?) -> Void)?
 
     func textViewDidChangeSelection(_ textView: UITextView) {
-      (textView as? QuoteMenuTextView)?.refreshQuoteAffordance()
+      guard let onSelectionChange else { return }
+      let text = textView.text ?? ""
+      let range = textView.selectedRange
+      guard range.length > 0, let swiftRange = Range(range, in: text) else {
+        onSelectionChange(nil)
+        return
+      }
+      let excerpt = String(text[swiftRange])
+      onSelectionChange(excerpt.contains(where: { !$0.isWhitespace }) ? excerpt : nil)
     }
 
     func textView(

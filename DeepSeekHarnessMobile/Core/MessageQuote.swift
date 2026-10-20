@@ -113,3 +113,41 @@ final class ConversationQuoteInbox: ObservableObject {
         return body.isEmpty ? quote : quote + "\n\n" + body
     }
 }
+
+/// Remembers the latest text selection made inside a message.
+///
+/// An earlier revision drew a capsule over the selection itself, which covered
+/// the text being picked and swallowed the drag that extends a selection. The
+/// offer now lives in the composer, so nothing is drawn over the message.
+final class ConversationSelectionObserver: ObservableObject {
+    static let shared = ConversationSelectionObserver()
+
+    /// Only the one-line preview is trimmed; the captured quote stays whole.
+    static let previewLimit = 24
+
+    @Published private(set) var excerpt: String?
+
+    var preview: String {
+        guard let excerpt else { return "" }
+        let flat = excerpt
+            .split(whereSeparator: { $0.isNewline })
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespaces)
+        return flat.count > Self.previewLimit
+            ? String(flat.prefix(Self.previewLimit)) + "…"
+            : flat
+    }
+
+    /// `nil` means the selection collapsed. It is ignored on purpose: tapping
+    /// the composer dismisses the selection before the tap is delivered, and
+    /// dropping the offer there would make the button do nothing.
+    func offer(_ text: String?) {
+        guard let text, !text.isEmpty else { return }
+        if excerpt != text { excerpt = text }
+    }
+
+    func clear() {
+        guard excerpt != nil else { return }
+        excerpt = nil
+    }
+}
