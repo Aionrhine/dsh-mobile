@@ -1,0 +1,62 @@
+name: ios-unsigned-ipa
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'Artifacts/**'
+      - 'AppRelease/**'
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: xcodebuild -version && swift --version
+
+      - name: Apply text-selection patch
+        run: python3 scripts/apply-text-selection.py && grep -n 'textSelection(.enabled)' DeepSeekHarnessMobile/Views/ConversationView.swift | head -5
+
+      - name: Resolve Swift packages
+        run: xcodebuild -resolvePackageDependencies -project DeepSeekHarnessMobile.xcodeproj -scheme DeepSeekHarnessMobile
+
+      - name: Build (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project DeepSeekHarnessMobile.xcodeproj \
+            -scheme DeepSeekHarnessMobile \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            ONLY_ACTIVE_ARCH=NO \
+            build | xcbeautify || exit 1
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' | head -1)
+          echo "app=$APP"
+          test -n "$APP"
+          rm -rf Payload
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          /usr/bin/zip -qry DeepSeekHarnessMobile-unsigned.ipa Payload
+          unzip -l DeepSeekHarnessMobile-unsigned.ipa | head -12
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DeepSeekHarnessMobile-unsigned-ipa
+          path: DeepSeekHarnessMobile-unsigned.ipa
+          retention-days: 14
