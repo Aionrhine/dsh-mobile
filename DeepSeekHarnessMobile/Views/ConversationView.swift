@@ -4647,9 +4647,9 @@ struct MarkdownContent: View {
     private var codeBlockOverride: MarkdownCodeBlockOverride {
         MarkdownCodeBlockOverride { language, content in
             guard GenuiArtifact.matchesFence(language),
-                  let artifact = GenuiArtifact.json(fromFence: content, isDark: colorScheme == .dark)
+                  let plan = GenuiArtifact.plan(fromFence: content, isDark: colorScheme == .dark)
             else { return nil }
-            return AnyView(GenuiBlockContainer(artifactJSON: artifact))
+            return AnyView(GenuiBlockContainer(plan: plan))
         }
     }
 

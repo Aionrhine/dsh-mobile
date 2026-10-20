@@ -37,6 +37,10 @@
 		AB0180000000000000000003 /* genui.html in Resources */ = {isa = PBXBuildFile; fileRef = AB0180000000000000000004 /* genui.html */; };
 		AB0180000000000000000005 /* standalone-runtime.js in Resources */ = {isa = PBXBuildFile; fileRef = AB0180000000000000000006 /* standalone-runtime.js */; };
 		AB0180000000000000000007 /* theme.css in Resources */ = {isa = PBXBuildFile; fileRef = AB0180000000000000000008 /* theme.css */; };
+		AB0180000000000000000009 /* mermaid.js in Resources */ = {isa = PBXBuildFile; fileRef = AB018000000000000000000A /* mermaid.js */; };
+		AB018000000000000000000B /* three.js in Resources */ = {isa = PBXBuildFile; fileRef = AB018000000000000000000C /* three.js */; };
+		AB018000000000000000000D /* echarts-core.js in Resources */ = {isa = PBXBuildFile; fileRef = AB018000000000000000000E /* echarts-core.js */; };
+		AB018000000000000000000F /* echarts-full.js in Resources */ = {isa = PBXBuildFile; fileRef = AB0180000000000000000010 /* echarts-full.js */; };
 		A1A0C0000000000000000001 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = A1A0C0000000000000000002 /* LaunchScreen.storyboard */; };
 		A1B2C3D4E5F60718293A4B5C /* ApprovalRequestView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5D /* ApprovalRequestView.swift */; };
 		A9F100000000000000000001 /* AppPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9F100000000000000000002 /* AppPreferences.swift */; };
@@ -143,6 +147,10 @@
 		AB0180000000000000000004 /* genui.html */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.html; path = genui.html; sourceTree = "<group>"; };
 		AB0180000000000000000006 /* standalone-runtime.js */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.javascript; path = standalone-runtime.js; sourceTree = "<group>"; };
 		AB0180000000000000000008 /* theme.css */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.css; path = theme.css; sourceTree = "<group>"; };
+		AB018000000000000000000A /* mermaid.js */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.javascript; path = mermaid.js; sourceTree = "<group>"; };
+		AB018000000000000000000C /* three.js */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.javascript; path = three.js; sourceTree = "<group>"; };
+		AB018000000000000000000E /* echarts-core.js */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.javascript; path = echarts-core.js; sourceTree = "<group>"; };
+		AB0180000000000000000010 /* echarts-full.js */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.javascript; path = echarts-full.js; sourceTree = "<group>"; };
 		A1A0C0000000000000000002 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A4B5D /* ApprovalRequestView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ApprovalRequestView.swift; sourceTree = "<group>"; };
 		A9F100000000000000000002 /* AppPreferences.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppPreferences.swift; sourceTree = "<group>"; };
@@ -337,6 +345,10 @@
 				AB0180000000000000000004 /* genui.html */,
 				AB0180000000000000000006 /* standalone-runtime.js */,
 				AB0180000000000000000008 /* theme.css */,
+				AB018000000000000000000A /* mermaid.js */,
+				AB018000000000000000000C /* three.js */,
+				AB018000000000000000000E /* echarts-core.js */,
+				AB0180000000000000000010 /* echarts-full.js */,
 				59B069578BB7F31AD35F601A /* Info.plist */,
 				A1A0C0000000000000000002 /* LaunchScreen.storyboard */,
 				152A3874C0D169644C9C7B6D /* Assets.xcassets */,
@@ -563,6 +575,10 @@
 				AB0180000000000000000003 /* genui.html in Resources */,
 				AB0180000000000000000005 /* standalone-runtime.js in Resources */,
 				AB0180000000000000000007 /* theme.css in Resources */,
+				AB0180000000000000000009 /* mermaid.js in Resources */,
+				AB018000000000000000000B /* three.js in Resources */,
+				AB018000000000000000000D /* echarts-core.js in Resources */,
+				AB018000000000000000000F /* echarts-full.js in Resources */,
 				A1A0C0000000000000000001 /* LaunchScreen.storyboard in Resources */,
 				6FED6D958ABD07A258CC53F0 /* Assets.xcassets in Resources */,
 				CA11E000000000000000000B /* Localizable.xcstrings in Resources */,
