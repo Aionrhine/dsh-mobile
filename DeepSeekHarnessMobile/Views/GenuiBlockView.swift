@@ -87,13 +87,48 @@ enum GenuiArtifact {
     }
 }
 
+/// Process-wide limits for GenUI rendering.
+enum GenuiConfig {
+    /// How many fences may hold a WebContent process at once. Each one carries
+    /// the standalone runtime, and charts add half a megabyte to a megabyte of
+    /// engine on top, so this stays small.
+    static let concurrentRenderLimit = 3
+    static let mountBudget = GenuiMountBudget(limit: concurrentRenderLimit)
+}
+
+/// Which fences currently hold a rendering slot. Main-thread only; every caller
+/// is a SwiftUI view callback.
+final class GenuiMountBudget {
+    private let limit: Int
+    private var active: Set<UUID> = []
+
+    init(limit: Int) {
+        self.limit = limit
+    }
+
+    /// `force` is the reader tapping the mount button on a fence that could not
+    /// get a slot on its own.
+    func claim(_ id: UUID, force: Bool = false) -> Bool {
+        if active.contains(id) { return true }
+        if !force, active.count >= limit { return false }
+        active.insert(id)
+        return true
+    }
+
+    func release(_ id: UUID) {
+        active.remove(id)
+    }
+}
+
 /// One rendered fence: a shell that grows once the web view reports its content
 /// height, so the row never clips a long table or chart. When the runtime cannot
 /// mount the spec, the fence falls back to its own source instead of a blank box.
 ///
-/// The web view is created on first tap rather than on appear: each fence is a
-/// separate WebContent process holding the multi-megabyte runtime, and mounting
-/// a conversation's worth of them at once is what gets the app killed.
+/// Fences render on their own, but only while they fit in `GenuiMountBudget`:
+/// each one is a separate WebContent process holding the multi-megabyte runtime,
+/// so a conversation with a dozen charts must not open a dozen of them. A fence
+/// that scrolls away gives its slot back and is rebuilt when it returns; one that
+/// cannot get a slot offers a manual mount button instead.
 struct GenuiBlockContainer: View {
     let plan: GenuiRenderPlan
     /// Raw fence body, kept so a failed mount still shows something readable.
@@ -102,6 +137,9 @@ struct GenuiBlockContainer: View {
     @State private var height: CGFloat = 180
     @State private var failure: String?
     @State private var isMounted = false
+    /// Stable per rendered fence, so the budget can be claimed and released
+    /// across appear/disappear cycles.
+    @State private var identity = UUID()
 
     var body: some View {
         Group {
@@ -118,6 +156,8 @@ struct GenuiBlockContainer: View {
                 mountButton
             }
         }
+        .onAppear(perform: claimSlot)
+        .onDisappear(perform: releaseSlot)
         // A recycled row must not inherit the previous fence's state.
         .onChange(of: plan.artifactJSON) { _, _ in
             failure = nil
@@ -126,16 +166,29 @@ struct GenuiBlockContainer: View {
         }
     }
 
+    private func claimSlot() {
+        guard !isMounted, failure == nil else { return }
+        isMounted = GenuiConfig.mountBudget.claim(identity)
+    }
+
+    private func releaseSlot() {
+        guard isMounted else { return }
+        // Leaving the viewport destroys the web view, which is the whole point:
+        // the WebContent process is what costs memory.
+        GenuiConfig.mountBudget.release(identity)
+        isMounted = false
+    }
+
     private var mountButton: some View {
         Button {
-            isMounted = true
+            isMounted = GenuiConfig.mountBudget.claim(identity, force: true)
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "square.grid.2x2")
                 VStack(alignment: .leading, spacing: 1) {
                     Text(String(localized: "genui.mount", defaultValue: "点按渲染 GenUI 组件"))
                         .font(.subheadline)
-                    Text(String(localized: "genui.mount.hint", defaultValue: "不自动加载，避免一次打开过多占用内存"))
+                    Text(String(localized: "genui.mount.hint", defaultValue: "已同时渲染 3 个，为省内存点按后再加载"))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -176,6 +229,12 @@ struct GenuiBlockContainer: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        // A fence that cannot render must not keep a slot the next one needs.
+        .onAppear {
+            guard isMounted else { return }
+            GenuiConfig.mountBudget.release(identity)
+            isMounted = false
+        }
     }
 }
 

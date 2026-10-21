@@ -22,13 +22,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Not loaded automatically, so one conversation cannot open too many at once"
+            "value" : "Three are already rendering; tap to load this one"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "不自动加载，避免一次打开过多占用内存"
+            "value" : "已同时渲染 3 个，为省内存点按后再加载"
           }
         }
       }
