@@ -226,6 +226,21 @@ struct WorkspacePreviewCache: Sendable {
     }
 
     /// 启动、后台及用户清理均使用同一入口；正在下载/预览/导出的文件始终保留。
+    func statistics(temporaryRoot: URL? = Self.temporaryRoot) -> WorkspaceCacheStatistics {
+        let all = children(root) + (temporaryRoot.map(children) ?? [])
+        return WorkspaceCacheStatistics(previewBytes: treeBytes(root),
+            temporaryBytes: temporaryRoot.map(treeBytes) ?? 0,
+            protectedBytes: all.filter { lifetime.isLeased($0) }.reduce(0) { $0 + treeBytes($1) })
+    }
+
+    func clearTemporaryFiles(temporaryRoot: URL? = Self.temporaryRoot) {
+        guard let temporaryRoot else { return }
+        for directory in children(temporaryRoot) {
+            if lifetime.isLeased(directory) { lifetime.removeAfterLastLease(directory) }
+            else { _ = removeUnused(directory) }
+        }
+    }
+
     @discardableResult
     func maintain(temporaryRoot: URL? = Self.temporaryRoot, clear: Bool = false) -> WorkspaceCacheStatistics {
         if clear { lifetime.invalidate(root) }
@@ -327,6 +342,27 @@ struct WorkspacePreviewCache: Sendable {
     }
 }
 
+enum CacheStorageCategory: String, CaseIterable, Identifiable, Sendable {
+    case chats, images, previews, temporary
+    var id: String { rawValue }
+}
+
+struct AppStorageUsage: Sendable {
+    let resources: WorkspaceCacheStatistics
+    let chatBytes: Int64
+    let imageBytes: Int64
+    let freeBytes: Int64
+    var totalBytes: Int64 { resources.totalBytes + chatBytes + imageBytes }
+    func bytes(for category: CacheStorageCategory) -> Int64 {
+        switch category {
+        case .chats: chatBytes
+        case .images: imageBytes
+        case .previews: resources.previewBytes
+        case .temporary: resources.temporaryBytes
+        }
+    }
+}
+
 struct AppCacheStorageStatistics: Sendable {
     let resources: WorkspaceCacheStatistics
     let databaseBytes: Int64
@@ -345,6 +381,26 @@ struct AppCacheStorageStatistics: Sendable {
 /// 所有自动维护与设置页面共用预算；活跃下载允许超过临时目录的 32 MiB 软预算，关闭即删。
 actor AppCacheMaintenance {
     static let shared = AppCacheMaintenance()
+    /// 设置页统计不触发自动淘汰；手动清理仅作用于指定资源类别。
+    func storageUsage(cache: ChatHistoryCache?, clearing category: CacheStorageCategory? = nil) async -> AppStorageUsage {
+        if category == .chats { await cache?.clear() }
+        return await Task.detached(priority: .utility) {
+            let cache = WorkspacePreviewCache(gatewayID: "maintenance")
+            switch category {
+            case .images: ImageAttachmentCache.maintainDownloadedFiles(clear: true)
+            case .previews: cache.maintain(temporaryRoot: nil, clear: true)
+            case .temporary: cache.clearTemporaryFiles()
+            case .chats, nil: break
+            }
+            let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            return AppStorageUsage(resources: cache.statistics(),
+                chatBytes: cache.treeBytes(base.appendingPathComponent("ChatHistory")),
+                imageBytes: cache.treeBytes(base.appendingPathComponent("GatewayAttachments")) +
+                    cache.treeBytes(base.appendingPathComponent("DshMobile/ImageAttachments")),
+                freeBytes: Self.freeBytes())
+        }.value
+    }
+
     func run(cache: ChatHistoryCache?, clear: Bool = false) async -> AppCacheStorageStatistics {
         if clear { await cache?.clear() }
         var files = await snapshot(clear: clear)

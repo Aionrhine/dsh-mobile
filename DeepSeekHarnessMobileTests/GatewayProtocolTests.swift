@@ -1,5 +1,9 @@
 import XCTest
+#if DEBUG
+@testable import MarkdownUI
+#else
 import MarkdownUI
+#endif
 import class DeepSeekHarnessShared.SharedQueueStore
 import UIKit
 import SwiftUI
@@ -10,6 +14,8 @@ import UniformTypeIdentifiers
 import class DeepSeekHarnessShared.SharedQuestionResult
 import class DeepSeekHarnessShared.SharedMviEvent
 import class DeepSeekHarnessShared.SharedMviDispatchResult
+import class DeepSeekHarnessShared.SharedHistoryProjectionSnapshot
+import class DeepSeekHarnessShared.SharedPreparedHistoryPage
 import class DeepSeekHarnessShared.SharedTrajectoryStore
 import class DeepSeekHarnessShared.SharedSessionControlResult
 import class DeepSeekHarnessShared.SharedSessionControlStore
@@ -341,7 +347,7 @@ private func stage9WriteMatches(for property: String, in source: String) throws 
     let nestedAccess = "(?:(?:\\s*\\[[^\\]\\n]+\\])|(?:\\s*[?!]?\\.\\s*[A-Za-z_][A-Za-z0-9_]*))*"
     let writePatterns = [
         "(?<![A-Za-z0-9_\\.])(?:self\\.)?\(escapedProperty)\(nestedAccess)\\s*(?:=|[+\\-*/%&|^]=)(?!=)",
-        "&\\s*(?:self\\.)?\(escapedProperty)\(nestedAccess)(?![A-Za-z0-9_])",
+        "(?<![&])&(?![&=])\\s*(?:self\\.)?\(escapedProperty)\(nestedAccess)(?![A-Za-z0-9_])",
         "(?<![A-Za-z0-9_\\.])(?:self\\.)?\(escapedProperty)\(nestedAccess)\\s*\\.\\s*(?:append|appendContentsOf|insert|popFirst|popLast|remove|removeAll|removeFirst|removeLast|removeSubrange|replaceSubrange|removeValue|updateValue|update|merge|swapAt|sort|reverse|shuffle|partition|reserveCapacity|formUnion|formIntersection|formSymmetricDifference|subtract|toggle|withUnsafeMutableBytes|withUnsafeMutablePointer|withUnsafeMutableBufferPointer|withContiguousMutableStorageIfAvailable)\\s*\\("
     ]
     return try writePatterns.flatMap { pattern in
@@ -2663,6 +2669,300 @@ final class GatewayProtocolTests: XCTestCase {
     }
 
     @MainActor
+    func testHistoryPresentationAdmissionCoversWorkerGapAndNeedsActualFinalAck() async throws {
+        let (store, session) = try await makeRc2HistoryLoadingStore()
+        try await deliverHistoryLoadingFrame(store,
+            #"{"kind":"subscribed","sessionId":"mask-session","subscriptionId":"sub","assistantStream":true}"#)
+        try await deliverHistoryLoadingFrame(store,
+            #"{"kind":"session-snapshot","sessionId":"mask-session","subscriptionId":"sub","streamId":"stream","historyFormatVersion":3,"cursor":10,"events":[{"type":"assistant/message","seq":10,"time":100,"data":{"message":{"content":[{"type":"text","text":"existing"}]}}}],"hasMore":true,"nextBeforeSeq":10}"#)
+        await store.awaitConversationProjectionForTesting(sessionID: session.id, expectedText: "existing")
+        let consumerID = UUID()
+        var completed: [HistoryPresentationOutcome] = []
+        store.attachHistoryPresentationConsumer(sessionID: session.id, consumer: .init(id: consumerID) {
+            if case .finished(_, let outcome) = $0 { completed.append(outcome) }
+        })
+        XCTAssertTrue(store.requestOlderHistoryPresentation(sessionID: session.id, consumerID: consumerID))
+        XCTAssertFalse(store.requestOlderHistoryPresentation(sessionID: session.id, consumerID: consumerID))
+        // 真实网关响应在 request-page effect 已发送之后才可能到达。
+        await store.awaitPendingKMPEventDeliveriesForTesting(includingHistoryPreparation: false)
+        XCTAssertTrue(store.historyLoadingSessionIds.contains(session.id))
+        let entered = expectation(description: "older history worker entered")
+        let gate = ConversationHistoryPreparationGate(entered: entered)
+        store.conversationHistoryPreparationForTesting = { input in
+            await gate.pause()
+            return try KMPConversationStoreAdapter.prepareHistory(input)
+        }
+        store.gateway.onFrame?(try GatewayWireDecoder.decode(Data(
+            #"{"kind":"history","sessionId":"mask-session","historyFormatVersion":3,"events":[{"type":"user/message","seq":9,"time":9,"data":{"content":[{"type":"text","text":"older"}]}}],"hasMore":false}"#.utf8)))
+        await fulfillment(of: [entered], timeout: 3)
+        await store.awaitPendingKMPEventDeliveriesForTesting(includingHistoryPreparation: false)
+        XCTAssertFalse(store.historyLoadingSessionIds.contains(session.id))
+        XCTAssertFalse(store.requestOlderHistoryPresentation(sessionID: session.id, consumerID: consumerID),
+            "网络已经完成而 worker 尚未发布 timeline 时仍须拒绝新的 UI 分页")
+        XCTAssertTrue(completed.isEmpty)
+        XCTAssertNil(store.conversationTimeline(for: session.id).currentSnapshot.historyPresentationStamp)
+        await gate.release()
+        await flushDeferredKMPEvents(in: store)
+        let timeline = store.conversationTimeline(for: session.id)
+        for _ in 0..<200 where timeline.currentSnapshot.historyPresentationStamp == nil { try await Task.sleep(for: .milliseconds(5)) }
+        let stamp = try XCTUnwrap(timeline.currentSnapshot.historyPresentationStamp)
+        XCTAssertEqual(store.renderedConversationItems[session.id]?.map(\.text), ["older", "existing"])
+        XCTAssertTrue(completed.isEmpty)
+        store.acknowledgeHistoryPresentation(sessionID: session.id, consumerID: consumerID,
+            stamp: .init(operationID: stamp.operationID, projectionEpoch: 999))
+        XCTAssertTrue(completed.isEmpty)
+        store.acknowledgeHistoryPresentation(sessionID: session.id, consumerID: consumerID, stamp: stamp)
+        XCTAssertEqual(completed, [.presented])
+        XCTAssertNil(timeline.currentSnapshot.historyPresentationStamp)
+        store.detachHistoryPresentationConsumer(sessionID: session.id, consumerID: consumerID)
+    }
+
+    @MainActor
+    func testHistoryPresentationEmptyBatchAndDetachedConsumerReleaseWithoutPublishingRows() async throws {
+        let (store, session) = try await makeRc2HistoryLoadingStore()
+        try await deliverHistoryLoadingFrame(store,
+            #"{"kind":"subscribed","sessionId":"mask-session","subscriptionId":"sub","assistantStream":true}"#)
+        let snapshot = #"{"kind":"session-snapshot","sessionId":"mask-session","subscriptionId":"sub","streamId":"stream","historyFormatVersion":3,"cursor":10,"events":[{"type":"assistant/message","seq":10,"time":100,"data":{"message":{"content":[{"type":"text","text":"existing"}]}}}],"hasMore":true,"nextBeforeSeq":10}"#
+        try await deliverHistoryLoadingFrame(store, snapshot)
+        await store.awaitConversationProjectionForTesting(sessionID: session.id, expectedText: "existing")
+        let consumerID = UUID()
+        var completed: [HistoryPresentationOutcome] = []
+        store.attachHistoryPresentationConsumer(sessionID: session.id, consumer: .init(id: consumerID) {
+            if case .finished(_, let outcome) = $0 { completed.append(outcome) }
+        })
+        XCTAssertTrue(store.requestOlderHistoryPresentation(sessionID: session.id, consumerID: consumerID))
+        await store.awaitPendingKMPEventDeliveriesForTesting(includingHistoryPreparation: false)
+        XCTAssertTrue(store.historyLoadingSessionIds.contains(session.id))
+        try await deliverHistoryLoadingFrame(store,
+            #"{"kind":"history","sessionId":"mask-session","historyFormatVersion":3,"events":[],"hasMore":false}"#)
+        // page 的纯 parse 在 detached worker；MVI 队列短暂无待办不代表它已完成。
+        for _ in 0..<200 where completed.isEmpty { try await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertEqual(completed, [.empty])
+        XCTAssertEqual(store.renderedConversationItems[session.id]?.last?.text, "existing")
+        store.detachHistoryPresentationConsumer(sessionID: session.id, consumerID: consumerID)
+        XCTAssertFalse(store.requestOlderHistoryPresentation(sessionID: session.id, consumerID: consumerID))
+        XCTAssertNil(store.conversationTimeline(for: session.id).currentSnapshot.historyPresentationStamp)
+    }
+
+    @MainActor
+    func testStaticHistoryWorkerCoalescesLatestBeforeLiveAndCannotRollbackAfterFinishing() async throws {
+        let (store, session) = try await makeRc2HistoryLoadingStore()
+        try await deliverHistoryLoadingFrame(store,
+            #"{"kind":"subscribed","sessionId":"mask-session","subscriptionId":"sub","assistantStream":true}"#)
+        let entered = expectation(description: "worker entered")
+        let gate = ConversationHistoryPreparationGate(entered: entered)
+        store.conversationHistoryPreparationForTesting = { input in
+            await gate.pause()
+            return try KMPConversationStoreAdapter.prepareHistory(input)
+        }
+        try sendStaticHistorySnapshot(store, texts: ["one"])
+        await fulfillment(of: [entered], timeout: 3)
+        XCTAssertEqual(store.conversationHistoryWorkerCountForTesting, 1)
+        try sendStaticHistorySnapshot(store, texts: ["one", "two"])
+        await store.awaitPendingKMPEventDeliveriesForTesting(includingHistoryPreparation: false)
+        XCTAssertEqual(store.conversationHistoryWorkerCountForTesting, 1)
+        store.gateway.onFrame?(try GatewayWireDecoder.decode(Data(
+            #"{"kind":"event","sessionId":"mask-session","subscriptionId":"sub","streamId":"stream","seq":3,"time":3,"event":{"type":"assistant/message","turn":1,"step":1,"text":"live"}}"#.utf8)))
+        await store.awaitPendingKMPEventDeliveriesForTesting(includingHistoryPreparation: false)
+        await store.awaitConversationProjectionForTesting(sessionID: session.id, expectedText: "live")
+        XCTAssertEqual(store.renderedConversationItems[session.id]?.map(\.text), ["one", "two", "live"])
+        await gate.release()
+        await flushDeferredKMPEvents(in: store)
+        XCTAssertEqual(store.events[session.id]?.map(\.seq), [1, 2, 3])
+        XCTAssertEqual(store.renderedConversationItems[session.id]?.map(\.text), ["one", "two", "live"])
+        XCTAssertEqual(store.conversationHistoryWorkerCountForTesting, 0)
+    }
+
+    @MainActor
+    func testStaticHistoryWorkerCannotResurrectDeletedSession() async throws {
+        let (store, session) = try await makeRc2HistoryLoadingStore()
+        try await deliverHistoryLoadingFrame(store,
+            #"{"kind":"subscribed","sessionId":"mask-session","subscriptionId":"sub","assistantStream":true}"#)
+        let entered = expectation(description: "worker entered")
+        let gate = ConversationHistoryPreparationGate(entered: entered)
+        store.conversationHistoryPreparationForTesting = { input in
+            await gate.pause()
+            return try KMPConversationStoreAdapter.prepareHistory(input)
+        }
+        try sendStaticHistorySnapshot(store, texts: ["must disappear"])
+        await fulfillment(of: [entered], timeout: 3)
+        store.gateway.onFrame?(try GatewayWireDecoder.decode(Data(#"{"kind":"sessions","items":[]}"#.utf8)))
+        await store.awaitPendingKMPEventDeliveriesForTesting(includingHistoryPreparation: false)
+        await gate.release()
+        await flushDeferredKMPEvents(in: store)
+        XCTAssertTrue(store.sessions.isEmpty)
+        XCTAssertTrue(store.events[session.id, default: []].isEmpty)
+        XCTAssertEqual(store.conversationHistoryWorkerCountForTesting, 0)
+        for _ in 0..<100 where store.isPreparingConversation(session.id) { try await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertFalse(store.isPreparingConversation(session.id))
+        XCTAssertTrue(store.renderedConversationItems[session.id, default: []].isEmpty)
+    }
+
+    @MainActor
+    func testStaticHistoryWorkerFailureFallsBackWithoutLeavingLoading() async throws {
+        let (store, session) = try await makeRc2HistoryLoadingStore()
+        try await deliverHistoryLoadingFrame(store,
+            #"{"kind":"subscribed","sessionId":"mask-session","subscriptionId":"sub","assistantStream":true}"#)
+        store.conversationHistoryPreparationForTesting = { _ in throw NSError(domain: "test-pure-prepare", code: 1) }
+        try sendStaticHistorySnapshot(store, texts: ["fallback"])
+        await flushDeferredKMPEvents(in: store)
+        await store.awaitConversationProjectionForTesting(sessionID: session.id, expectedText: "fallback")
+        XCTAssertEqual(store.renderedConversationItems[session.id]?.map(\.text), ["fallback"])
+        XCTAssertFalse(store.isPreparingConversation(session.id))
+        XCTAssertEqual(store.conversationHistoryWorkerCountForTesting, 0)
+    }
+
+    @MainActor
+    func testStaticHistoryWorkerFlushesBeforeSteeringAndStreamWithoutDuplicatingPrefix() async throws {
+        let (store, session) = try await makeRc2HistoryLoadingStore()
+        try await deliverHistoryLoadingFrame(store,
+            #"{"kind":"subscribed","sessionId":"mask-session","subscriptionId":"sub","assistantStream":true}"#)
+        let entered = expectation(description: "worker entered")
+        let gate = ConversationHistoryPreparationGate(entered: entered)
+        store.conversationHistoryPreparationForTesting = { input in
+            await gate.pause()
+            return try KMPConversationStoreAdapter.prepareHistory(input)
+        }
+        try sendStaticHistorySnapshot(store, texts: ["one"])
+        await fulfillment(of: [entered], timeout: 3)
+        store.gateway.onFrame?(try GatewayWireDecoder.decode(Data(
+            #"{"kind":"session-queue","sessionId":"mask-session","items":[{"id":"q","placement":"steering","message":{"id":"m","content":[{"type":"text","text":"queued"}]}}]}"#.utf8)))
+        await store.awaitPendingKMPEventDeliveriesForTesting(includingHistoryPreparation: false)
+        await store.awaitConversationProjectionForTesting(sessionID: session.id, expectedText: "queued")
+        XCTAssertEqual(store.renderedConversationItems[session.id]?.map(\.text), ["one", "queued"])
+        store.gateway.onFrame?(try GatewayWireDecoder.decode(Data(
+            #"{"kind":"session-snapshot","sessionId":"mask-session","subscriptionId":"sub","streamId":"stream","historyFormatVersion":3,"cursor":1,"events":[{"type":"user/message","seq":1,"time":1,"data":{"content":[{"type":"text","text":"one"}]}}],"hasMore":false,"assistantStream":{"revision":2,"activeAttempt":{"attemptId":"attempt","turn":2,"step":1,"startedAfterSeq":1,"nextIndex":1,"stream":[{"type":"text-chunks","index":0,"time0":100,"texts":["Hello"],"dt":[]}]}}}"#.utf8)))
+        store.gateway.onFrame?(try GatewayWireDecoder.decode(Data(
+            #"{"kind":"assistant-stream","sessionId":"mask-session","subscriptionId":"sub","streamId":"stream","frame":{"type":"chunk","attemptId":"attempt","revision":3,"index":1,"time":101,"turn":2,"step":1,"chunk":{"type":"text-delta","index":0,"text":" world"}}}"#.utf8)))
+        await store.awaitPendingKMPEventDeliveriesForTesting(includingHistoryPreparation: false)
+        await gate.release()
+        await flushDeferredKMPEvents(in: store)
+        await store.awaitConversationProjectionForTesting(sessionID: session.id, expectedText: "Hello world")
+        XCTAssertEqual(store.renderedConversationItems[session.id]?.filter { $0.kind == .assistant }.map(\.text), ["Hello world"])
+        XCTAssertEqual(store.conversationHistoryWorkerCountForTesting, 0)
+    }
+
+    @MainActor
+    private func sendStaticHistorySnapshot(_ store: AppStore, texts: [String]) throws {
+        let raw: [[String: Any]] = texts.enumerated().map { index, text in
+            ["type": "user/message", "seq": index + 1, "time": index + 1,
+             "data": ["content": [["type": "text", "text": text]]]]
+        }
+        let payload: [String: Any] = ["kind": "session-snapshot", "sessionId": "mask-session",
+            "subscriptionId": "sub", "streamId": "stream", "historyFormatVersion": 3,
+            "cursor": texts.count, "events": raw, "hasMore": false]
+        store.gateway.onFrame?(try GatewayWireDecoder.decode(JSONSerialization.data(withJSONObject: payload)))
+    }
+
+    @MainActor
+    private func makeReadingWindowFixture() async throws -> (AppStore, SessionSummary, UUID, HistoryReadingProbe) {
+        let (store, session) = try await makeRc2HistoryLoadingStore()
+        try await deliverHistoryLoadingFrame(store,
+            #"{"kind":"subscribed","sessionId":"mask-session","subscriptionId":"sub","assistantStream":true}"#)
+        try await deliverHistoryLoadingFrame(store,
+            #"{"kind":"session-snapshot","sessionId":"mask-session","subscriptionId":"sub","streamId":"stream","historyFormatVersion":3,"cursor":100,"events":[{"type":"assistant/message","seq":100,"time":100,"data":{"message":{"content":[{"type":"text","text":"existing"}]}}}],"hasMore":true,"nextBeforeSeq":100}"#)
+        await store.awaitConversationProjectionForTesting(sessionID: session.id, expectedText: "existing")
+        let consumer = UUID(), probe = HistoryReadingProbe()
+        store.attachHistoryPresentationConsumer(sessionID: session.id, consumer: .init(id: consumer) { probe.receive($0) })
+        XCTAssertTrue(store.requestOlderHistoryPresentation(sessionID: session.id, consumerID: consumer,
+            readingWindow: CGSize(width: 320, height: 200)))
+        await store.awaitPendingKMPEventDeliveriesForTesting(includingHistoryPreparation: false)
+        return (store, session, consumer, probe)
+    }
+
+    @MainActor
+    private func readingPage(_ store: AppStore, _ range: ClosedRange<Int>, tools: Bool = false, more: Bool) async throws {
+        let events: [[String: Any]] = range.map { seq -> [String: Any] in
+            let payload: [String: Any]
+            if tools { payload = ["name": "fixture", "arguments": ["value": "tool use"]] }
+            else { payload = ["content": [["type": "text", "text": "short \(seq)"]]] }
+            return ["type": tools ? "tool/call" : "user/message", "seq": seq, "time": seq, "data": payload]
+        }
+        let data = try JSONSerialization.data(withJSONObject: ["kind": "history", "sessionId": "mask-session",
+            "historyFormatVersion": 3, "events": events, "hasMore": more, "nextBeforeSeq": range.lowerBound])
+        store.gateway.onFrame?(try GatewayWireDecoder.decode(data))
+        // 解析在后台完成；下一页只能在上一响应真正归并后送达。
+        try await waitReading { store.events["mask-session"]?.first?.seq == range.lowerBound }
+        await store.awaitPendingKMPEventDeliveriesForTesting()
+    }
+
+    @MainActor
+    private func waitReading(_ predicate: () -> Bool, file: StaticString = #filePath, line: UInt = #line) async throws {
+        for _ in 0..<600 {
+            if predicate() { return }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTFail("阅读批次状态等待超时", file: file, line: line)
+    }
+
+    @MainActor
+    func testReadingBatchToolsContinueUnderOneAdmissionAndPublishOnlyWithBody() async throws {
+        let (store, session, consumer, probe) = try await makeReadingWindowFixture()
+        defer { store.detachHistoryPresentationConsumer(sessionID: session.id, consumerID: consumer); store.deactivateGateway() }
+        let timeline = store.conversationTimeline(for: session.id), revision = timeline.currentSnapshot.revision
+        try await readingPage(store, 40...99, tools: true, more: true)
+        try await waitReading { store.events[session.id]?.first?.seq == 40 && store.historyLoadingOlderSessionIds.contains(session.id) }
+        XCTAssertEqual(timeline.currentSnapshot.revision, revision)
+        try await readingPage(store, 10...39, tools: true, more: true)
+        try await waitReading { store.events[session.id]?.first?.seq == 10 && store.historyLoadingOlderSessionIds.contains(session.id) }
+        XCTAssertEqual(timeline.currentSnapshot.revision, revision)
+        XCTAssertEqual(probe.began, 1)
+        XCTAssertEqual(probe.terminals, 0)
+        XCTAssertFalse(store.requestOlderHistoryPresentation(sessionID: session.id, consumerID: consumer))
+        try await readingPage(store, 1...9, more: false)
+        try await waitReading { timeline.currentSnapshot.historyPresentationStamp != nil }
+        XCTAssertEqual(timeline.currentSnapshot.items.filter { $0.kind == .tool }.count, 90)
+        XCTAssertEqual(timeline.currentSnapshot.items.filter { $0.kind == .user }.count, 9)
+        XCTAssertEqual(probe.began, 1)
+        XCTAssertEqual(probe.terminals, 1)
+        XCTAssertTrue(probe.outcomes.isEmpty, "必须等实际呈现确认，不能在收到数据时结束")
+        store.acknowledgeHistoryPresentation(sessionID: session.id, consumerID: consumer,
+            stamp: try XCTUnwrap(timeline.currentSnapshot.historyPresentationStamp))
+        XCTAssertEqual(probe.outcomes, [.presented])
+    }
+
+    @MainActor
+    func testReadingBatchShortPagesStayFrozenUntilReadingWindowIsFilled() async throws {
+        let (store, session, consumer, probe) = try await makeReadingWindowFixture()
+        defer { store.detachHistoryPresentationConsumer(sessionID: session.id, consumerID: consumer); store.deactivateGateway() }
+        let timeline = store.conversationTimeline(for: session.id), revision = timeline.currentSnapshot.revision
+        try await readingPage(store, 99...99, more: true)
+        try await readingPage(store, 98...98, more: true)
+        try await waitReading { store.events[session.id]?.first?.seq == 98 && store.historyLoadingOlderSessionIds.contains(session.id) }
+        XCTAssertEqual(timeline.currentSnapshot.revision, revision)
+        try await readingPage(store, 90...97, more: true)
+        XCTAssertEqual(timeline.currentSnapshot.revision, revision)
+        try await readingPage(store, 80...89, more: true)
+        try await waitReading { timeline.currentSnapshot.historyPresentationStamp != nil }
+        XCTAssertEqual(timeline.currentSnapshot.items.filter { $0.kind == .user }.count, 20)
+        XCTAssertFalse(store.historyLoadingOlderSessionIds.contains(session.id))
+        XCTAssertTrue(store.selectedHistoryHasMore)
+        XCTAssertEqual(probe.began, 1)
+        store.acknowledgeHistoryPresentation(sessionID: session.id, consumerID: consumer,
+            stamp: try XCTUnwrap(timeline.currentSnapshot.historyPresentationStamp))
+        XCTAssertEqual(probe.outcomes, [.presented])
+    }
+
+    @MainActor
+    func testReadingBatchFailureReleasesAlreadyReceivedTools() async throws {
+        let (store, session, consumer, probe) = try await makeReadingWindowFixture()
+        defer { store.detachHistoryPresentationConsumer(sessionID: session.id, consumerID: consumer); store.deactivateGateway() }
+        try await readingPage(store, 40...99, tools: true, more: true)
+        try await readingPage(store, 10...39, tools: true, more: true)
+        try await waitReading { store.events[session.id]?.first?.seq == 10 && store.historyLoadingOlderSessionIds.contains(session.id) }
+        try await deliverHistoryLoadingFrame(store,
+            #"{"kind":"error","sessionId":"mask-session","requestType":"history","code":"fixture-failure","message":"fixture failure"}"#)
+        let timeline = store.conversationTimeline(for: session.id)
+        try await waitReading { !store.historyLoadingSessionIds.contains(session.id) && timeline.currentSnapshot.items.count == 91 }
+        if let stamp = timeline.currentSnapshot.historyPresentationStamp {
+            store.acknowledgeHistoryPresentation(sessionID: session.id, consumerID: consumer, stamp: stamp)
+        }
+        XCTAssertEqual(timeline.currentSnapshot.items.filter { $0.kind == .tool }.count, 90)
+        XCTAssertEqual(probe.began, 1)
+        XCTAssertFalse(probe.outcomes.isEmpty)
+    }
+
+    @MainActor
     private func makeRc2HistoryLoadingStore(timeout: Duration = .seconds(20)) async throws -> (AppStore, SessionSummary) {
         let session = SessionSummary(id: "mask-session", title: "History", lastActivity: Date(),
             isRunning: false, hasUnread: false)
@@ -3143,6 +3443,97 @@ final class GatewayProtocolTests: XCTestCase {
     }
 
     @MainActor
+    func testPreparedHistoryPageFactoryThrowsSwiftErrorsWithoutNativeTermination() throws {
+        XCTAssertThrowsError(try SharedPreparedHistoryPage.companion.parse(sessionId: "s1", eventsJson: "{"))
+        XCTAssertThrowsError(try SharedPreparedHistoryPage.companion.parse(sessionId: "s1", eventsJson:
+            #"[{"sessionId":"other","seq":1,"time":1,"event":{"type":"user/message","text":"wrong"}}]"#))
+        let input = SessionEvent(sessionId: "s1", seq: 1, time: 1, event: GatewayEvent(type: "user/message", text: "one"))
+        let prepared = try KMPHistoryStoreAdapter.preparePage(sessionID: "s1", events: [input])
+        let adapter = KMPHistoryStoreAdapter()
+        var published = 0
+        adapter.onChange = { _ in published += 1 }
+        XCTAssertThrowsError(try adapter.pageReceived(sessionID: "other", preparedPage: prepared, byteCount: 1,
+            hasMore: false, nextBeforeSequence: nil, remoteActivityTimestamp: nil))
+        XCTAssertEqual(published, 0)
+        XCTAssertTrue(adapter.events(for: "other").isEmpty)
+        XCTAssertThrowsError(try KMPHistoryStoreAdapter.preparePage(sessionID: "other", events: [input]))
+    }
+
+    @MainActor
+    func testPreparedHistoryPageKeepsLivePriorityAfterPureBackgroundParsing() async throws {
+        let adapter = KMPHistoryStoreAdapter()
+        try adapter.start(sessionID: "s1", older: false, hasLocalEvents: false, earliestLocalSequence: nil)
+        let incoming = [
+            SessionEvent(sessionId: "s1", seq: 1, time: 1, event: GatewayEvent(type: "user/message", text: "history")),
+            SessionEvent(sessionId: "s1", seq: 2, time: 2, event: GatewayEvent(type: "assistant/message", text: "stale"))
+        ]
+        let page = try await Task.detached { try KMPHistoryStoreAdapter.preparePage(sessionID: "s1", events: incoming) }.value
+        XCTAssertTrue(adapter.events(for: "s1").isEmpty, "pure parse must not touch the live owner")
+        try adapter.receive(SessionEvent(sessionId: "s1", seq: 2, time: 3,
+            event: GatewayEvent(type: "assistant/message", text: "live")))
+        try adapter.pageReceived(sessionID: "s1", preparedPage: page, byteCount: 10,
+            hasMore: false, nextBeforeSequence: nil, remoteActivityTimestamp: 3)
+        XCTAssertEqual(adapter.events(for: "s1").map(\.seq), [1, 2])
+        XCTAssertEqual(adapter.events(for: "s1").map(\.event.text), ["history", "live"])
+        XCTAssertTrue(adapter.isOperational)
+    }
+
+    @MainActor
+    func testKMPHistoryReferencePatchesRejectInvalidCommandsBeforePublishing() throws {
+        let incoming = SessionEvent(sessionId: "s1", seq: 1, time: 1,
+            event: GatewayEvent(type: "user/message", text: "incoming"))
+        let validReference: [String: Any] = ["source": "incoming", "index": 0, "sequence": 1]
+        let malformed: [[String: Any]] = [
+            ["kind": "replace", "replacementReferences": [["source": "other", "index": 0, "sequence": 1]], "referenceBaseEventSequence": 0],
+            ["kind": "replace", "replacementReferences": [["source": "incoming", "index": -1, "sequence": 1]], "referenceBaseEventSequence": 0],
+            ["kind": "replace", "replacementReferences": [["source": "retained", "index": -1, "sequence": 1]], "referenceBaseEventSequence": 0],
+            ["kind": "replace", "replacementReferences": [["source": "incoming", "index": 1, "sequence": 1]], "referenceBaseEventSequence": 0],
+            ["kind": "replace", "replacementReferences": [["source": "incoming", "index": 0, "sequence": 2]], "referenceBaseEventSequence": 0],
+            ["kind": "replace", "replacementReferences": [validReference, validReference], "referenceBaseEventSequence": 0],
+            ["kind": "replace", "replacementReferences": [["source": "retained", "index": 999, "sequence": 0],
+                ["source": "other", "index": 0, "sequence": 1]], "referenceBaseEventSequence": 0],
+            ["kind": "replace", "replacementReferences": [validReference], "referenceBaseEventSequence": 99],
+            ["kind": "replace", "replacementReferences": [validReference], "referenceBaseEventSequence": 0, "replacementEvents": []],
+            ["kind": "append", "replacementReferences": [validReference], "referenceBaseEventSequence": 0]
+        ]
+        for eventPatch in malformed {
+            let payload: [String: Any] = ["schema": 1, "sessionId": "s1", "pendingSessionChanged": false,
+                "eventPatch": eventPatch, "outcome": "none"]
+            let json = String(decoding: try JSONSerialization.data(withJSONObject: payload), as: UTF8.self)
+            let adapter = KMPHistoryStoreAdapter(bridge: MalformedHistoryEventBridge(payload: json))
+            var changes = 0
+            adapter.onChange = { _ in changes += 1 }
+            XCTAssertThrowsError(try adapter.pageReceived(sessionID: "s1", events: [incoming], byteCount: 1,
+                hasMore: false, nextBeforeSequence: nil, remoteActivityTimestamp: nil), json)
+            XCTAssertEqual(changes, 0, json)
+            XCTAssertTrue(adapter.events(for: "s1").isEmpty, json)
+            XCTAssertNotNil(adapter.runtimeError, json)
+        }
+    }
+
+    @MainActor
+    func testKMPHistorySnapshotsKeepExactContentAfterLaterLiveAndClear() throws {
+        let history = KMPHistoryStoreAdapter()
+        var firstSnapshot: SharedHistoryProjectionSnapshot?
+        history.onChange = { change in
+            if firstSnapshot == nil { firstSnapshot = change.projectionSnapshot }
+        }
+        try history.receive(SessionEvent(sessionId: "s1", seq: 1, time: 1,
+            event: GatewayEvent(type: "user/message", text: "original")))
+        let captured = try XCTUnwrap(firstSnapshot)
+        try history.receive(SessionEvent(sessionId: "s1", seq: 1, time: 2,
+            event: GatewayEvent(type: "user/message", text: "newer")))
+        try history.clear(sessionID: "s1")
+        XCTAssertNil(history.projectionSnapshot(for: "s1"))
+        let original = try JSONDecoder().decode([SessionEvent].self, from: Data(captured.eventsJson().utf8))
+        let conversation = KMPConversationStoreAdapter()
+        try conversation.replace(sessionID: "s1", events: original, historySnapshot: captured)
+        XCTAssertEqual(conversation.items(for: "s1").map(\.text), ["original"])
+        XCTAssertEqual(conversation.lastSequenceBySessionID["s1"], 1)
+        XCTAssertTrue(history.events(for: "s1").isEmpty)
+    }
+
+    @MainActor
     func testKMPHistoryAdapterOwnsPaginationWatermarkAndLiveTailMerge() throws {
         let adapter = KMPHistoryStoreAdapter()
         var changes: [KMPHistoryChange] = []
@@ -3310,6 +3701,29 @@ final class GatewayProtocolTests: XCTestCase {
             try stage9WriteMatches(for: "sessions", in: "let count = sessions.count").isEmpty,
             "只读属性访问不得被误判为写入"
         )
+    }
+
+    func testStage9WriteScannerDistinguishesReadsBooleanOperatorsAndWrites() throws {
+        for read in [
+            "sessions == other",
+            "sessions[index].isRunning == false",
+            "ready && sessions.first(where: { $0.id == id })?.isRunning == false",
+            "ready&&sessions.isEmpty",
+            "self.sessions[index] != nil"
+        ] {
+            XCTAssertTrue(try stage9WriteMatches(for: "sessions", in: read).isEmpty, read)
+        }
+        for write in [
+            "sessions = []",
+            "self.sessions[index].isRunning = false",
+            "sessions += incoming",
+            "sessions[index] &= mask",
+            "sessions.append(item)",
+            "mutate(&sessions)",
+            "mutate(&self.sessions[index])"
+        ] {
+            XCTAssertFalse(try stage9WriteMatches(for: "sessions", in: write).isEmpty, write)
+        }
     }
 
     func testStage11ProductSourcesContainNoParallelBasicDomainImplementation() throws {
@@ -7398,6 +7812,25 @@ private final class MalformedTrajectoryEventBridge:
     }
 }
 
+private actor ConversationHistoryPreparationGate {
+    private let entered: XCTestExpectation
+    private var opened = false
+    private var announced = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    init(entered: XCTestExpectation) { self.entered = entered }
+    func pause() async {
+        guard !opened else { return }
+        if !announced { announced = true; entered.fulfill() }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+    func release() {
+        opened = true
+        let pending = waiters
+        waiters.removeAll()
+        pending.forEach { $0.resume() }
+    }
+}
+
 private final class MalformedHistoryEventBridge:
     KMPHistoryStoreBridging,
     KMPHistoryEventBridging
@@ -7443,7 +7876,13 @@ private final class MalformedHistoryEventBridge:
         hasMore: Bool,
         nextBeforeSequence: KotlinInt?,
         remoteActivityTimestamp: KotlinDouble?
-    ) -> SharedMviDispatchResult { unsupported() }
+    ) -> SharedMviDispatchResult {
+        handler?(SharedMviEvent(
+            schema: 2, sequence: 1, transactionId: "history-page:1", domain: "history", kind: "transition",
+            statePayloadJson: payload, effectsJson: "[]", metadataJson: nil, errorCode: nil, errorMessage: nil
+        ))
+        return accepted("history-page:1")
+    }
     func timedOut(sessionId: String) -> SharedMviDispatchResult { unsupported() }
     func cancelled(sessionId: String) -> SharedMviDispatchResult { unsupported() }
     func clearSession(sessionId: String) -> SharedMviDispatchResult { unsupported() }
@@ -7514,6 +7953,90 @@ private final class AgentLongRunningKeepAliveSpy: AgentLongRunningKeepAlive {
 ///
 /// These tests fail by killing the test process before the fix, and must return
 /// a finite measurement after it.
+final class MarkdownRenderProductTests: XCTestCase {
+    func testJSONKeyWhitespaceEscapesAndUnicodeKeepOriginalAttributes() throws {
+        // JSONC highlighting accepts general regex whitespace, not just the
+        // four whitespace characters allowed by the JSON parser.
+        let source = "\"中文🙂\"\u{2003}\t:\n\"value\\\"with:colon\", \"tail\", true, false, null, -12.5e+2"
+        let highlighted = JSONSyntaxHighlighter.highlight(source)
+        XCTAssertEqual(String(highlighted.characters), source)
+        func color(_ token: String) throws -> Color? {
+            let range = try XCTUnwrap(highlighted.range(of: token))
+            return highlighted[range].foregroundColor
+        }
+        XCTAssertEqual(try color("\"中文🙂\""), DSHColor.ocean)
+        XCTAssertEqual(try color("\"value\\\"with:colon\""), Color(red: 0.10, green: 0.55, blue: 0.38))
+        XCTAssertEqual(try color("\"tail\""), Color(red: 0.10, green: 0.55, blue: 0.38))
+        XCTAssertEqual(try color("true"), DSHColor.purple)
+        XCTAssertEqual(try color("false"), DSHColor.purple)
+        XCTAssertEqual(try color("null"), .red.opacity(0.8))
+        XCTAssertEqual(try color("-12.5e+2"), DSHColor.orange)
+        XCTAssertEqual(JSONSyntaxHighlighter.highlight(source), highlighted)
+        XCTAssertTrue(JSONSyntaxHighlighter.isJSON(#"{"a": []}"#))
+        XCTAssertFalse(JSONSyntaxHighlighter.isJSON(#""scalar""#))
+        XCTAssertFalse(JSONSyntaxHighlighter.isJSON("not JSON"))
+    }
+
+    func testPreparedDocumentUpdatesFileOrderAndRemovesObsoleteReferences() {
+        let source = "`a.pdf` `b.pdf`"
+        let first = PreparedMarkdownCache.document(for: source, filePaths: ["a.pdf", "b.pdf"]).renderHTML()
+        let reordered = PreparedMarkdownCache.document(for: source, filePaths: ["b.pdf", "a.pdf"]).renderHTML()
+        XCTAssertTrue(first.contains("href=\"dsh-file-reference:///0\"><code>a.pdf"))
+        XCTAssertTrue(reordered.contains("href=\"dsh-file-reference:///1\"><code>a.pdf"))
+        let removed = PreparedMarkdownCache.document(for: source, filePaths: ["b.pdf"]).renderHTML()
+        XCTAssertFalse(removed.contains("href=\"dsh-file-reference:///1\""))
+        XCTAssertTrue(removed.contains("href=\"dsh-file-reference:///0\"><code>b.pdf"))
+        let plain = PreparedMarkdownCache.document(for: source, filePaths: []).renderHTML()
+        XCTAssertFalse(plain.contains("dsh-file-reference"))
+        XCTAssertTrue(plain.contains("\u{2009}a.pdf\u{2009}"))
+        XCTAssertEqual(PreparedMarkdownCache.document(for: source, filePaths: ["a.pdf", "b.pdf"]).renderHTML(), first)
+    }
+
+    func testRenderingCacheHonorsRecencyCountCostAndOversizedAdmission() {
+        let cache = MarkdownRenderProductCache<String, String>(countLimit: 2, costLimit: 5)
+        var builds: [String: Int] = [:]
+        func read(_ key: String, cost: Int = 2) -> String {
+            cache.value(for: key) {
+                builds[key, default: 0] += 1
+                return (key, cost)
+            }
+        }
+        XCTAssertEqual(read("a"), "a")
+        _ = read("b")
+        _ = read("a")
+        _ = read("c")
+        _ = read("a")
+        XCTAssertEqual(builds["a"], 1)
+        _ = read("b")
+        XCTAssertEqual(builds["b"], 2)
+        _ = read("large", cost: 6)
+        _ = read("large", cost: 6)
+        XCTAssertEqual(builds["large"], 2)
+        _ = read("b")
+        XCTAssertEqual(builds["b"], 2, "Oversized products must not evict admitted entries")
+        _ = read("costly", cost: 5)
+        _ = read("b")
+        XCTAssertEqual(builds["b"], 3, "Cost must bound the cache even below the count limit")
+    }
+
+    func testMemoryWarningDropsCachedAndInFlightProducts() {
+        let cache = MarkdownRenderProductCache<String, Int>(countLimit: 2, costLimit: 10)
+        var builds = 0
+        func read() -> Int {
+            cache.value(for: "a") { builds += 1; return (builds, 1) }
+        }
+        XCTAssertEqual(read(), 1)
+        XCTAssertEqual(read(), 1)
+        NotificationCenter.default.post(name: UIApplication.didReceiveMemoryWarningNotification, object: nil)
+        XCTAssertEqual(read(), 2)
+        _ = cache.value(for: "in-flight") {
+            NotificationCenter.default.post(name: UIApplication.didReceiveMemoryWarningNotification, object: nil)
+            return (3, 1)
+        }
+        XCTAssertEqual(cache.value(for: "in-flight") { (4, 1) }, 4)
+    }
+}
+
 final class MarkdownLargeMessageTests: XCTestCase {
     private func longMessage(lineCount: Int) -> String {
         (1...lineCount).map(String.init).joined(separator: "\n")
@@ -8263,5 +8786,2134 @@ private struct WorkspacePreviewPresentationHarness: View {
             WorkspaceFilePreviewLoadingSheet(store: store, request: request)
                 .environment(\.scenePhase, .active)
         }
+    }
+}
+
+#if DEBUG
+@MainActor
+final class DebugHistoryRowMeasurementTests: XCTestCase {
+    func testDisabledRowRecorderCreatesNoScopeOrRecords() {
+        let recorder = DebugHistoryRowMeasurements(enabled: false)
+        XCTAssertNil(recorder.begin(rowID: "private-session-message", kind: "hosted", widthPoints: 320,
+                                    source: "history_preparation", reportStartedAt: 0, loadOrdinal: 1))
+        XCTAssertNil(DebugHistoryRowMeasurements.activeScope)
+        XCTAssertTrue(recorder.seal().isEmpty)
+        XCTAssertFalse(recorder.limitReached)
+    }
+
+    func testNestedScopesRestoreParentAndSerializeOnlyAnonymousRowMetadata() throws {
+        let recorder = DebugHistoryRowMeasurements(enabled: true)
+        let originalID = "private-session-message"
+        let outer = try XCTUnwrap(recorder.begin(rowID: originalID, kind: "hosted", widthPoints: 324.25,
+                                                source: "history_preparation", reportStartedAt: 0, loadOrdinal: 2))
+        defer { outer.finish() }
+        let create = outer.startStage()
+        outer.finishStage("host_create", startedAt: create)
+        let inner = try XCTUnwrap(recorder.begin(rowID: "nested-row", kind: "user_message", widthPoints: 324.25,
+                                                source: "viewport_prewarm", reportStartedAt: 0, loadOrdinal: nil))
+        inner.finish()
+        XCTAssertTrue(DebugHistoryRowMeasurements.activeScope === outer)
+        outer.finish()
+        XCTAssertNil(DebugHistoryRowMeasurements.activeScope)
+        let records = recorder.seal()
+        XCTAssertEqual(records.map(\.stage), ["host_create", "total", "total"])
+        XCTAssertEqual(records[0].rowHash, records[2].rowHash)
+        XCTAssertNotEqual(records[0].rowHash, records[1].rowHash)
+        XCTAssertEqual(records[2].widthPoints, 324.25)
+        XCTAssertEqual(records[2].loadOrdinal, 2)
+        XCTAssertTrue(records.allSatisfy { $0.durationMs.isFinite && $0.durationMs >= 0 })
+        let data = try JSONEncoder().encode(records)
+        let text = String(decoding: data, as: UTF8.self)
+        XCTAssertFalse(text.contains(originalID))
+        XCTAssertFalse(text.contains("nested-row"))
+        let decoded = try JSONDecoder().decode([DebugHistoryRowMeasurements.Measurement].self, from: data)
+        XCTAssertEqual(decoded.map(\.rowHash), records.map(\.rowHash))
+        XCTAssertEqual(decoded[2].source, "history_preparation")
+    }
+
+    func testRowBufferHasIndependentLimitAndRejectsWritesAfterSeal() throws {
+        let recorder = DebugHistoryRowMeasurements(enabled: true, countLimit: 2)
+        for id in ["first", "second"] {
+            let scope = try XCTUnwrap(recorder.begin(rowID: id, kind: "hosted", widthPoints: 320,
+                                                    source: "history_preparation", reportStartedAt: 0, loadOrdinal: 1))
+            scope.finish()
+            scope.finish()
+        }
+        XCTAssertNil(recorder.begin(rowID: "overflow", kind: "hosted", widthPoints: 320,
+                                    source: "history_preparation", reportStartedAt: 0, loadOrdinal: 1))
+        XCTAssertTrue(recorder.limitReached)
+        XCTAssertEqual(recorder.seal().count, 2)
+        XCTAssertNil(recorder.begin(rowID: "after-seal", kind: "hosted", widthPoints: 320,
+                                    source: "history_preparation", reportStartedAt: 0, loadOrdinal: 1))
+        XCTAssertEqual(recorder.measurements.count, 2)
+        XCTAssertNil(DebugHistoryRowMeasurements.activeScope)
+    }
+}
+#endif
+
+@MainActor
+final class HistoryPresentationAdmissionTests: XCTestCase {
+    private func begin(_ owner: HistoryPresentationAdmission, consumerID: UUID, minimumSequence: Int64 = 0) throws -> UUID {
+        try XCTUnwrap(owner.begin(sessionID: "s", consumerID: consumerID, domainLoading: false,
+            hasMore: true, producerBusy: false, minimumHistoryEventSequence: minimumSequence))
+    }
+
+    func testTwoPageBatchWaitsForTerminalAndFinalActualPresentation() throws {
+        let owner = HistoryPresentationAdmission()
+        let consumerID = UUID()
+        var outcomes: [HistoryPresentationOutcome] = []
+        owner.attach(sessionID: "s", consumer: .init(id: consumerID) { if case .finished(_, let outcome) = $0 { outcomes.append(outcome) } })
+        _ = try begin(owner, consumerID: consumerID)
+        owner.requireProjection(sessionID: "s", epoch: 1, historyEventSequence: 1)
+        let first = try XCTUnwrap(owner.stamp(sessionID: "s", committedEpoch: 1))
+        owner.acknowledge(sessionID: "s", consumerID: consumerID, stamp: first, domainLoading: true)
+        XCTAssertTrue(owner.isPending(sessionID: "s"))
+        XCTAssertNil(owner.begin(sessionID: "s", consumerID: consumerID, domainLoading: false, hasMore: true, producerBusy: false))
+        owner.requireProjection(sessionID: "s", epoch: 2, historyEventSequence: 2)
+        owner.terminal(sessionID: "s", domainLoading: false, historyEventSequence: 2)
+        owner.acknowledge(sessionID: "s", consumerID: consumerID, stamp: first, domainLoading: false)
+        XCTAssertTrue(owner.isPending(sessionID: "s"), "第一内部页已呈现，不能解锁第二页尚未呈现的 batch")
+        XCTAssertNil(owner.stamp(sessionID: "s", committedEpoch: 1), "旧 baseline 上的 live token 不能证明新历史已提交")
+        let final = try XCTUnwrap(owner.stamp(sessionID: "s", committedEpoch: 2))
+        owner.acknowledge(sessionID: "s", consumerID: consumerID, stamp: final, domainLoading: false)
+        XCTAssertFalse(owner.isPending(sessionID: "s"))
+        XCTAssertEqual(outcomes, [.presented])
+    }
+
+    func testStaleQueuedTerminalOldConsumerAndUnissuedFutureCannotReleaseOperation() throws {
+        let owner = HistoryPresentationAdmission()
+        let consumerID = UUID()
+        owner.attach(sessionID: "s", consumer: .init(id: consumerID, onEvent: { _ in }))
+        let old = try begin(owner, consumerID: consumerID)
+        owner.cancel(sessionID: "s")
+        let current = try begin(owner, consumerID: consumerID, minimumSequence: 10)
+        owner.requireProjection(sessionID: "s", epoch: 1, historyEventSequence: 9)
+        owner.terminal(sessionID: "s", domainLoading: false, historyEventSequence: 9)
+        XCTAssertTrue(owner.isPending(sessionID: "s"))
+        owner.requireProjection(sessionID: "s", epoch: 2, historyEventSequence: 10)
+        owner.terminal(sessionID: "s", domainLoading: false, historyEventSequence: 11)
+        owner.acknowledge(sessionID: "s", consumerID: consumerID,
+            stamp: .init(operationID: current, projectionEpoch: 999), domainLoading: false)
+        owner.cancel(sessionID: "s", operationID: old)
+        let valid = try XCTUnwrap(owner.stamp(sessionID: "s", committedEpoch: 2))
+        owner.acknowledge(sessionID: "s", consumerID: UUID(), stamp: valid, domainLoading: false)
+        owner.acknowledge(sessionID: "s", consumerID: consumerID,
+            stamp: .init(operationID: old, projectionEpoch: 2), domainLoading: false)
+        XCTAssertTrue(owner.matches(sessionID: "s", operationID: current))
+        owner.acknowledge(sessionID: "s", consumerID: consumerID, stamp: valid, domainLoading: false)
+        XCTAssertFalse(owner.isPending(sessionID: "s"))
+    }
+
+    func testAckBeforeTerminalThenEmptyFailureDetachAndReattachDoNotStick() throws {
+        let owner = HistoryPresentationAdmission()
+        let consumerID = UUID()
+        var outcomes: [HistoryPresentationOutcome] = []
+        owner.attach(sessionID: "s", consumer: .init(id: consumerID) { if case .finished(_, let outcome) = $0 { outcomes.append(outcome) } })
+        _ = try begin(owner, consumerID: consumerID)
+        owner.requireProjection(sessionID: "s", epoch: 1, historyEventSequence: 1)
+        owner.acknowledge(sessionID: "s", consumerID: consumerID,
+            stamp: try XCTUnwrap(owner.stamp(sessionID: "s", committedEpoch: 1)), domainLoading: false)
+        XCTAssertTrue(owner.isPending(sessionID: "s"))
+        owner.terminal(sessionID: "s", domainLoading: false)
+        _ = try begin(owner, consumerID: consumerID)
+        owner.terminal(sessionID: "s", domainLoading: false)
+        _ = try begin(owner, consumerID: consumerID)
+        owner.terminal(sessionID: "s", domainLoading: false, failure: .failed)
+        _ = try begin(owner, consumerID: consumerID)
+        owner.detach(sessionID: "s", consumerID: UUID())
+        XCTAssertTrue(owner.isPending(sessionID: "s"))
+        owner.attach(sessionID: "s", consumer: .init(id: UUID(), onEvent: { _ in }))
+        XCTAssertFalse(owner.isPending(sessionID: "s"))
+        XCTAssertEqual(outcomes, [.presented, .empty, .failed, .detached])
+    }
+
+    func testReservedOperationDoesNotCountStartNoopAndCacheNetworkActivationIsOnce() throws {
+        let owner = HistoryPresentationAdmission()
+        let consumer = UUID()
+        var accepted = 0
+        var rejected = 0
+        owner.attach(sessionID: "s", consumer: .init(id: consumer) {
+            if case .began = $0 { accepted += 1 }
+            if case .rejected = $0 { rejected += 1 }
+        })
+        let noop = try XCTUnwrap(owner.begin(sessionID: "s", consumerID: consumer, domainLoading: false,
+            hasMore: true, producerBusy: false, activate: false))
+        XCTAssertEqual(accepted, 0)
+        owner.terminal(sessionID: "s", domainLoading: false, operationID: noop)
+        XCTAssertEqual(rejected, 1)
+        XCTAssertFalse(owner.isPending(sessionID: "s"))
+        let cache = try XCTUnwrap(owner.begin(sessionID: "s", consumerID: consumer, domainLoading: false,
+            hasMore: true, producerBusy: false, activate: false))
+        owner.accept(sessionID: "s", operationID: cache)
+        owner.accept(sessionID: "s", operationID: cache)
+        XCTAssertEqual(accepted, 1)
+        XCTAssertTrue(owner.isPending(sessionID: "s"))
+        owner.cancel(sessionID: "s")
+    }
+
+    func testDomainAndProducerGuardsRejectBeforeCreatingOperation() {
+        let owner = HistoryPresentationAdmission()
+        let id = UUID()
+        var reasons: [String] = []
+        owner.attach(sessionID: "s", consumer: .init(id: id) { if case .rejected(let reason) = $0 { reasons.append(reason) } })
+        XCTAssertNil(owner.begin(sessionID: "s", consumerID: id, domainLoading: true, hasMore: true, producerBusy: false))
+        XCTAssertNil(owner.begin(sessionID: "s", consumerID: id, domainLoading: false, hasMore: false, producerBusy: false))
+        XCTAssertNil(owner.begin(sessionID: "s", consumerID: id, domainLoading: false, hasMore: true, producerBusy: true))
+        XCTAssertFalse(owner.isPending(sessionID: "s"))
+        XCTAssertEqual(reasons, ["domain_loading", "no_more_history", "projection_pending"])
+    }
+
+    func testTimelineKeepsHistoricalStampAcrossLiveAndImagePublishUntilMatchingFinish() {
+        let timeline = ConversationTimeline()
+        let stamp = HistoryPresentationStamp(operationID: UUID(), projectionEpoch: 3)
+        timeline.publish([], historyPresentationStamp: stamp)
+        timeline.publish([])
+        XCTAssertEqual(timeline.currentSnapshot.historyPresentationStamp, stamp)
+        timeline.clearHistoryPresentationStamp(operationID: UUID())
+        XCTAssertEqual(timeline.currentSnapshot.historyPresentationStamp, stamp)
+        timeline.clearHistoryPresentationStamp(operationID: stamp.operationID)
+        XCTAssertNil(timeline.currentSnapshot.historyPresentationStamp)
+    }
+
+    func testViewportDoesNotAcknowledgeDeferredSnapshotUntilActualCommit() async throws {
+        let controller = ConversationViewportController(onContentAvailabilityChanged: { _, _ in },
+            onPinnedToBottomChanged: { _ in }, onBottomAlignmentCompleted: {}, onApproachingTop: {})
+        controller.loadViewIfNeeded()
+        controller.view.frame = CGRect(x: 0, y: 0, width: 390, height: 320)
+        controller.view.layoutIfNeeded()
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        window.frame = controller.view.frame
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        controller.view.layoutIfNeeded()
+        defer {
+            controller.onHistoryPresented = { _, _, _ in }
+            window.isHidden = true
+            window.rootViewController = nil
+            previous?.makeKeyAndVisible()
+        }
+        let timeline = ConversationTimeline()
+        func item(_ index: Int) -> ConversationItem {
+            .init(id: "row-\(index)", kind: .user, title: "", text: "\(index)", isError: false, date: Date(timeIntervalSince1970: Double(index)))
+        }
+        timeline.publish((10..<30).map(item))
+        controller.configure(sessionID: "s", timeline: timeline, supplementalEntries: [], makeEntries: { items in
+            items.map { .init(id: $0.id, revision: 0, content: AnyView(Text($0.text).frame(height: 60))) }
+        }, bottomInset: 0)
+        func findList(_ view: UIView) -> UICollectionView? {
+            if let list = view as? UICollectionView { return list }
+            return view.subviews.lazy.compactMap { findList($0) }.first
+        }
+        let list = try XCTUnwrap(findList(controller.view))
+        for _ in 0..<200 {
+            controller.view.layoutIfNeeded()
+            if list.numberOfSections > 0, list.numberOfItems(inSection: 0) == 20 { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(list.numberOfSections, 1)
+        guard list.numberOfSections == 1 else { return }
+        XCTAssertEqual(list.numberOfItems(inSection: 0), 20)
+        list.setContentOffset(CGPoint(x: 0, y: 180), animated: false)
+        controller.scrollViewWillBeginDragging(list)
+        let stamp = HistoryPresentationStamp(operationID: UUID(), projectionEpoch: 1)
+        var acknowledgments = 0
+        controller.onHistoryPresented = { session, consumer, actual in
+            XCTAssertEqual(session, "s")
+            XCTAssertEqual(consumer, controller.historyPresentationConsumerID)
+            XCTAssertEqual(actual, stamp)
+            XCTAssertEqual(list.numberOfItems(inSection: 0), 30, "必须等真实 diffable 提交后才 ack")
+            acknowledgments += 1
+        }
+        timeline.publish((0..<30).map(item), historyPresentationStamp: stamp)
+        await withCheckedContinuation { continuation in DispatchQueue.main.async { continuation.resume() } }
+        XCTAssertEqual(acknowledgments, 0)
+        XCTAssertEqual(list.numberOfItems(inSection: 0), 20)
+        controller.scrollViewDidEndDragging(list, willDecelerate: false)
+        for _ in 0..<200 where acknowledgments == 0 { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertGreaterThan(acknowledgments, 0)
+        controller.onHistoryPresented = { _, _, _ in }
+    }
+}
+
+#if DEBUG
+@MainActor
+final class DebugHistoryCommitDiagnosticsTests: XCTestCase {
+    func testDefaultOffDoesNotReadClockOrEmit() {
+        var clocks = 0, lines: [String] = []
+        for environment in [[:], ["DSH_HISTORY_COMMIT_DIAGNOSTICS": "0"]] {
+            let diagnostics = DebugHistoryCommitDiagnostics(environment: environment, clock: { clocks += 1; return 0 }, sink: { lines.append($0) })
+            for _ in 0..<100 { XCTAssertNil(diagnostics.begin(ordinal: 1, rowCount: 4, insertedRows: 2)) }
+        }
+        XCTAssertEqual(clocks, 0)
+        XCTAssertTrue(lines.isEmpty)
+    }
+    func testExplicitOptInCountsWithoutIdentifiersAndHonorsBudgets() throws {
+        var now = 10.0
+        var lines: [String] = []
+        let diagnostics = DebugHistoryCommitDiagnostics(environment: ["DSH_HISTORY_COMMIT_DIAGNOSTICS": "1"],
+            recordLimit: 1, clock: { now }, sink: { lines.append($0) })
+        let record = try XCTUnwrap(diagnostics.begin(ordinal: 3, rowCount: 20, insertedRows: 5))
+        let cell = NSObject()
+        record.observeHost(cell, created: true)
+        record.observeHost(cell, created: false)
+        record.observeHost(cell, created: false)
+        record.observeCorrection(previous: 10, height: 12)
+        now = 10.025
+        record.emit(.completionFlush, since: 10)
+        let line = try XCTUnwrap(lines.last)
+        XCTAssertTrue(line.contains("ordinal=3"))
+        XCTAssertTrue(line.contains("duration_ms=25.000"))
+        XCTAssertTrue(line.contains("host_create=1 host_reconfigure=2"))
+        XCTAssertTrue(line.contains("height_changes=1"))
+        XCTAssertTrue(line.contains("max_delta_pt=2.000"))
+        XCTAssertFalse(line.contains(String(describing: ObjectIdentifier(cell))))
+        for _ in 0..<100 { record.emit(.anchorLayout, since: 10) }
+        XCTAssertEqual(lines.count, 13, "单commit最多12条+一条明确log_limit")
+        for _ in 0..<100 { XCTAssertNil(diagnostics.begin(ordinal: 4, rowCount: 20, insertedRows: 1)) }
+        XCTAssertEqual(lines.count, 14, "总record超预算仅一条record_limit")
+    }
+}
+#endif
+
+#if DEBUG
+/// 独立空窗口调度参考；不使用产品指标 helper，不是聊天性能验收。
+@MainActor
+private final class IdleDisplayLinkCalibrationProbe: NSObject {
+    struct Sample: Codable {
+        let arrival: Double
+        let displayTimestamp: Double
+        let targetTimestamp: Double
+        let duration: Double
+        let arrivalIntervalMs: Double?
+        let displayIntervalMs: Double?
+    }
+    private var link: CADisplayLink?
+    private let settleUntil: Double
+    private let completed: () -> Void
+    private var collectionStarted: Double?
+    private(set) var samples: [Sample] = []
+    private(set) var stopReason = "not_started"
+    init(completed: @escaping () -> Void) {
+        self.completed = completed
+        settleUntil = CACurrentMediaTime() + 2
+        super.init()
+        samples.reserveCapacity(4_000)
+    }
+    func start() {
+        stopReason = "collecting"
+        let link = CADisplayLink(target: self, selector: #selector(tick(_:)))
+        self.link = link
+        // 与产品一致，保留系统默认刷新率策略，不设置 preferredFrameRateRange。
+        link.add(to: .main, forMode: .common)
+    }
+    @objc private func tick(_ link: CADisplayLink) {
+        let now = CACurrentMediaTime()
+        guard now >= settleUntil else { return }
+        if collectionStarted == nil { collectionStarted = now }
+        let previous = samples.last
+        samples.append(Sample(arrival: now, displayTimestamp: link.timestamp,
+            targetTimestamp: link.targetTimestamp, duration: link.duration,
+            arrivalIntervalMs: previous.map { (now - $0.arrival) * 1_000 },
+            displayIntervalMs: previous.map { (link.timestamp - $0.displayTimestamp) * 1_000 }))
+        if now - (collectionStarted ?? now) >= 25 {
+            stopReason = "duration"
+            stop()
+            completed()
+        } else if samples.count >= 6_000 {
+            stopReason = "sample_limit"
+            stop()
+            completed()
+        }
+    }
+    func stop() { link?.invalidate(); link = nil }
+}
+
+@MainActor
+final class DisplayLinkIdleCalibrationTests: XCTestCase {
+    func testIdleMainRunLoopCalibration() async throws {
+        guard ProcessInfo.processInfo.environment["DSH_DISPLAYLINK_IDLE_CALIBRATION"] == "1" else {
+            throw XCTSkip("仅显式独立运行的25秒空窗口调度校准")
+        }
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive })
+        let previousWindow = scene.windows.first { $0.isKeyWindow }
+        let window = UIWindow(windowScene: scene)
+        let controller = UIViewController()
+        controller.view.backgroundColor = .black
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        controller.view.layoutIfNeeded()
+        let done = expectation(description: "25秒真实display callback原始采样")
+        let probe = IdleDisplayLinkCalibrationProbe { done.fulfill() }
+        defer {
+            probe.stop()
+            window.isHidden = true
+            previousWindow?.makeKey()
+        }
+        let beganUTC = ISO8601DateFormatter().string(from: Date())
+        probe.start()
+        await fulfillment(of: [done], timeout: 40)
+        probe.stop()
+        let samples = probe.samples
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        func attach(_ data: Data, name: String, type: String) {
+            let attachment = XCTAttachment(data: data, uniformTypeIdentifier: type)
+            attachment.name = name
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+        attach(try encoder.encode(samples), name: "idle-displaylink-raw.json", type: "public.json")
+        var csv = "arrival,display_timestamp,target_timestamp,duration,arrival_interval_ms,display_interval_ms\n"
+        for sample in samples {
+            csv += "\(sample.arrival),\(sample.displayTimestamp),\(sample.targetTimestamp),\(sample.duration),\(sample.arrivalIntervalMs.map { String($0) } ?? ""),\(sample.displayIntervalMs.map { String($0) } ?? "")\n"
+        }
+        attach(Data(csv.utf8), name: "idle-displaylink-raw.csv", type: "public.comma-separated-values-text")
+        func statistics(_ values: [Double]) -> [String: Any] {
+            guard !values.isEmpty else { return ["count": 0] }
+            let sorted = values.sorted()
+            return ["count": values.count, "minimum_ms": sorted[0], "maximum_ms": sorted[sorted.count - 1],
+                    "mean_ms": values.reduce(0, +) / Double(values.count),
+                    "nearest_rank_p95_ms": sorted[max(0, Int(ceil(Double(values.count) * 0.95)) - 1)],
+                    "over_16_7_count": values.filter { $0 > 16.7 }.count,
+                    "over_33_3_count": values.filter { $0 > 33.3 }.count,
+                    "at_least_100_count": values.filter { $0 >= 100 }.count]
+        }
+        let duration = (samples.last?.arrival ?? 0) - (samples.first?.arrival ?? 0)
+        let summary: [String: Any] = [
+            "measurement": "idle XCTest host CADisplayLink callback pacing; not GPU/rendered FPS or chat acceptance",
+            "environment": "signed Debug simulator host; original app background work remains possible",
+            "began_utc": beganUTC, "process_id": ProcessInfo.processInfo.processIdentifier,
+            "system_version": UIDevice.current.systemVersion,
+            "screen_maximum_frames_per_second": window.screen.maximumFramesPerSecond,
+            "preferred_frame_rate_policy": "system_default_unmodified", "run_loop_mode": "common",
+            "fixed_settle_seconds": 2, "requested_collection_seconds": 25,
+            "actual_collection_seconds": duration, "stop_reason": probe.stopReason,
+            "arrival": statistics(samples.compactMap(\.arrivalIntervalMs)),
+            "display_timestamp": statistics(samples.compactMap(\.displayIntervalMs))
+        ]
+        attach(try JSONSerialization.data(withJSONObject: summary, options: [.prettyPrinted, .sortedKeys]),
+               name: "idle-displaylink-summary.json", type: "public.json")
+        // 仅验证采样完整性，不为调度间隔设置通过门槛或输出性能 pass。
+        XCTAssertEqual(probe.stopReason, "duration")
+        XCTAssertGreaterThanOrEqual(duration, 25)
+        XCTAssertGreaterThan(samples.count, 2)
+    }
+}
+#endif
+
+#if DEBUG
+@MainActor
+final class ConversationWarmHostTransferTests: XCTestCase {
+    private var measurementLists: [ObjectIdentifier: UICollectionView] = [:]
+    private func measurementList(_ parent: UIViewController) -> UICollectionView {
+        parent.loadViewIfNeeded()
+        let key = ObjectIdentifier(parent)
+        if let list = measurementLists[key] { return list }
+        let list = UICollectionView(frame: parent.view.bounds, collectionViewLayout: UICollectionViewFlowLayout())
+        parent.view.addSubview(list)
+        measurementLists[key] = list
+        return list
+    }
+    private func context(_ parent: UIViewController, collection: UICollectionView? = nil,
+                         session: String = "s", width: CGFloat = 320) -> DebugConversationWarmHostContext {
+        parent.loadViewIfNeeded()
+        let collection = collection ?? measurementList(parent)
+        return .init(owner: ObjectIdentifier(parent), sessionID: session, cacheScope: "g", sessionGeneration: 1,
+            width: width, fontSize: UIFont.appPreferredFont(forTextStyle: .body).pointSize,
+            ownerTraits: parent.traitCollection, collection: ObjectIdentifier(collection),
+            window: collection.window.map(ObjectIdentifier.init), locale: Locale.current.identifier)
+    }
+    private func entry() -> ConversationViewportEntry {
+        .init(id: "same-id", revision: 1, content: AnyView(Text("**completed**")))
+    }
+    private func prepared(_ parent: UIViewController, source: ConversationViewportEntry? = nil,
+                          token: DebugConversationWarmHostToken? = nil, collection: UICollectionView? = nil) -> DebugPreparedConversationHost {
+        let entry = source ?? self.entry()
+        let token = token ?? entry.warmHostToken ?? DebugConversationWarmHostToken()
+        let list = collection ?? measurementList(parent)
+        let prepared = DebugPreparedConversationHost(entry: entry, token: token,
+            context: context(parent, collection: list), parent: parent, collection: list)
+        _ = prepared.measureHeight()
+        return prepared
+    }
+    func testEntryCopyPreservesOpaqueTokenAndNewEntryDoesNotReuseIdentity() throws {
+        let original = entry(), copied = original, rebuilt = entry()
+        if DebugConversationWarmHostExperiment.enabled {
+            XCTAssertNotNil(original.warmHostToken)
+            XCTAssertTrue(original.warmHostToken === copied.warmHostToken)
+            XCTAssertFalse(original.warmHostToken === rebuilt.warmHostToken)
+        } else {
+            XCTAssertNil(original.warmHostToken)
+            XCTAssertNil(rebuilt.warmHostToken)
+        }
+    }
+    func testPoolConsumesOnceAndRejectsRebuiltTokenAndContextChange() throws {
+        let parent = UIViewController(), pool = DebugConversationWarmHostPool(sink: { _ in })
+        let value = prepared(parent)
+        XCTAssertEqual(value.host.traitCollection, value.renderTraits, "实际预热渲染环境必须等价")
+        pool.store(value)
+        XCTAssertNil(pool.take(token: .init(), context: value.context))
+        let result = try XCTUnwrap(pool.take(token: value.token, context: value.context))
+        XCTAssertTrue(result === value)
+        XCTAssertNil(pool.take(token: value.token, context: value.context))
+        pool.store(value)
+        XCTAssertEqual(pool.count, 0, "已消费host不能重新装回池形成双owner")
+        let another = prepared(parent)
+        pool.store(another)
+        XCTAssertNil(pool.take(token: another.token, context: context(parent, session: "new")))
+        XCTAssertEqual(pool.count, 0)
+        result.discardPreparation()
+        let renderOnly = prepared(parent)
+        pool.store(renderOnly)
+        let measuredRender = try XCTUnwrap(renderOnly.renderTraits)
+        renderOnly.host.traitOverrides.userInterfaceStyle = measuredRender.userInterfaceStyle == .dark ? .light : .dark
+        renderOnly.host.updateTraitsIfNeeded()
+        XCTAssertEqual(parent.traitCollection, renderOnly.context.ownerTraits)
+        XCTAssertNotEqual(renderOnly.host.traitCollection, measuredRender)
+        XCTAssertNil(pool.take(token: renderOnly.token, context: renderOnly.context), "owner不变也必须拒绝render变化")
+        let ownerOnly = prepared(parent)
+        pool.store(ownerOnly)
+        let retainedRender = try XCTUnwrap(ownerOnly.renderTraits)
+        let base = ownerOnly.context
+        let nextOwnerTraits = UITraitCollection(traitsFrom: [base.ownerTraits,
+            UITraitCollection(userInterfaceStyle: base.ownerTraits.userInterfaceStyle == .dark ? .light : .dark)])
+        let nextContext = DebugConversationWarmHostContext(owner: base.owner, sessionID: base.sessionID,
+            cacheScope: base.cacheScope, sessionGeneration: base.sessionGeneration, width: base.width,
+            fontSize: base.fontSize, ownerTraits: nextOwnerTraits, collection: base.collection,
+            window: base.window, locale: base.locale)
+        // 逻辑 owner namespace 隔离；不假装物理 owner 改变时 render 不会跟随。
+        XCTAssertNotEqual(nextContext.ownerTraits, base.ownerTraits)
+        XCTAssertEqual(ownerOnly.host.traitCollection, retainedRender)
+        XCTAssertNil(pool.take(token: ownerOnly.token, context: nextContext), "render不变也必须拒绝owner namespace变化")
+        XCTAssertTrue(parent.children.isEmpty)
+        XCTAssertEqual(measurementList(parent).subviews.filter { $0 is HostedConversationCell }.count, 0)
+    }
+    func testFourHostBudgetClearAndEvictionInvalidateRelays() {
+        let parent = UIViewController(), pool = DebugConversationWarmHostPool(sink: { _ in })
+        parent.loadViewIfNeeded()
+        let baselineChildren = parent.children.count
+        let list = measurementList(parent)
+        let baselineCarriers = list.subviews.filter { $0 is HostedConversationCell }.count
+        let baselineSections = list.numberOfSections
+        let baselineSize = list.contentSize
+        let baselineVisible = list.visibleCells.count
+        var calls = 0
+        let first = prepared(parent)
+        first.relay.sink = { _ in calls += 1 }
+        pool.store(first)
+        for _ in 0..<4 { pool.store(prepared(parent)) }
+        XCTAssertEqual(pool.count, 4); XCTAssertEqual(pool.peak, 4)
+        XCTAssertEqual(pool.evictions, 1)
+        XCTAssertEqual(parent.children.count, baselineChildren + 4)
+        XCTAssertEqual(list.subviews.filter { $0 is HostedConversationCell }.count, baselineCarriers + 4)
+        list.layoutIfNeeded()
+        XCTAssertEqual(list.visibleCells.count, baselineVisible)
+        XCTAssertEqual(list.numberOfSections, baselineSections)
+        XCTAssertEqual(list.contentSize, baselineSize)
+        first.relay.report(10)
+        XCTAssertEqual(calls, 0)
+        let last = prepared(parent)
+        last.relay.sink = { _ in calls += 1 }
+        pool.store(last)
+        pool.clear(); last.relay.report(10)
+        XCTAssertEqual(pool.count, 0); XCTAssertEqual(calls, 0)
+        XCTAssertEqual(parent.children.count, baselineChildren)
+        XCTAssertEqual(list.subviews.filter { $0 is HostedConversationCell }.count, baselineCarriers)
+    }
+    func testTransferKeepsSameHostAndRootAndReuseRejectsLateHeight() throws {
+        let parent = UIViewController(), pool = DebugConversationWarmHostPool(sink: { _ in })
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive })
+        let previousWindow = scene.windows.first { $0.isKeyWindow }
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = parent
+        window.makeKeyAndVisible()
+        parent.view.layoutIfNeeded()
+        defer { window.isHidden = true; previousWindow?.makeKey() }
+        let source = entry()
+        guard source.warmHostToken != nil else { throw XCTSkip("本项移交验证需显式开启warm实验") }
+        let value = prepared(parent, source: source)
+        let rootView = value.host.view
+        pool.store(value)
+        let transferred = try XCTUnwrap(pool.take(token: value.token, context: value.context))
+        let cell = HostedConversationCell(frame: CGRect(x: 0, y: 0, width: 320, height: 60))
+        cell.contentView.frame = cell.bounds
+        var reports: [CGFloat] = []
+        let list = measurementList(parent)
+        list.addSubview(cell)
+        XCTAssertTrue(cell.installPreparedHost(transferred, entry: source, parent: parent, collection: list) { _, height in reports.append(height) })
+        XCTAssertTrue(value.host.view === rootView)
+        XCTAssertEqual(cell.warmHostIdentityForTesting, ObjectIdentifier(value.host))
+        XCTAssertTrue(value.host.parent === parent)
+        pool.clear()
+        XCTAssertTrue(value.host.parent === parent, "pool不能清理已移交的可见host")
+        XCTAssertTrue(value.host.view.superview === cell.contentView)
+        value.relay.report(44)
+        XCTAssertEqual(reports, [44])
+        cell.prepareForReuse(); value.relay.report(99)
+        XCTAssertEqual(reports, [44])
+    }
+    func testActualDarkTraitsAreUsedAndWidthMismatchFallsBack() throws {
+        let parent = UIViewController(), pool = DebugConversationWarmHostPool(sink: { _ in })
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive })
+        let previousWindow = scene.windows.first { $0.isKeyWindow }
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = parent
+        parent.overrideUserInterfaceStyle = .dark
+        window.makeKeyAndVisible()
+        parent.view.layoutIfNeeded()
+        parent.updateTraitsIfNeeded()
+        defer { window.isHidden = true; previousWindow?.makeKey() }
+        let source = entry()
+        guard source.warmHostToken != nil else { throw XCTSkip("本项移交验证需显式开启warm实验") }
+        let coldCell = HostedConversationCell(frame: CGRect(x: 0, y: 100, width: 320, height: 60))
+        coldCell.contentView.frame = coldCell.bounds
+        let list = measurementList(parent)
+        list.addSubview(coldCell)
+        coldCell.apply(source, parent: parent) { _, _ in }
+        parent.children.forEach { $0.updateTraitsIfNeeded() }
+        XCTAssertEqual(coldCell.hostedTraitsForTesting?.userInterfaceStyle, .dark,
+                       "冷host控制组必须实际继承真实window的dark环境")
+        let value = prepared(parent, source: source)
+        XCTAssertEqual(value.host.traitCollection.userInterfaceStyle, .dark)
+        XCTAssertEqual(value.host.traitCollection, coldCell.hostedTraitsForTesting)
+        pool.store(value)
+        let transferred = try XCTUnwrap(pool.take(token: source.warmHostToken, context: value.context))
+        let cell = HostedConversationCell(frame: CGRect(x: 0, y: 0, width: 320, height: 60))
+        cell.contentView.frame = cell.bounds
+        list.addSubview(cell)
+        XCTAssertTrue(cell.installPreparedHost(transferred, entry: source, parent: parent, collection: list) { _, _ in })
+        XCTAssertFalse(value.host.traitOverrides.contains(UITraitUserInterfaceStyle.self))
+        XCTAssertFalse(value.host.traitOverrides.contains(UITraitPreferredContentSizeCategory.self))
+        parent.overrideUserInterfaceStyle = .light
+        parent.traitOverrides.preferredContentSizeCategory = .accessibilityExtraLarge
+        parent.updateTraitsIfNeeded()
+        parent.children.forEach { $0.updateTraitsIfNeeded() }
+        XCTAssertEqual(value.host.traitCollection.userInterfaceStyle, .light)
+        XCTAssertEqual(value.host.traitCollection.preferredContentSizeCategory, .accessibilityExtraLarge)
+        XCTAssertEqual(value.host.traitCollection, coldCell.hostedTraitsForTesting,
+                       "转移后的环境更新必须与原冷host路径一致")
+        let next = prepared(parent)
+        pool.store(next)
+        XCTAssertNil(pool.take(token: next.token, context: context(parent, width: 300)))
+        XCTAssertEqual(pool.count, 0)
+    }
+    func testRealCellProviderObservesUnattachedInstallationAndPreservesFinalEnvironment() async throws {
+        let parent = UIViewController(), pool = DebugConversationWarmHostPool(sink: { _ in })
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive })
+        let previousWindow = scene.windows.first { $0.isKeyWindow }
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = parent
+        parent.overrideUserInterfaceStyle = .dark
+        window.makeKeyAndVisible()
+        parent.view.layoutIfNeeded()
+        defer { pool.clear(); window.isHidden = true; previousWindow?.makeKey() }
+        let source = entry()
+        guard source.warmHostToken != nil else { throw XCTSkip("本项provider顺序验证需显式开启warm实验") }
+        let layout = UICollectionViewFlowLayout()
+        layout.itemSize = CGSize(width: 320, height: 60)
+        let list = UICollectionView(frame: parent.view.bounds, collectionViewLayout: layout)
+        list.register(HostedConversationCell.self, forCellWithReuseIdentifier: "provider-host")
+        parent.view.addSubview(list)
+        let candidate = prepared(parent, source: source, collection: list)
+        pool.store(candidate)
+        var warmCell: HostedConversationCell?, coldCell: HostedConversationCell?
+        var providerDiagnostic: [String: Any] = [:]
+        let dataSource = UICollectionViewDiffableDataSource<Int, String>(collectionView: list) { collection, path, id in
+            let cell = collection.dequeueReusableCell(withReuseIdentifier: "provider-host", for: path) as! HostedConversationCell
+            let wasAttached = cell.window != nil
+            if id == "warm" {
+                warmCell = cell
+                let prepared = pool.take(token: source.warmHostToken, context: candidate.context)
+                XCTAssertNotNil(prepared)
+                if let prepared {
+                    let installed = cell.installPreparedHost(prepared, entry: source, parent: parent, collection: collection) { _, _ in }
+                    XCTAssertEqual(cell.lastWarmTargetWasAttached, wasAttached)
+                    if !installed { XCTAssertNotNil(cell.lastWarmTransferFailure) }
+                    providerDiagnostic = ["installed": installed, "target_attached": cell.lastWarmTargetWasAttached,
+                        "failure": cell.lastWarmTransferFailure?.rawValue ?? "none", "trait_changes": cell.lastWarmTraitDifferences]
+                }
+            } else {
+                coldCell = cell
+                cell.apply(source, parent: parent) { _, _ in }
+            }
+            return cell
+        }
+        var snapshot = NSDiffableDataSourceSnapshot<Int, String>()
+        snapshot.appendSections([0]); snapshot.appendItems(["warm", "cold"])
+        let applied = expectation(description: "真实collection provider完成")
+        dataSource.apply(snapshot, animatingDifferences: false) { applied.fulfill() }
+        await fulfillment(of: [applied], timeout: 3)
+        list.layoutIfNeeded()
+        parent.children.forEach { $0.updateTraitsIfNeeded() }
+        let warm = try XCTUnwrap(warmCell), cold = try XCTUnwrap(coldCell)
+        XCTAssertNotNil(warm.window); XCTAssertNotNil(cold.window)
+        XCTAssertEqual(warm.hostedTraitsForTesting, cold.hostedTraitsForTesting)
+        XCTAssertEqual(warm.hostedTraitsForTesting?.userInterfaceStyle, .dark)
+        XCTAssertEqual(pool.count, 0)
+        XCTAssertEqual(parent.children.count, 2, "prepared必须移交或移除，不能泄漏第三个host")
+        providerDiagnostic["owner_traits_description"] = candidate.context.ownerTraits.description
+        providerDiagnostic["measured_render_traits_description"] = candidate.renderTraits?.description ?? "missing"
+        providerDiagnostic["attached_warm_traits_description"] = warm.hostedTraitsForTesting?.description ?? "missing"
+        providerDiagnostic["attached_cold_traits_description"] = cold.hostedTraitsForTesting?.description ?? "missing"
+        // 单独控制未挂窗顺序；真实 provider 的 attached 时机由 UIKit 决定，不预设。
+        let detachedSource = entry()
+        let detachedPrepared = prepared(parent, source: detachedSource, collection: list)
+        pool.store(detachedPrepared)
+        let consumed = try XCTUnwrap(pool.take(token: detachedSource.warmHostToken, context: detachedPrepared.context))
+        let detachedWarm = HostedConversationCell(frame: CGRect(x: 0, y: 140, width: 320, height: 60))
+        let detachedCold = HostedConversationCell(frame: CGRect(x: 0, y: 210, width: 320, height: 60))
+        detachedWarm.contentView.frame = detachedWarm.bounds; detachedCold.contentView.frame = detachedCold.bounds
+        XCTAssertNil(detachedWarm.window)
+        let installed = detachedWarm.installPreparedHost(consumed, entry: detachedSource, parent: parent, collection: list) { _, _ in }
+        XCTAssertFalse(detachedWarm.lastWarmTargetWasAttached)
+        if !installed { XCTAssertNotNil(detachedWarm.lastWarmTransferFailure) }
+        detachedCold.apply(detachedSource, parent: parent) { _, _ in }
+        list.addSubview(detachedWarm); list.addSubview(detachedCold)
+        parent.children.forEach { $0.updateTraitsIfNeeded() }
+        XCTAssertEqual(detachedWarm.hostedTraitsForTesting, detachedCold.hostedTraitsForTesting)
+        XCTAssertEqual(parent.children.count, 4)
+        providerDiagnostic["controlled_unattached_installed"] = installed
+        providerDiagnostic["controlled_unattached_failure"] = detachedWarm.lastWarmTransferFailure?.rawValue ?? "none"
+        let attachment = XCTAttachment(data: try JSONSerialization.data(withJSONObject: providerDiagnostic, options: [.sortedKeys]),
+                                       uniformTypeIdentifier: "public.json")
+        attachment.name = "actual-provider-render-owner-observation.json"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        withExtendedLifetime(dataSource) {}
+    }
+}
+#endif
+
+#if DEBUG
+/// 旧版本始终装 renderer 的实际 Text 控制组；与候选使用相同内联渲染输入。
+private struct InlineCodeRendererControl: View {
+    let inlines: [MarkdownUI.InlineNode]
+    let legacyRenderer: Bool
+    @Environment(\.theme) private var theme
+    @Environment(\.baseURL) private var baseURL
+    @Environment(\.softBreakMode) private var softBreakMode
+    var body: some View {
+        if legacyRenderer {
+            MarkdownUI.TextStyleAttributesReader { attributes in
+                let text = inlines.renderText(baseURL: baseURL,
+                    textStyles: .init(code: theme.code, emphasis: theme.emphasis,
+                        strong: theme.strong, strikethrough: theme.strikethrough, link: theme.link),
+                    images: [:], softBreakMode: softBreakMode, attributes: attributes)
+                if #available(iOS 18.0, *) { text.textRenderer(MarkdownUI.MarkdownInlineCodeBackgroundRenderer()) }
+                else { text }
+            }
+        } else {
+            MarkdownUI.InlineText(inlines)
+        }
+    }
+}
+
+@MainActor
+final class InlineCodeRendererFastPathTests: XCTestCase {
+    private func compare(_ nodes: [MarkdownUI.InlineNode], width: CGFloat = 320,
+                         fontSize: CGFloat = 17, direction: LayoutDirection = .leftToRight,
+                         style: UIUserInterfaceStyle = .light,
+                         snapshots: String? = nil) async throws -> (UIImage, UIImage) {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive })
+        let previous = scene.windows.first { $0.isKeyWindow }
+        let parent = UIViewController(), window = UIWindow(windowScene: scene)
+        parent.overrideUserInterfaceStyle = style
+        window.rootViewController = parent
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil; previous?.makeKey() }
+        func host(_ legacy: Bool) -> UIHostingController<AnyView> {
+            let content = InlineCodeRendererControl(inlines: nodes, legacyRenderer: legacy)
+                .markdownTheme(.gitHub.text { FontSize(fontSize) })
+                .environment(\.layoutDirection, direction)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(8)
+            let host = UIHostingController(rootView: AnyView(content))
+            host.safeAreaRegions = []
+            host.view.backgroundColor = .systemBackground
+            parent.addChild(host); parent.view.addSubview(host.view); host.didMove(toParent: parent)
+            return host
+        }
+        let old = host(true), new = host(false)
+        let proposal = CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
+        let initialOld = old.sizeThatFits(in: proposal), initialNew = new.sizeThatFits(in: proposal)
+        old.view.frame = CGRect(x: 0, y: 0, width: width, height: ceil(initialOld.height))
+        new.view.frame = CGRect(x: 0, y: ceil(initialOld.height) + 12, width: width, height: ceil(initialNew.height))
+        await Task.yield()
+        parent.view.layoutIfNeeded()
+        let oldSize = old.sizeThatFits(in: proposal), newSize = new.sizeThatFits(in: proposal)
+        XCTAssertTrue(newSize.height.isFinite)
+        XCTAssertGreaterThan(newSize.height, 0)
+        XCTAssertEqual(newSize.width, oldSize.width, accuracy: 0.5)
+        XCTAssertEqual(newSize.height, oldSize.height, accuracy: 0.5, "同宽/主题/字体/方向下测高应保持")
+        XCTAssertEqual(old.traitCollection, new.traitCollection)
+        func image(_ view: UIView) -> UIImage {
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1; format.opaque = true; format.preferredRange = .standard
+            return UIGraphicsImageRenderer(bounds: view.bounds, format: format).image { context in
+                UIColor.white.setFill(); context.fill(view.bounds)
+                view.drawHierarchy(in: view.bounds, afterScreenUpdates: true)
+            }
+        }
+        let oldImage = image(old.view), newImage = image(new.view)
+        if let snapshots {
+            for (name, image) in [("old", oldImage), ("new", newImage)] {
+                let attachment = XCTAttachment(image: image)
+                attachment.name = "inline-renderer-\(snapshots)-\(name)"
+                attachment.lifetime = .keepAlways
+                add(attachment)
+            }
+        }
+        return (oldImage, newImage)
+    }
+    private func nonWhitePixelCount(_ image: UIImage) throws -> Int {
+        let source = try XCTUnwrap(image.cgImage)
+        XCTAssertEqual(source.bitsPerPixel, 32)
+        XCTAssertEqual(source.bitsPerComponent, 8)
+        let data = try XCTUnwrap(source.dataProvider?.data)
+        let bytes = try XCTUnwrap(CFDataGetBytePtr(data))
+        var count = 0
+        for row in 0..<source.height {
+            for column in 0..<source.width {
+                let index = row * source.bytesPerRow + column * 4
+                if bytes[index] < 245 || bytes[index + 1] < 245 || bytes[index + 2] < 245 { count += 1 }
+            }
+        }
+        return count
+    }
+    private func grayBackgroundPixels(_ image: UIImage) throws -> Int {
+        let source = try XCTUnwrap(image.cgImage)
+        var bytes = [UInt8](repeating: 0, count: source.width * source.height * 4)
+        return try bytes.withUnsafeMutableBytes { buffer in
+            let context = try XCTUnwrap(CGContext(data: buffer.baseAddress, width: source.width, height: source.height,
+                bitsPerComponent: 8, bytesPerRow: source.width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue))
+            context.draw(source, in: CGRect(x: 0, y: 0, width: source.width, height: source.height))
+            let pixels = buffer.bindMemory(to: UInt8.self)
+            return stride(from: 0, to: pixels.count, by: 4).filter { index in
+                let r = Int(pixels[index]), g = Int(pixels[index + 1]), b = Int(pixels[index + 2])
+                return (205...240).contains(r) && abs(r - g) <= 3 && abs(g - b) <= 3
+            }.count
+        }
+    }
+    func testRecursiveCodeDetectionAndFencedCodeUseDistinctASTPaths() {
+        let nested: [MarkdownUI.InlineNode] = [.strong(children: [.emphasis(children: [
+            .link(destination: "https://example.com", children: [.code("nested")])
+        ])])]
+        XCTAssertTrue(MarkdownUI.InlineText(nested).hasInlineCode)
+        XCTAssertFalse(MarkdownUI.InlineText([.text("中文 **not AST code** 😀"),
+            .strikethrough(children: [.text("plain")])]).hasInlineCode)
+        let document = MarkdownUI.MarkdownContent("```swift\nlet value = `literal`\n```")
+        guard case .codeBlock? = document.blocks.first else { return XCTFail("fence必须仍走CodeBlockView块级路径") }
+        XCTAssertEqual(document.renderPlainText(), "let value = `literal`")
+    }
+    func testNoCodeDefaultRendererPreservesHostedGeometryAndLinkPayloads() async throws {
+        let fixtures: [([MarkdownUI.InlineNode], LayoutDirection)] = [
+            ([.text("中文 English 👨‍👩‍👧‍👦 café e\u{301}，混合排版与换行。"), .softBreak, .text("第二行内容")], .leftToRight),
+            ([.strong(children: [.text("强调 plain strong")]), .text(" 与 "), .strikethrough(children: [.text("删除线")]), .lineBreak, .text("后续行")], .leftToRight),
+            ([.text("مرحبا بالعالم שלום "), .link(destination: "https://example.com/path", children: [.text("链接 link")])], .rightToLeft)
+        ]
+        for (index, fixture) in fixtures.enumerated() {
+            for width: CGFloat in [230, 320] {
+                for size: CGFloat in [17, 23.8] {
+                    let images = try await compare(fixture.0, width: width, fontSize: size, direction: fixture.1,
+                        snapshots: width == 320 && size == 17 ? "no-code-\(index)" : nil)
+                    XCTAssertGreaterThan(try nonWhitePixelCount(images.0), 20, "控制组必须实际绘出文字")
+                    XCTAssertGreaterThan(try nonWhitePixelCount(images.1), 20, "默认路径必须实际绘出文字，不能两个空截图假通过")
+                }
+            }
+        }
+        let theme = MarkdownUI.Theme.gitHub
+        let styles = MarkdownUI.InlineTextStyles(code: theme.code, emphasis: theme.emphasis,
+            strong: theme.strong, strikethrough: theme.strikethrough, link: theme.link)
+        let linked = try XCTUnwrap(fixtures[2].0.last).renderAttributedString(baseURL: nil, textStyles: styles,
+            softBreakMode: .space, attributes: .init())
+        XCTAssertTrue(linked.runs.contains { $0.link?.absoluteString == "https://example.com/path" },
+                      "默认绘制路径必须保留原链接目的地；实窗fixture两路均启用textSelection")
+        _ = try await compare(fixtures[2].0, direction: .rightToLeft, style: .dark, snapshots: "no-code-dark")
+    }
+    func testInlineCodeKeepsRoundedBackgroundAndHostedGeometry() async throws {
+        guard #available(iOS 18.0, *) else { throw XCTSkip("TextRenderer仅iOS18及以上") }
+        let nodes: [MarkdownUI.InlineNode] = [.text("代码 "), .code("alpha_beta_gamma"), .text("，以及 "),
+            .strong(children: [.emphasis(children: [.code("nested_code")])]), .text("。")]
+        let images = try await compare(nodes, width: 320, snapshots: "code-background")
+        let oldGray = try grayBackgroundPixels(images.0), newGray = try grayBackgroundPixels(images.1)
+        XCTAssertGreaterThan(oldGray, 100, "控制组截图必须实际绘出浅灰代码背景")
+        XCTAssertGreaterThan(newGray, 100, "含代码分支必须保留浅灰代码背景")
+        XCTAssertGreaterThanOrEqual(Double(newGray), Double(oldGray) * 0.9)
+        XCTAssertLessThanOrEqual(Double(newGray), Double(oldGray) * 1.1)
+        _ = try await compare(nodes, width: 230, fontSize: 23.8, direction: .rightToLeft)
+        _ = try await compare(nodes, style: .dark, snapshots: "code-background-dark")
+    }
+}
+#endif
+
+#if DEBUG
+/// 受控 provider 故意不响应任务取消，用于证明迟到结果不会污染新输入。
+private actor InlineImageTaskProviderProbe: MarkdownUI.InlineImageProvider {
+    struct Request {
+        let url: URL
+        let label: String
+    }
+    private let entered: [String: XCTestExpectation]
+    private var requests: [Request] = []
+    private var pending: [String: CheckedContinuation<Image, Error>] = [:]
+    private var closed = false
+    init(entered: [String: XCTestExpectation] = [:]) { self.entered = entered }
+    func image(with url: URL, label: String) async throws -> Image {
+        guard !closed else { throw CancellationError() }
+        requests.append(Request(url: url, label: label))
+        return try await withCheckedThrowingContinuation { continuation in
+            pending[label] = continuation
+            entered[label]?.fulfill()
+        }
+    }
+    func recorded() -> [Request] { requests }
+    func complete(_ label: String, result: Result<Image, Error>) {
+        pending.removeValue(forKey: label)?.resume(with: result)
+    }
+    func shutdown() {
+        closed = true
+        let continuations = Array(pending.values)
+        pending.removeAll()
+        for continuation in continuations { continuation.resume(throwing: CancellationError()) }
+    }
+}
+
+@MainActor
+private final class InlineImageTaskModel: ObservableObject {
+    @Published var inlines: [MarkdownUI.InlineNode]
+    @Published var imageBaseURL = URL(string: "https://example.com/base/doc/")!
+    @Published var provider: InlineImageTaskProviderProbe
+    init(_ inlines: [MarkdownUI.InlineNode], provider: InlineImageTaskProviderProbe) {
+        self.inlines = inlines; self.provider = provider
+    }
+}
+/// 改前原 InlineText 的控制组：同一 task、loader 与 Text 构造，不修 linked-image 原有绘制能力。
+private struct InlineImageOriginalControl: View {
+  @Environment(\.inlineImageProvider) private var inlineImageProvider
+  @Environment(\.baseURL) private var baseURL
+  @Environment(\.imageBaseURL) private var imageBaseURL
+  @Environment(\.softBreakMode) private var softBreakMode
+  @Environment(\.theme) private var theme
+
+  @State private var inlineImages: [String: Image] = [:]
+
+  private let inlines: [InlineNode]
+  private let hasInlineCode: Bool
+
+  init(_ inlines: [InlineNode]) {
+    self.inlines = inlines
+    func containsCode(_ node: InlineNode) -> Bool {
+      if case .code = node { return true }
+      return node.children.contains(where: containsCode)
+    }
+    self.hasInlineCode = inlines.contains(where: containsCode)
+  }
+
+  var body: some View {
+    TextStyleAttributesReader { attributes in
+      let text = self.inlines.renderText(
+        baseURL: self.baseURL,
+        textStyles: .init(
+          code: self.theme.code,
+          emphasis: self.theme.emphasis,
+          strong: self.theme.strong,
+          strikethrough: self.theme.strikethrough,
+          link: self.theme.link
+        ),
+        images: self.inlineImages,
+        softBreakMode: self.softBreakMode,
+        attributes: attributes
+      )
+      if #available(iOS 18.0, macOS 15.0, tvOS 18.0, watchOS 11.0, *), self.hasInlineCode {
+        text.textRenderer(MarkdownInlineCodeBackgroundRenderer())
+      } else {
+        text
+      }
+    }
+    .task(id: self.inlines) {
+      self.inlineImages = (try? await self.loadInlineImages()) ?? [:]
+    }
+  }
+
+  private func loadInlineImages() async throws -> [String: Image] {
+    let images = Set(self.inlines.compactMap(\.imageData))
+    guard !images.isEmpty else { return [:] }
+
+    return try await withThrowingTaskGroup(of: (String, Image).self) { taskGroup in
+      for image in images {
+        guard let url = URL(string: image.source, relativeTo: self.imageBaseURL) else {
+          continue
+        }
+
+        taskGroup.addTask {
+          (image.source, try await self.inlineImageProvider.image(with: url, label: image.alt))
+        }
+      }
+
+      var inlineImages: [String: Image] = [:]
+
+      for try await result in taskGroup {
+        inlineImages[result.0] = result.1
+      }
+
+      return inlineImages
+    }
+  }
+}
+
+private struct InlineImageTaskContent: View {
+    @ObservedObject var model: InlineImageTaskModel
+    let original: Bool
+    var body: some View {
+        Group {
+            if original { InlineImageOriginalControl(model.inlines) }
+            else { MarkdownUI.InlineText(model.inlines) }
+        }
+            .markdownTheme(.gitHub.text { FontSize(17) })
+            .markdownInlineImageProvider(model.provider)
+            .environment(\.imageBaseURL, model.imageBaseURL)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(8)
+    }
+}
+@MainActor
+private final class InlineImageActualTick: NSObject {
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var link: CADisplayLink?
+    func next() async {
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation
+            let link = CADisplayLink(target: self, selector: #selector(tick))
+            self.link = link
+            link.add(to: .main, forMode: .common)
+        }
+    }
+    @objc private func tick() {
+        link?.invalidate(); link = nil
+        let continuation = self.continuation; self.continuation = nil
+        continuation?.resume()
+    }
+}
+
+@MainActor
+final class InlineImageTaskIsolationTests: XCTestCase {
+    private struct Fixture {
+        let model: InlineImageTaskModel
+        let host: UIHostingController<InlineImageTaskContent>
+        let window: UIWindow
+        let previous: UIWindow?
+        func close() {
+            window.isHidden = true; window.rootViewController = nil; previous?.makeKey()
+        }
+        func height() -> CGFloat {
+            host.view.layoutIfNeeded()
+            return host.sizeThatFits(in: CGSize(width: 320, height: CGFloat.greatestFiniteMagnitude)).height
+        }
+        func pixels(red: Bool) -> Int {
+            host.view.layoutIfNeeded()
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1; format.opaque = true; format.preferredRange = .standard
+            let image = UIGraphicsImageRenderer(bounds: host.view.bounds, format: format).image { context in
+                UIColor.white.setFill(); context.fill(host.view.bounds)
+                host.view.drawHierarchy(in: host.view.bounds, afterScreenUpdates: true)
+            }
+            guard let source = image.cgImage else { return 0 }
+            var bytes = [UInt8](repeating: 0, count: source.width * source.height * 4)
+            return bytes.withUnsafeMutableBytes { buffer in
+                guard let context = CGContext(data: buffer.baseAddress, width: source.width, height: source.height,
+                    bitsPerComponent: 8, bytesPerRow: source.width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue) else { return 0 }
+                context.draw(source, in: CGRect(x: 0, y: 0, width: source.width, height: source.height))
+                let rgba = buffer.bindMemory(to: UInt8.self)
+                return stride(from: 0, to: rgba.count, by: 4).filter { index in
+                    if red { return rgba[index] > 180 && rgba[index + 1] < 80 && rgba[index + 2] < 80 }
+                    return rgba[index + 1] > 180 && rgba[index] < 80 && rgba[index + 2] < 80
+                }.count
+            }
+        }
+    }
+    private func fixture(_ nodes: [MarkdownUI.InlineNode], provider: InlineImageTaskProviderProbe,
+                         original: Bool = false) throws -> Fixture {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive })
+        let previous = scene.windows.first { $0.isKeyWindow }
+        let model = InlineImageTaskModel(nodes, provider: provider)
+        let host = UIHostingController(rootView: InlineImageTaskContent(model: model, original: original))
+        host.safeAreaRegions = []
+        host.overrideUserInterfaceStyle = .light
+        host.view.backgroundColor = .white
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = host; window.makeKeyAndVisible()
+        host.view.frame = CGRect(x: 0, y: 0, width: 320, height: 120)
+        host.view.layoutIfNeeded()
+        return Fixture(model: model, host: host, window: window, previous: previous)
+    }
+    private func image(_ color: UIColor) -> Image {
+        let uiImage = UIGraphicsImageRenderer(size: CGSize(width: 24, height: 24)).image { context in
+            color.setFill(); context.fill(CGRect(x: 0, y: 0, width: 24, height: 24))
+        }
+        return Image(uiImage: uiImage).renderingMode(.original)
+    }
+    private func nodes(_ label: String, source: String = "image.png") -> [MarkdownUI.InlineNode] {
+        [.text("内容 "), .image(source: source, children: [.text(label)])]
+    }
+    private func ticks(_ count: Int = 2) async {
+        let tick = InlineImageActualTick()
+        for _ in 0..<count { await tick.next() }
+    }
+    private func assertGreen(_ fixture: Fixture, file: StaticString = #filePath, line: UInt = #line) async {
+        let deadline = CACurrentMediaTime() + 3
+        while fixture.pixels(red: false) < 50 && CACurrentMediaTime() < deadline { await ticks(1) }
+        XCTAssertGreaterThan(fixture.pixels(red: false), 50, "当前输入的绿色图片必须实际显示", file: file, line: line)
+        XCTAssertEqual(fixture.pixels(red: true), 0, "不能显示旧输入的红色图片", file: file, line: line)
+    }
+    func testPlainAndCodeLiteralHaveNoImageRequestsOrDelayedHeightChange() async throws {
+        let probe = InlineImageTaskProviderProbe()
+        let fixture = try fixture([.text("中文 English ![literal](ignored.png)"), .softBreak,
+            .code("![code](ignored.png)")], provider: probe)
+        defer { fixture.close(); Task { await probe.shutdown() } }
+        let first = fixture.height()
+        await Task.yield(); await Task.yield()
+        let afterYields = fixture.height()
+        await ticks()
+        let afterTicks = fixture.height()
+        let calls = await probe.recorded()
+        XCTAssertTrue(calls.isEmpty)
+        XCTAssertEqual(first, afterYields, accuracy: 0.5)
+        XCTAssertEqual(afterYields, afterTicks, accuracy: 0.5)
+        let attachment = XCTAttachment(data: try JSONSerialization.data(withJSONObject: [
+            "first_height": first, "after_two_yields_height": afterYields,
+            "after_two_actual_ticks_height": afterTicks, "provider_requests": calls.count
+        ], options: [.sortedKeys]), uniformTypeIdentifier: "public.json")
+        attachment.name = "synthetic-no-image-height-settling.json"; attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+    func testRelativeURLAltAndSameInputKeepOriginalTaskIdentity() async throws {
+        let entered = expectation(description: "root direct image entered")
+        entered.assertForOverFulfill = true
+        let probe = InlineImageTaskProviderProbe(entered: ["linked-alt": entered])
+        let source: [MarkdownUI.InlineNode] = [.image(source: "../relative.png", children: [.text("linked-alt")])]
+        let fixture = try fixture(source, provider: probe)
+        let replacement = InlineImageTaskProviderProbe()
+        defer { fixture.close(); Task { await probe.shutdown(); await replacement.shutdown() } }
+        await fulfillment(of: [entered], timeout: 3)
+        let calls = await probe.recorded()
+        XCTAssertEqual(calls.count, 1)
+        XCTAssertEqual(calls.first?.url.absoluteString, "https://example.com/base/relative.png")
+        XCTAssertEqual(calls.first?.label, "linked-alt")
+        await probe.complete("linked-alt", result: .success(image(.green)))
+        await assertGreen(fixture)
+        fixture.model.inlines = source
+        fixture.model.imageBaseURL = URL(string: "https://another.example/new/")!
+        fixture.model.provider = replacement
+        await ticks()
+        let originalCalls = await probe.recorded(), replacementCalls = await replacement.recorded()
+        XCTAssertEqual(originalCalls.count, 1)
+        XCTAssertTrue(replacementCalls.isEmpty, "same inlines环境变化仍沿原task(id:)合同，不顺带重启")
+        await assertGreen(fixture)
+    }
+    func testLinkedImageKeepsOriginalLoaderAndRendererCapability() async throws {
+        let source: [MarkdownUI.InlineNode] = [.text("linked "),
+            .link(destination: "https://example.com/tap", children: [
+                .image(source: "../relative.png", children: [.text("linked-alt")])])]
+        for original in [true, false] {
+            let entered = expectation(description: original ? "original linked request" : "candidate linked request")
+            let probe = InlineImageTaskProviderProbe(entered: ["linked-alt": entered])
+            let fixture = try fixture(source, provider: probe, original: original)
+            defer { fixture.close(); Task { await probe.shutdown() } }
+            await fulfillment(of: [entered], timeout: 3)
+            let calls = await probe.recorded()
+            XCTAssertEqual(calls.count, 1)
+            XCTAssertEqual(calls.first?.url.absoluteString, "https://example.com/base/relative.png")
+            XCTAssertEqual(calls.first?.label, "linked-alt")
+            await probe.complete("linked-alt", result: .success(image(.green)))
+            await ticks(3)
+            // 原 renderText 对 .link 使用 attributed-string 路径，不消费其 child image 的 images 字典。
+            // loader 可请求 linked-image，不等于直接 InlineText 会绘制它；上层 ImageFlow 的行为不在此更改。
+            XCTAssertEqual(fixture.pixels(red: false), 0, "保持旧能力；不为新fixture顺带修改linked-image渲染")
+            XCTAssertEqual(fixture.pixels(red: true), 0)
+        }
+    }
+    func testLateImageAAfterNoImageThenBDoesNotReviveA() async throws {
+        let a = expectation(description: "A entered"), b = expectation(description: "B entered")
+        let probe = InlineImageTaskProviderProbe(entered: ["A": a, "B": b])
+        let fixture = try fixture(nodes("A"), provider: probe)
+        defer { fixture.close(); Task { await probe.shutdown() } }
+        await fulfillment(of: [a], timeout: 3)
+        fixture.model.inlines = [.text("没有图片的中间状态")]
+        await ticks()
+        XCTAssertEqual(fixture.pixels(red: true), 0)
+        XCTAssertEqual(fixture.pixels(red: false), 0)
+        fixture.model.inlines = nodes("B", source: "b.png")
+        await fulfillment(of: [b], timeout: 3)
+        await probe.complete("B", result: .success(image(.green)))
+        await assertGreen(fixture)
+        await probe.complete("A", result: .success(image(.red)))
+        await ticks()
+        await assertGreen(fixture)
+        let calls = await probe.recorded()
+        XCTAssertEqual(calls.map(\.label), ["A", "B"])
+    }
+    func testDirectSameSourceDifferentAltRejectsLateAAfterB() async throws {
+        let a = expectation(description: "same-source A"), b = expectation(description: "same-source B")
+        let probe = InlineImageTaskProviderProbe(entered: ["A": a, "B": b])
+        let fixture = try fixture(nodes("A"), provider: probe)
+        defer { fixture.close(); Task { await probe.shutdown() } }
+        await fulfillment(of: [a], timeout: 3)
+        fixture.model.inlines = nodes("B")
+        await fulfillment(of: [b], timeout: 3)
+        await probe.complete("B", result: .success(image(.green)))
+        await assertGreen(fixture)
+        await probe.complete("A", result: .success(image(.red)))
+        await ticks()
+        await assertGreen(fixture)
+        let calls = await probe.recorded()
+        XCTAssertEqual(calls.map(\.label), ["A", "B"])
+        XCTAssertEqual(calls.first?.url, calls.last?.url)
+    }
+    func testCancellationAndFailureFallBackThenNextInputCanLoad() async throws {
+        let a = expectation(description: "cancel response"), b = expectation(description: "failure response")
+        let c = expectation(description: "next success")
+        let probe = InlineImageTaskProviderProbe(entered: ["A": a, "B": b, "C": c])
+        let fixture = try fixture(nodes("A"), provider: probe)
+        defer { fixture.close(); Task { await probe.shutdown() } }
+        await fulfillment(of: [a], timeout: 3)
+        await probe.complete("A", result: .failure(CancellationError()))
+        await ticks()
+        XCTAssertEqual(fixture.pixels(red: false), 0)
+        fixture.model.inlines = nodes("B")
+        await fulfillment(of: [b], timeout: 3)
+        await probe.complete("B", result: .failure(NSError(domain: "InlineImageFixture", code: 1)))
+        await ticks()
+        XCTAssertEqual(fixture.pixels(red: false), 0)
+        fixture.model.inlines = nodes("C")
+        await fulfillment(of: [c], timeout: 3)
+        await probe.complete("C", result: .success(image(.green)))
+        await assertGreen(fixture)
+    }
+}
+#endif
+
+@MainActor
+final class HistoryViewportPresentationScheduleTests: XCTestCase {
+    typealias Row = HistoryViewportPresentationSchedule.Row
+    private func row(_ id: String, revision: Int = 0, kind: Int = 0, supplemental: Bool = false) -> Row {
+        Row(id: id, revision: revision, kind: kind, supplemental: supplemental)
+    }
+    func testContinuousIdleDeadlineRestartsOnlyForInteraction() {
+        var schedule = HistoryViewportPresentationSchedule()
+        XCTAssertTrue(schedule.permitsWork(at: 0))
+        schedule.noteInteraction(at: 10)
+        XCTAssertFalse(schedule.permitsWork(at: 10.119))
+        XCTAssertTrue(schedule.permitsWork(at: 10.121))
+        // 普通查询/批次规划不会将 deadline 往后移动。
+        _ = HistoryViewportPresentationSchedule.plan(current: [row("old")], target: [row("new"), row("old")], maximumInsertedEntries: 2)
+        XCTAssertTrue(schedule.permitsWork(at: 10.121))
+        schedule.noteInteraction(at: 10.10)
+        XCTAssertFalse(schedule.permitsWork(at: 10.219))
+        XCTAssertTrue(schedule.permitsWork(at: 10.221))
+    }
+    func testNearestPrependBatchesPreserveOldRowsAndCountAtMostTwoInsertedEntries() {
+        var current = [row("header", supplemental: true), row("old-a"), row("old-b")]
+        let target = [row("header", revision: 1, supplemental: true)] + (0..<7).map { row("new-\($0)") } + [row("old-a"), row("old-b")]
+        var insertedCounts: [Int] = []
+        repeat {
+            let plan = HistoryViewportPresentationSchedule.plan(current: current, target: target, maximumInsertedEntries: 2)
+            XCTAssertEqual(plan.route, .prepend)
+            let next = plan.indices.map { target[$0] }
+            let old = Set(current.map(\.id))
+            insertedCounts.append(next.filter { !old.contains($0.id) }.count)
+            XCTAssertEqual(next.first?.id, "header")
+            XCTAssertEqual(next.suffix(2).map(\.id), ["old-a", "old-b"])
+            current = next
+        } while current.map(\.id) != target.map(\.id)
+        XCTAssertEqual(insertedCounts, [2, 2, 2, 1])
+        XCTAssertEqual(current, target)
+    }
+    func testChromeAdditionDisappearanceAndChangedOldKindsStillUseBoundedPrepend() {
+        let old = [row("older-button", supplemental: true), row("a"), row("b")]
+        let target = [row("loading", supplemental: true), row("new-1"), row("new-2"),
+                      row("a", revision: 2), row("b", kind: 1)]
+        let plan = HistoryViewportPresentationSchedule.plan(current: old, target: target, maximumInsertedEntries: 2)
+        XCTAssertEqual(plan.route, .prepend)
+        XCTAssertEqual(plan.remaining, 1)
+        XCTAssertEqual(plan.changedExisting, 2)
+        XCTAssertEqual(plan.indices.map { target[$0].id }, ["loading", "new-2", "a", "b"])
+        let withoutHeader = Array(target.dropFirst())
+        let final = HistoryViewportPresentationSchedule.plan(current: plan.indices.map { target[$0] }, target: withoutHeader, maximumInsertedEntries: 2)
+        XCTAssertEqual(final.route, .prepend)
+        XCTAssertEqual(final.remaining, 0)
+        XCTAssertEqual(final.indices.map { withoutHeader[$0].id }, withoutHeader.map(\.id))
+    }
+    func testDeletionReorderAndTailInsertionAreExplicitReplacement() {
+        let old = [row("a"), row("b"), row("c")]
+        for target in [[row("a"), row("c")], [row("b"), row("a"), row("c")], old + [row("tail")]] {
+            let plan = HistoryViewportPresentationSchedule.plan(current: old, target: target, maximumInsertedEntries: 2)
+            XCTAssertEqual(plan.route, .replacement)
+            XCTAssertEqual(plan.indices, Array(target.indices))
+            XCTAssertEqual(plan.remaining, 0)
+        }
+    }
+}
+
+#if DEBUG
+@MainActor
+final class HistoryViewportControlledPresentationTests: XCTestCase {
+    private final class Counter { var builds = 0; var pinnedChanges: [Bool] = [] }
+    private struct Fixture {
+        let controller: ConversationViewportController
+        let timeline: ConversationTimeline
+        let list: UICollectionView
+        let window: UIWindow
+        let previous: UIWindow?
+        let counter: Counter
+        func close() {
+            controller.onHistoryPresented = { _, _, _ in }
+            controller.detachHistoryPresentationConsumer()
+            window.isHidden = true; window.rootViewController = nil; previous?.makeKey()
+        }
+    }
+    private func items(_ range: Range<Int>, tail: String? = nil) -> [ConversationItem] {
+        range.map { index in
+            .init(id: "controlled-\(index)", kind: .assistant, title: "", text: index == range.upperBound - 1 ? tail ?? "row" : "row",
+                  isError: false, date: Date(timeIntervalSince1970: Double(index)))
+        }
+    }
+    private func entries(_ items: [ConversationItem]) -> [ConversationViewportEntry] {
+        items.map { .init(id: $0.id, revision: $0.text.count, content: AnyView(Text($0.text).frame(height: 60))) }
+    }
+    private func list(in view: UIView) -> UICollectionView? {
+        if let list = view as? UICollectionView { return list }
+        return view.subviews.lazy.compactMap { self.list(in: $0) }.first
+    }
+    private func wait(_ condition: () -> Bool, timeout: Double = 5,
+                      file: StaticString = #filePath, line: UInt = #line) async {
+        let deadline = CACurrentMediaTime() + timeout
+        let tick = InlineImageActualTick()
+        while !condition(), CACurrentMediaTime() < deadline { await tick.next() }
+        XCTAssertTrue(condition(), file: file, line: line)
+    }
+    private func fixture(admission: HistoryPresentationAdmission? = nil) async throws -> Fixture {
+        let counter = Counter()
+        let controller = ConversationViewportController(onContentAvailabilityChanged: { _, _ in },
+            onPinnedToBottomChanged: { counter.pinnedChanges.append($0) }, onBottomAlignmentCompleted: {}, onApproachingTop: {})
+        if let admission {
+            controller.onHistoryPresentationConsumerAttached = { admission.attach(sessionID: $0, consumer: $1) }
+            controller.onHistoryPresentationConsumerDetached = { admission.detach(sessionID: $0, consumerID: $1) }
+            controller.onHistoryPresented = { admission.acknowledge(sessionID: $0, consumerID: $1, stamp: $2, domainLoading: false) }
+        }
+        controller.loadViewIfNeeded()
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive })
+        let previous = scene.windows.first { $0.isKeyWindow }
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = controller; window.makeKeyAndVisible()
+        controller.view.layoutIfNeeded()
+        let timeline = ConversationTimeline()
+        timeline.publish(items(40..<60))
+        controller.configure(sessionID: "controlled", timeline: timeline, supplementalEntries: [], makeEntries: { items in
+            counter.builds += 1
+            return items.map { .init(id: $0.id, revision: $0.text.count, content: AnyView(Text($0.text).frame(height: 60))) }
+        }, bottomInset: 0)
+        let list = try XCTUnwrap(list(in: controller.view))
+        await wait { list.numberOfSections > 0 && list.numberOfItems(inSection: 0) == 20
+            && !controller.isHistorySnapshotCommitInFlightForTesting
+            && !controller.isInitialContentRevealPendingForTesting }
+        return Fixture(controller: controller, timeline: timeline, list: list, window: window, previous: previous, counter: counter)
+    }
+    func testInitialContentFadesOnlyAfterCommitAndPositionAreStable() async throws {
+        let fixture = try await fixture()
+        defer { fixture.controller.historyDiffableCompletionGateForTesting = nil; fixture.close() }
+        fixture.controller.reduceContentMotionForTesting = false
+        let entered = expectation(description: "new session snapshot committed but not finalized")
+        var release: (() -> Void)?
+        fixture.controller.historyDiffableCompletionGateForTesting = { completion in
+            fixture.controller.historyDiffableCompletionGateForTesting = nil
+            release = completion; entered.fulfill()
+        }
+        let timeline = ConversationTimeline(); timeline.publish(items(70..<90))
+        fixture.controller.configure(sessionID: "reveal-session", timeline: timeline, supplementalEntries: [],
+            makeEntries: { self.entries($0) }, bottomInset: 0)
+        await fulfillment(of: [entered], timeout: 4)
+        XCTAssertTrue(fixture.list.isHidden, "不能展示diffable提交中的临时布局")
+        XCTAssertNil(fixture.list.layer.animation(forKey: "conversation-content-reveal"))
+        var reported = false
+        fixture.controller.onContentAvailabilityChanged = { _, content in
+            if content {
+                XCTAssertFalse(fixture.list.isHidden)
+                XCTAssertGreaterThanOrEqual(fixture.list.contentOffset.y,
+                    fixture.list.contentSize.height - fixture.list.bounds.height - 1)
+                reported = true
+            }
+        }
+        try XCTUnwrap(release)()
+        XCTAssertEqual(fixture.list.layer.opacity, 0, "定位之后仍等待几何稳定")
+        await wait { reported }
+        let animation = try XCTUnwrap(fixture.list.layer.animation(forKey: "conversation-content-reveal") as? CABasicAnimation)
+        XCTAssertEqual(animation.keyPath, "opacity")
+        XCTAssertEqual(animation.duration, 0.18, accuracy: 0.001)
+        XCTAssertEqual(fixture.list.layer.opacity, 1)
+        let offset = fixture.list.contentOffset
+        await wait { fixture.list.layer.animation(forKey: "conversation-content-reveal") == nil }
+        XCTAssertEqual(fixture.list.contentOffset.y, offset.y, accuracy: 1)
+    }
+
+    func testHistoryRevealsOnlyInsertedBodyAfterOperationAndStableLayout() async throws {
+        let admission = HistoryPresentationAdmission()
+        let fixture = try await fixture(admission: admission)
+        defer { fixture.close() }
+        fixture.controller.reduceContentMotionForTesting = false
+        await wait { fixture.list.layer.animation(forKey: "conversation-content-reveal") == nil }
+        fixture.timeline.publish(items(40..<42))
+        await wait { !fixture.controller.isHistoryPresentationScheduledForTesting }
+        let source = try XCTUnwrap(fixture.list.dataSource as? UICollectionViewDiffableDataSource<Int, String>)
+        let oldPath = try XCTUnwrap(source.indexPath(for: "controlled-40"))
+        let oldCell = try XCTUnwrap(fixture.list.cellForItem(at: oldPath))
+        let operation = try XCTUnwrap(admission.begin(sessionID: "controlled",
+            consumerID: fixture.controller.historyPresentationConsumerID, domainLoading: false, hasMore: true, producerBusy: false))
+        admission.requireProjection(sessionID: "controlled", epoch: 1, historyEventSequence: 1)
+        let stamp = try XCTUnwrap(admission.stamp(sessionID: "controlled", committedEpoch: 1))
+        fixture.timeline.publish(items(39..<42), historyPresentationStamp: stamp)
+        await wait { source.indexPath(for: "controlled-39") != nil && !fixture.controller.isHistorySnapshotCommitInFlightForTesting }
+        let newCell = try XCTUnwrap(fixture.list.cellForItem(at: try XCTUnwrap(source.indexPath(for: "controlled-39"))))
+        XCTAssertEqual(newCell.contentView.layer.opacity, 0)
+        XCTAssertTrue(newCell.contentView.accessibilityElementsHidden)
+        XCTAssertEqual(oldCell.contentView.layer.opacity, 1)
+        XCTAssertNil(oldCell.contentView.layer.animation(forKey: "conversation-content-reveal"))
+        XCTAssertFalse(fixture.list.isHidden)
+        XCTAssertFalse(fixture.list.showsVerticalScrollIndicator)
+        XCTAssertTrue(admission.isPending(sessionID: "controlled"), "透明行不能提前确认呈现并释放准入")
+        fixture.controller.onHistoryPresented = { session, consumer, actual in
+            XCTAssertEqual(newCell.contentView.layer.opacity, 1)
+            XCTAssertTrue(fixture.controller.pendingHistoryRevealIDsForTesting.isEmpty)
+            admission.acknowledge(sessionID: session, consumerID: consumer, stamp: actual, domainLoading: false)
+        }
+        admission.terminal(sessionID: "controlled", domainLoading: false, operationID: operation)
+        await wait { fixture.controller.pendingHistoryRevealIDsForTesting.isEmpty && fixture.list.showsVerticalScrollIndicator }
+        XCTAssertEqual(newCell.contentView.layer.opacity, 1)
+        XCTAssertFalse(newCell.contentView.accessibilityElementsHidden)
+        XCTAssertNotNil(newCell.contentView.layer.animation(forKey: "conversation-content-reveal"))
+        XCTAssertNil(oldCell.contentView.layer.animation(forKey: "conversation-content-reveal"))
+        XCTAssertNil(fixture.list.layer.animation(forKey: "conversation-content-reveal"))
+        // 短内容允许整体底对齐，但渐显本身不能再次移动阅读位置。
+        let finalOffset = fixture.list.contentOffset.y
+        await wait { newCell.contentView.layer.animation(forKey: "conversation-content-reveal") == nil }
+        XCTAssertEqual(fixture.list.contentOffset.y, finalOffset, accuracy: 1)
+    }
+
+    func testNewDragRevealsPendingRowsAndStopsFadeWithoutWaitingForNetwork() async throws {
+        let admission = HistoryPresentationAdmission()
+        let fixture = try await fixture(admission: admission)
+        defer { fixture.close() }
+        fixture.timeline.publish(items(40..<42))
+        await wait { !fixture.controller.isHistoryPresentationScheduledForTesting }
+        _ = try XCTUnwrap(admission.begin(sessionID: "controlled", consumerID: fixture.controller.historyPresentationConsumerID,
+            domainLoading: false, hasMore: true, producerBusy: false))
+        admission.requireProjection(sessionID: "controlled", epoch: 1, historyEventSequence: 1)
+        fixture.timeline.publish(items(39..<42), historyPresentationStamp: try XCTUnwrap(admission.stamp(sessionID: "controlled", committedEpoch: 1)))
+        await wait { !fixture.controller.pendingHistoryRevealIDsForTesting.isEmpty
+            && !fixture.controller.isHistorySnapshotCommitInFlightForTesting }
+        fixture.controller.scrollViewWillBeginDragging(fixture.list)
+        XCTAssertTrue(fixture.controller.pendingHistoryRevealIDsForTesting.isEmpty)
+        XCTAssertTrue(admission.isPending(sessionID: "controlled"))
+        for cell in fixture.list.visibleCells {
+            XCTAssertEqual(cell.contentView.layer.opacity, 1)
+            XCTAssertFalse(cell.contentView.accessibilityElementsHidden)
+            XCTAssertNil(cell.contentView.layer.animation(forKey: "conversation-content-reveal"))
+        }
+        fixture.controller.scrollViewDidEndDragging(fixture.list, willDecelerate: false)
+    }
+
+    func testReduceMotionAndSessionSwitchCannotLeaveStaleOpacity() async throws {
+        let fixture = try await fixture()
+        defer { fixture.close() }
+        fixture.controller.reduceContentMotionForTesting = true
+        for session in ["reveal-a", "reveal-b"] {
+            let timeline = ConversationTimeline(); timeline.publish(items(40..<42))
+            fixture.controller.configure(sessionID: session, timeline: timeline, supplementalEntries: [],
+                makeEntries: { self.entries($0) }, bottomInset: 0)
+            await wait { !fixture.controller.isInitialContentRevealPendingForTesting }
+            XCTAssertFalse(fixture.list.isHidden)
+            XCTAssertNil(fixture.list.layer.animation(forKey: "conversation-content-reveal"))
+            for cell in fixture.list.visibleCells { XCTAssertEqual(cell.contentView.layer.opacity, 1) }
+        }
+        fixture.controller.reduceContentMotionForTesting = false
+        let timeline = ConversationTimeline(); timeline.publish(items(40..<42))
+        fixture.controller.configure(sessionID: "animated-session", timeline: timeline, supplementalEntries: [],
+            makeEntries: { self.entries($0) }, bottomInset: 0)
+        await wait { !fixture.controller.isInitialContentRevealPendingForTesting }
+        XCTAssertNotNil(fixture.list.layer.animation(forKey: "conversation-content-reveal"))
+        fixture.controller.scrollViewWillBeginDragging(fixture.list)
+        XCTAssertNil(fixture.list.layer.animation(forKey: "conversation-content-reveal"))
+        fixture.controller.scrollViewDidEndDragging(fixture.list, willDecelerate: false)
+        fixture.controller.detachHistoryPresentationConsumer()
+        XCTAssertTrue(fixture.controller.pendingHistoryRevealIDsForTesting.isEmpty)
+        XCTAssertEqual(fixture.list.layer.opacity, 1)
+    }
+
+    func testEmptySessionWaitsForContentAndSwitchCancelsPreviousFade() async throws {
+        let fixture = try await fixture()
+        defer { fixture.close() }
+        fixture.controller.reduceContentMotionForTesting = false
+        let empty = ConversationTimeline()
+        fixture.controller.configure(sessionID: "initially-empty", timeline: empty, supplementalEntries: [],
+            makeEntries: { self.entries($0) }, bottomInset: 0)
+        await wait { !fixture.controller.isHistorySnapshotCommitInFlightForTesting
+            && !fixture.controller.isHistoryPresentationScheduledForTesting }
+        XCTAssertTrue(fixture.list.isHidden)
+        XCTAssertTrue(fixture.controller.isInitialContentRevealPendingForTesting)
+        empty.publish(items(40..<42))
+        await wait { !fixture.controller.isInitialContentRevealPendingForTesting }
+        XCTAssertNotNil(fixture.list.layer.animation(forKey: "conversation-content-reveal"))
+        let next = ConversationTimeline()
+        fixture.controller.configure(sessionID: "next-empty", timeline: next, supplementalEntries: [],
+            makeEntries: { self.entries($0) }, bottomInset: 0)
+        XCTAssertTrue(fixture.list.isHidden)
+        XCTAssertNil(fixture.list.layer.animation(forKey: "conversation-content-reveal"))
+        await wait { !fixture.controller.isHistoryPresentationScheduledForTesting
+            && !fixture.controller.isHistorySnapshotCommitInFlightForTesting }
+        next.publish(items(70..<73))
+        await wait { !fixture.controller.isInitialContentRevealPendingForTesting }
+        XCTAssertFalse(fixture.list.isHidden)
+        XCTAssertEqual(fixture.list.layer.opacity, 1)
+    }
+
+    func testInitialStreamingUpdatesStayImmediateAndRevealWhileReplyContinues() async throws {
+        let fixture = try await fixture()
+        defer { fixture.close() }
+        fixture.controller.reduceContentMotionForTesting = false
+        let timeline = ConversationTimeline()
+        fixture.controller.configure(sessionID: "streaming-reveal", timeline: timeline, supplementalEntries: [],
+            makeEntries: { items in items.map { .init(id: $0.id, revision: $0.text.count,
+                streamingAssistant: .init(title: "", text: $0.text)) } }, bottomInset: 0)
+        // 先完成会话切换的清空事务；以下断言专门检查纯token更新，不混入旧会话diffable提交。
+        await wait { !fixture.controller.isHistorySnapshotCommitInFlightForTesting
+            && !fixture.controller.isHistoryPresentationScheduledForTesting }
+        var text = ""
+        func publish() {
+            timeline.publish([.init(id: "active-stream", kind: .assistant, title: "", text: text,
+                isError: false, date: Date(timeIntervalSince1970: 1))])
+        }
+        text = "start "; publish()
+        await wait { !fixture.controller.isHistorySnapshotCommitInFlightForTesting
+            && fixture.list.cellForItem(at: IndexPath(item: 0, section: 0)) is StreamingAssistantCell }
+        for _ in 0..<60 { text += "token "; publish() }
+        let cell = try XCTUnwrap(fixture.list.cellForItem(at: IndexPath(item: 0, section: 0)) as? StreamingAssistantCell)
+        XCTAssertEqual(cell.renderedCharacterCount, text.count, "视觉等待不能把正常token更新转入历史批次队列")
+        for _ in 0..<5 {
+            text += String(repeating: "new text ", count: 20); publish()
+            await InlineImageActualTick().next()
+        }
+        await wait { !fixture.controller.isInitialContentRevealPendingForTesting }
+        XCTAssertEqual(fixture.list.layer.opacity, 1)
+        XCTAssertFalse(fixture.list.isHidden)
+        text += "still generating"; publish()
+        let latestCell = try XCTUnwrap(fixture.list.cellForItem(at: IndexPath(item: 0, section: 0)) as? StreamingAssistantCell)
+        XCTAssertEqual(latestCell.renderedCharacterCount, text.count)
+    }
+
+    func testHistoryInsertionNeverExposesOldOffscreenScreenshotBeforeFinalization() async throws {
+        final class ImageState { var loaded = true }
+        let screenshot = UIGraphicsImageRenderer(size: CGSize(width: 12, height: 24)).image { context in
+            UIColor.magenta.setFill(); context.fill(CGRect(x: 0, y: 0, width: 12, height: 24))
+        }.pngData()!
+        for scenario in ["replacement", "leading_group_header", "image_bytes", "offscreen_height"] {
+            let fixture = try await fixture()
+            defer { fixture.controller.historyDiffableCompletionGateForTesting = nil; fixture.close() }
+            let image = ImageState(); image.loaded = scenario != "image_bytes"
+            fixture.controller.configure(sessionID: "controlled", timeline: fixture.timeline, supplementalEntries: [], makeEntries: { items in
+                items.map { item in
+                    if item.id == "controlled-40" {
+                        return .init(id: item.id, revision: image.loaded ? 101 : 100,
+                            userMessage: .init(text: "", images: [.init(id: "old-screenshot", data: image.loaded ? screenshot : nil,
+                                width: 120, height: 240, name: "synthetic.png")], showsCopyButton: false))
+                    }
+                    let height: CGFloat = item.id == "controlled-39" ? 1_100 : (item.text == "offscreen grows" ? 180 : 60)
+                    return .init(id: item.id, revision: item.text.count, content: AnyView(Text(item.text).frame(height: height)))
+                }
+            }, bottomInset: 0)
+            await wait { !fixture.controller.isHistoryPresentationScheduledForTesting
+                && !fixture.controller.isHistorySnapshotCommitInFlightForTesting }
+            fixture.controller.scrollViewWillBeginDragging(fixture.list)
+            fixture.list.setContentOffset(CGPoint(x: 0, y: 400), animated: false)
+            fixture.controller.scrollViewDidScroll(fixture.list)
+            fixture.controller.scrollViewDidEndDragging(fixture.list, willDecelerate: false)
+            await wait { !fixture.controller.isHistoryPresentationScheduledForTesting }
+            let source = try XCTUnwrap(fixture.list.dataSource as? UICollectionViewDiffableDataSource<Int, String>)
+            func visibleIDs() -> [String] {
+                fixture.list.indexPathsForVisibleItems.sorted().compactMap { path in
+                    guard let frame = fixture.list.layoutAttributesForItem(at: path)?.frame,
+                          frame.intersects(fixture.list.bounds) else { return nil }
+                    return source.itemIdentifier(for: path)
+                }
+            }
+            let visible = visibleIDs()
+            XCTAssertFalse(visible.contains("controlled-40"), "旧截图必须在原阅读窗口之外")
+            let retainedVisible = scenario == "leading_group_header" ? Array(visible.dropFirst()) : visible
+            let anchor = try XCTUnwrap(retainedVisible.first)
+            let anchorPath = try XCTUnwrap(source.indexPath(for: anchor))
+            let anchorOffset = try XCTUnwrap(fixture.list.layoutAttributesForItem(at: anchorPath)).frame.minY - fixture.list.contentOffset.y
+            let entered = expectation(description: "\(scenario) UIKit commit reached before manual restoration")
+            var release: (() -> Void)?
+            fixture.controller.historyDiffableCompletionGateForTesting = { completion in
+                fixture.controller.historyDiffableCompletionGateForTesting = nil
+                release = completion; entered.fulfill()
+            }
+            var target = items(39..<60)
+            if scenario == "replacement" { target.removeAll { $0.id == "controlled-41" } }
+            if scenario == "leading_group_header" { target.removeAll { $0.id == visible.first } }
+            if scenario == "image_bytes" { image.loaded = true }
+            if scenario == "offscreen_height" {
+                target = target.map { item in
+                    item.id == "controlled-41" ? ConversationItem(id: item.id, kind: .assistant, title: "",
+                        text: "offscreen grows", isError: false, date: item.date) : item
+                }
+            }
+            var acknowledged = false
+            fixture.controller.onHistoryPresented = { _, _, _ in acknowledged = true }
+            fixture.timeline.publish(target, historyPresentationStamp: .init(operationID: UUID(), projectionEpoch: 1))
+            await fulfillment(of: [entered], timeout: 6)
+            XCTAssertTrue(fixture.controller.isNativeHistoryOffsetCompensationActiveForTesting)
+            for _ in 0..<3 {
+                if scenario == "leading_group_header" {
+                    let retained = Set(retainedVisible)
+                    XCTAssertEqual(visibleIDs().filter { retained.contains($0) }, retainedVisible,
+                                   "分组头替换后仍保留原来实际阅读的正文窗口")
+                } else {
+                    XCTAssertEqual(visibleIDs(), visible, "\(scenario): 手动恢复前也不能闪现别的阅读窗口")
+                }
+                XCTAssertFalse(visibleIDs().contains("controlled-40"), "新插入内容没有图片，旧截图不可短暂出现")
+                let path = try XCTUnwrap(source.indexPath(for: anchor))
+                let frame = try XCTUnwrap(fixture.list.layoutAttributesForItem(at: path)).frame
+                XCTAssertEqual(frame.minY - fixture.list.contentOffset.y, anchorOffset, accuracy: 1,
+                               "\(scenario): 不能仅检查completion恢复后的锚点")
+                await InlineImageActualTick().next()
+            }
+            try XCTUnwrap(release)()
+            await wait { acknowledged && !fixture.controller.isHistoryPresentationScheduledForTesting }
+            let path = try XCTUnwrap(source.indexPath(for: anchor))
+            XCTAssertEqual(try XCTUnwrap(fixture.list.layoutAttributesForItem(at: path)).frame.minY - fixture.list.contentOffset.y,
+                           anchorOffset, accuracy: 1)
+        }
+    }
+
+    func testHistoryScrollIndicatorStaysHiddenUntilAllBatchesAndStableGeometry() async throws {
+        let admission = HistoryPresentationAdmission()
+        let fixture = try await fixture(admission: admission)
+        defer { fixture.close() }
+        XCTAssertTrue(fixture.list.showsVerticalScrollIndicator)
+        let operation = try XCTUnwrap(admission.begin(sessionID: "controlled",
+            consumerID: fixture.controller.historyPresentationConsumerID, domainLoading: false, hasMore: true, producerBusy: false))
+        XCTAssertFalse(fixture.list.showsVerticalScrollIndicator)
+        admission.requireProjection(sessionID: "controlled", epoch: 1, historyEventSequence: 1)
+        let stamp = try XCTUnwrap(admission.stamp(sessionID: "controlled", committedEpoch: 1))
+        fixture.controller.seedPresentationHeightForTesting(entries(items(36..<60)), height: 60)
+        var acknowledged = false
+        fixture.controller.onHistoryPresented = { session, consumer, actual in
+            XCTAssertEqual(fixture.list.numberOfItems(inSection: 0), 24)
+            XCTAssertFalse(fixture.list.showsVerticalScrollIndicator)
+            admission.acknowledge(sessionID: session, consumerID: consumer, stamp: actual, domainLoading: false)
+            XCTAssertFalse(fixture.list.showsVerticalScrollIndicator, "完成回调不能在布局收尾前直接显示滚动条")
+            acknowledged = true
+        }
+        fixture.timeline.publish(items(36..<60), historyPresentationStamp: stamp)
+        admission.terminal(sessionID: "controlled", domainLoading: false, operationID: operation)
+        XCTAssertFalse(fixture.list.showsVerticalScrollIndicator, "网络结束不代表历史已经完整呈现")
+        await wait { fixture.list.numberOfItems(inSection: 0) > 20 }
+        XCTAssertLessThan(fixture.list.numberOfItems(inSection: 0), 24)
+        XCTAssertTrue(admission.isPending(sessionID: "controlled"))
+        XCTAssertFalse(fixture.list.showsVerticalScrollIndicator)
+        fixture.controller.scrollViewWillBeginDragging(fixture.list)
+        await InlineImageActualTick().next()
+        XCTAssertFalse(fixture.list.showsVerticalScrollIndicator)
+        fixture.controller.scrollViewDidEndDragging(fixture.list, willDecelerate: false)
+        await wait { acknowledged && fixture.list.showsVerticalScrollIndicator
+            && !fixture.controller.isHistoryPresentationScheduledForTesting }
+        XCTAssertFalse(admission.isPending(sessionID: "controlled"))
+        XCTAssertEqual(fixture.list.numberOfItems(inSection: 0), 24)
+    }
+
+    func testHistoryScrollIndicatorWaitsForDeferredFinalizationAfterAnotherDrag() async throws {
+        let admission = HistoryPresentationAdmission()
+        let fixture = try await fixture(admission: admission)
+        defer { fixture.controller.historyDiffableCompletionGateForTesting = nil; fixture.close() }
+        let operation = try XCTUnwrap(admission.begin(sessionID: "controlled",
+            consumerID: fixture.controller.historyPresentationConsumerID, domainLoading: false, hasMore: true, producerBusy: false))
+        admission.requireProjection(sessionID: "controlled", epoch: 1, historyEventSequence: 1)
+        let stamp = try XCTUnwrap(admission.stamp(sessionID: "controlled", committedEpoch: 1))
+        let entered = expectation(description: "UIKit completed before history finalization")
+        var release: (() -> Void)?
+        fixture.controller.historyDiffableCompletionGateForTesting = { completion in
+            fixture.controller.historyDiffableCompletionGateForTesting = nil
+            release = completion
+            entered.fulfill()
+        }
+        fixture.controller.seedPresentationHeightForTesting(entries(items(39..<60)), height: 60)
+        fixture.timeline.publish(items(39..<60), historyPresentationStamp: stamp)
+        admission.terminal(sessionID: "controlled", domainLoading: false, operationID: operation)
+        await fulfillment(of: [entered], timeout: 4)
+        fixture.controller.scrollViewWillBeginDragging(fixture.list)
+        try XCTUnwrap(release)()
+        XCTAssertTrue(fixture.controller.isHistoryFinalizationPendingForTesting)
+        XCTAssertTrue(admission.isPending(sessionID: "controlled"))
+        await InlineImageActualTick().next()
+        XCTAssertFalse(fixture.list.showsVerticalScrollIndicator)
+        fixture.controller.scrollViewDidEndDragging(fixture.list, willDecelerate: false)
+        await wait { !admission.isPending(sessionID: "controlled") && fixture.list.showsVerticalScrollIndicator }
+        XCTAssertFalse(fixture.controller.isHistoryFinalizationPendingForTesting)
+    }
+
+    func testHistoryScrollIndicatorRecoversAfterFailureEmptyAndDetachWithoutStaleFinish() async throws {
+        let admission = HistoryPresentationAdmission()
+        let fixture = try await fixture(admission: admission)
+        defer { fixture.close() }
+        let first = try XCTUnwrap(admission.begin(sessionID: "controlled",
+            consumerID: fixture.controller.historyPresentationConsumerID, domainLoading: false, hasMore: true, producerBusy: false))
+        XCTAssertFalse(fixture.list.showsVerticalScrollIndicator)
+        admission.cancel(sessionID: "controlled", outcome: .failed, operationID: first)
+        await wait { fixture.list.showsVerticalScrollIndicator }
+        let second = try XCTUnwrap(admission.begin(sessionID: "controlled",
+            consumerID: fixture.controller.historyPresentationConsumerID, domainLoading: false, hasMore: true, producerBusy: false))
+        fixture.controller.recordHistoryPresentationLifecycle(.finished(first, .failed))
+        await InlineImageActualTick().next(); await InlineImageActualTick().next()
+        XCTAssertFalse(fixture.list.showsVerticalScrollIndicator, "旧请求的完成不能恢复新请求的滚动条")
+        admission.terminal(sessionID: "controlled", domainLoading: false, operationID: second)
+        await wait { fixture.list.showsVerticalScrollIndicator }
+        _ = try XCTUnwrap(admission.begin(sessionID: "controlled",
+            consumerID: fixture.controller.historyPresentationConsumerID, domainLoading: false, hasMore: true, producerBusy: false))
+        XCTAssertFalse(fixture.list.showsVerticalScrollIndicator)
+        fixture.controller.detachHistoryPresentationConsumer()
+        XCTAssertTrue(fixture.list.showsVerticalScrollIndicator)
+        XCTAssertFalse(admission.isPending(sessionID: "controlled"))
+    }
+
+    func testCacheHitAndLayoutDrainCannotCommitOrBuildWhileDraggingThenOnlyLatestIsShown() async throws {
+        let fixture = try await fixture()
+        defer { fixture.close() }
+        let target = items(0..<60)
+        fixture.controller.seedPresentationHeightForTesting(entries(target), height: 60)
+        let builds = fixture.counter.builds
+        fixture.controller.scrollViewWillBeginDragging(fixture.list)
+        fixture.timeline.publish(items(20..<60))
+        fixture.timeline.publish(target)
+        fixture.controller.view.layoutIfNeeded()
+        await InlineImageActualTick().next(); await InlineImageActualTick().next()
+        XCTAssertEqual(fixture.counter.builds, builds, "冻结必须发生在makeEntries之前")
+        XCTAssertEqual(fixture.list.numberOfItems(inSection: 0), 20)
+        XCTAssertFalse(fixture.controller.isHistoryPreparationPendingForTesting)
+        fixture.controller.scrollViewDidEndDragging(fixture.list, willDecelerate: false)
+        XCTAssertEqual(fixture.list.numberOfItems(inSection: 0), 20, "cache-hit不能绕过120ms稳定入口")
+        await wait { fixture.list.numberOfItems(inSection: 0) == 60 }
+        XCTAssertEqual(fixture.counter.builds, builds + 1)
+    }
+    func testPartialHistoryStopsOnNewDragAndAcknowledgesOnlyCompleteLatestEpoch() async throws {
+        let fixture = try await fixture()
+        defer { fixture.close() }
+        let operation = UUID(), first = HistoryPresentationStamp(operationID: operation, projectionEpoch: 1)
+        fixture.controller.seedPresentationHeightForTesting(entries(items(0..<60)), height: 60)
+        var acknowledged: [HistoryPresentationStamp] = []
+        fixture.controller.onHistoryPresented = { _, _, stamp in
+            acknowledged.append(stamp)
+            XCTAssertEqual(fixture.list.numberOfItems(inSection: 0), 60)
+        }
+        fixture.timeline.publish(items(0..<60), historyPresentationStamp: first)
+        await wait { fixture.list.numberOfItems(inSection: 0) > 20 }
+        let partial = fixture.list.numberOfItems(inSection: 0)
+        XCTAssertLessThan(partial, 60)
+        XCTAssertTrue(acknowledged.isEmpty)
+        fixture.controller.scrollViewWillBeginDragging(fixture.list)
+        await InlineImageActualTick().next(); await InlineImageActualTick().next()
+        XCTAssertEqual(fixture.list.numberOfItems(inSection: 0), partial)
+        let latest = HistoryPresentationStamp(operationID: operation, projectionEpoch: 2)
+        fixture.timeline.publish(items(0..<60), historyPresentationStamp: latest)
+        fixture.controller.scrollViewDidEndDragging(fixture.list, willDecelerate: false)
+        await wait { !acknowledged.isEmpty }
+        XCTAssertEqual(acknowledged, [latest])
+    }
+    func testSameHistoryEpochLiveUpdatesDoNotStarveFinalHistoryAcknowledgment() async throws {
+        let fixture = try await fixture()
+        defer { fixture.close() }
+        let stamp = HistoryPresentationStamp(operationID: UUID(), projectionEpoch: 4)
+        var acknowledgments = 0
+        fixture.controller.onHistoryPresented = { _, _, actual in
+            XCTAssertEqual(actual, stamp)
+            XCTAssertEqual(fixture.list.numberOfItems(inSection: 0), 24)
+            acknowledgments += 1
+        }
+        fixture.timeline.publish(items(36..<60), historyPresentationStamp: stamp)
+        let deadline = CACurrentMediaTime() + 5
+        var revision = 0
+        while acknowledgments == 0, CACurrentMediaTime() < deadline {
+            revision += 1
+            fixture.timeline.publish(items(36..<60, tail: String(repeating: "x", count: revision)))
+            await InlineImageActualTick().next()
+        }
+        XCTAssertEqual(acknowledgments, 1, "同history epoch的持续live不能使已完整呈现的历史永不确认")
+        await wait { !fixture.controller.isHistoryPresentationScheduledForTesting }
+    }
+    func testInFlightCompletionDefersFinalizationAndKeepsNewReadingPositionAfterAnotherDrag() async throws {
+        let fixture = try await fixture()
+        defer { fixture.controller.historyDiffableCompletionGateForTesting = nil; fixture.close() }
+        let target = items(39..<60)
+        fixture.controller.seedPresentationHeightForTesting(entries(target), height: 60)
+        fixture.controller.scrollViewWillBeginDragging(fixture.list)
+        fixture.list.setContentOffset(CGPoint(x: 0, y: 180), animated: false)
+        fixture.controller.scrollViewDidEndDragging(fixture.list, willDecelerate: false)
+        await wait { !fixture.controller.isHistoryPresentationScheduledForTesting }
+        let entered = expectation(description: "real diffable completion reached before finalization")
+        var release: (() -> Void)?
+        fixture.controller.historyDiffableCompletionGateForTesting = { completion in
+            release = completion
+            fixture.controller.historyDiffableCompletionGateForTesting = nil
+            entered.fulfill()
+        }
+        var acknowledgments = 0
+        fixture.controller.onHistoryPresented = { _, _, _ in acknowledgments += 1 }
+        fixture.timeline.publish(target, historyPresentationStamp: .init(operationID: UUID(), projectionEpoch: 7))
+        await fulfillment(of: [entered], timeout: 4)
+        XCTAssertEqual(fixture.list.numberOfItems(inSection: 0), 21)
+        XCTAssertEqual(acknowledgments, 0)
+        XCTAssertTrue(fixture.controller.isNativeHistoryOffsetCompensationActiveForTesting)
+        fixture.controller.scrollViewWillBeginDragging(fixture.list)
+        fixture.list.setContentOffset(CGPoint(x: 0, y: 260), animated: false)
+        let userOffset = fixture.list.contentOffset.y
+        try XCTUnwrap(release)()
+        XCTAssertTrue(fixture.controller.isHistoryFinalizationPendingForTesting)
+        XCTAssertTrue(fixture.controller.isNativeHistoryOffsetCompensationActiveForTesting)
+        await InlineImageActualTick().next(); await InlineImageActualTick().next()
+        XCTAssertEqual(acknowledgments, 0)
+        XCTAssertEqual(fixture.list.contentOffset.y, userOffset, accuracy: 0.5,
+                       "movement期间completion不可恢复旧anchor或主动拉回")
+        fixture.controller.scrollViewDidEndDragging(fixture.list, willDecelerate: false)
+        await wait { acknowledgments == 1 && !fixture.controller.isHistoryFinalizationPendingForTesting }
+        XCTAssertEqual(fixture.list.contentOffset.y, userOffset, accuracy: 1,
+                       "idle finalization必须保用户新阅读位置，而非提交前旧anchor")
+        await InlineImageActualTick().next()
+        XCTAssertEqual(acknowledgments, 1)
+        XCTAssertFalse(fixture.controller.isNativeHistoryOffsetCompensationActiveForTesting)
+    }
+    func testActualSnapshotsInsertAtMostOneEntryIncludingChromeCacheHitsAndHeavyMarkdown() async throws {
+        let fixture = try await fixture()
+        defer { fixture.controller.historyDiffableCompletionGateForTesting = nil; fixture.close() }
+        let dataSource = try XCTUnwrap(fixture.list.dataSource as? UICollectionViewDiffableDataSource<Int, String>)
+        var previousIDs = Set(dataSource.snapshot().itemIdentifiers)
+        var insertions: [Int] = []
+        var observations: [[String: Any]] = []
+        let anchorID = "controlled-43"
+        func observe(_ stage: String) {
+            let frame = dataSource.indexPath(for: anchorID).flatMap { fixture.list.layoutAttributesForItem(at: $0)?.frame }
+            let firstPath = fixture.list.indexPathsForVisibleItems.sorted().first
+            let firstID = firstPath.flatMap { dataSource.itemIdentifier(for: $0) }
+            let firstFrame = firstPath.flatMap { fixture.list.layoutAttributesForItem(at: $0)?.frame }
+            observations.append([
+                "stage": stage, "batch": insertions.count, "anchor_id": anchorID,
+                "anchor_min_y": frame.map { Double($0.minY) } ?? -1,
+                "offset_y": Double(fixture.list.contentOffset.y),
+                "anchor_offset": frame.map { Double($0.minY - fixture.list.contentOffset.y) } ?? -1,
+                "first_visible_id": firstID ?? "none", "first_visible_min_y": firstFrame.map { Double($0.minY) } ?? -1,
+                "content_height": Double(fixture.list.contentSize.height), "bounds_height": Double(fixture.list.bounds.height),
+                "bottom_offset": Double(max(-fixture.list.adjustedContentInset.top,
+                    fixture.list.contentSize.height - fixture.list.bounds.height + fixture.list.adjustedContentInset.bottom)),
+                "pending_finalization": fixture.controller.isHistoryFinalizationPendingForTesting,
+                "inflight": fixture.controller.isHistorySnapshotCommitInFlightForTesting,
+                "scheduled": fixture.controller.isHistoryPresentationScheduledForTesting,
+                "pinned_changes": fixture.counter.pinnedChanges,
+                "native_offset_active": fixture.controller.isNativeHistoryOffsetCompensationActiveForTesting
+            ])
+        }
+        defer {
+            if let data = try? JSONSerialization.data(withJSONObject: observations, options: [.sortedKeys, .prettyPrinted]) {
+                let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
+                attachment.name = "synthetic-cap1-reading-anchor-observations.json"; attachment.lifetime = .keepAlways
+                add(attachment)
+            }
+        }
+        observe("initial_before_offset")
+        // 建立真实阅读前置：用户手势取消初始confirmStableBottomAlignment链。
+        // 只程序化改offset并不代表用户离开尾部，不能让fixture的旧尾链污染后续保锚断言。
+        fixture.controller.scrollViewWillBeginDragging(fixture.list)
+        fixture.list.setContentOffset(CGPoint(x: 0, y: 180), animated: false)
+        observe("initial_after_offset")
+        fixture.controller.scrollViewDidEndDragging(fixture.list, willDecelerate: false)
+        await wait { !fixture.controller.isHistoryPresentationScheduledForTesting
+            && !fixture.controller.isHistorySnapshotCommitInFlightForTesting }
+        observe("settled_user_reading_baseline")
+        let anchorPath = try XCTUnwrap(dataSource.indexPath(for: anchorID))
+        let initialAnchor = try XCTUnwrap(fixture.list.layoutAttributesForItem(at: anchorPath)).frame.minY - fixture.list.contentOffset.y
+        let initialVisibleContent = Set(fixture.list.indexPathsForVisibleItems.compactMap { path -> String? in
+            guard let frame = fixture.list.layoutAttributesForItem(at: path)?.frame,
+                  frame.intersects(fixture.list.bounds) else { return nil }
+            return dataSource.itemIdentifier(for: path)
+        })
+        var epochs: [Int] = []
+        var expectsNativeOffset = true
+        fixture.controller.onHistoryPresented = { _, _, stamp in epochs.append(stamp.projectionEpoch) }
+        fixture.controller.historyDiffableCompletionGateForTesting = { completion in
+            let current = Set(dataSource.snapshot().itemIdentifiers)
+            let inserted = current.subtracting(previousIDs).count
+            insertions.append(inserted)
+            XCTAssertLessThanOrEqual(inserted, 1, "实际每个diffable snapshot新增展示行必须≤1，不能只测planner")
+            previousIDs = current
+            observe("diffable_completion_before_finalize")
+            XCTAssertEqual(fixture.controller.isNativeHistoryOffsetCompensationActiveForTesting, expectsNativeOffset)
+            if expectsNativeOffset {
+                XCTAssertEqual(fixture.counter.pinnedChanges.last, false,
+                               "原生补偿的中间contentSize不能把阅读意图改成跟尾")
+                if let path = dataSource.indexPath(for: anchorID), let frame = fixture.list.layoutAttributesForItem(at: path)?.frame {
+                    XCTAssertEqual(frame.minY - fixture.list.contentOffset.y, initialAnchor, accuracy: 1,
+                                   "原生补偿须在手动restore前已保阅读窗口")
+                } else { XCTFail("原生更新期间原阅读锚点必须存在") }
+                let visible = Set(fixture.list.indexPathsForVisibleItems.compactMap { path -> String? in
+                    guard let frame = fixture.list.layoutAttributesForItem(at: path)?.frame,
+                          frame.intersects(fixture.list.bounds) else { return nil }
+                    return dataSource.itemIdentifier(for: path)
+                })
+                XCTAssertEqual(visible, initialVisibleContent, "不可先为错误窗口建树再靠手动restore回原窗口")
+            }
+            completion()
+            XCTAssertFalse(fixture.controller.isNativeHistoryOffsetCompensationActiveForTesting)
+            observe("diffable_completion_after_finalize")
+            if let path = dataSource.indexPath(for: anchorID), let frame = fixture.list.layoutAttributesForItem(at: path)?.frame {
+                XCTAssertEqual(frame.minY - fixture.list.contentOffset.y, initialAnchor, accuracy: 1)
+            } else { XCTFail("原阅读锚点必须保留") }
+        }
+        let header = ConversationViewportEntry(id: "history-loading", revision: 1,
+            content: AnyView(Text("loading").frame(height: 20)), allowsScrollAnchoring: false)
+        let cachedItems = items(38..<60)
+        fixture.controller.seedPresentationHeightForTesting(entries(cachedItems), height: 60)
+        fixture.controller.seedPresentationHeightForTesting([header], height: 20)
+        fixture.controller.configure(sessionID: "controlled", timeline: fixture.timeline, supplementalEntries: [header], makeEntries: { items in
+            items.map { .init(id: $0.id, revision: $0.text.count, content: AnyView(Text($0.text).frame(height: 60))) }
+        }, bottomInset: 0)
+        let operation = UUID()
+        fixture.timeline.publish(cachedItems, historyPresentationStamp: .init(operationID: operation, projectionEpoch: 1))
+        await wait { epochs == [1] }
+        XCTAssertEqual(fixture.list.numberOfItems(inSection: 0), 23)
+        XCTAssertEqual(insertions, [1, 1, 1], "chrome-only先呈现，随后两条缓存正文逐条呈现，不能提前ack")
+        let paragraph = "### 表达式与说明\n\n中文与 English 的较长说明，包含 **强调**、`inline_code` 与可换行文本。\n\n"
+        let heavy = String(repeating: paragraph, count: 12)
+        let heavyItems = items(36..<60).map { item in
+            guard item.id == "controlled-36" || item.id == "controlled-37" else { return item }
+            return ConversationItem(id: item.id, kind: .assistant, title: "", text: heavy,
+                                    isError: false, date: item.date)
+        }
+        fixture.controller.configure(sessionID: "controlled", timeline: fixture.timeline, supplementalEntries: [], makeEntries: { items in
+            items.map { item in
+                let content: AnyView = item.id == "controlled-36" || item.id == "controlled-37"
+                    ? AnyView(Markdown(item.text).markdownTheme(.gitHub)) : AnyView(Text(item.text).frame(height: 60))
+                return .init(id: item.id, revision: item.text.count, content: content)
+            }
+        }, bottomInset: 0)
+        fixture.timeline.publish(heavyItems, historyPresentationStamp: .init(operationID: operation, projectionEpoch: 2))
+        await wait({ epochs == [1, 2] }, timeout: 8)
+        XCTAssertEqual(fixture.list.numberOfItems(inSection: 0), 24)
+        XCTAssertEqual(insertions, [1, 1, 1, 1, 1])
+        observe("phase2_ack_before_mixed_configure")
+        // A retained visible row really grows. Its bottom-relative compensation
+        // need not preserve our top reading anchor, so retain the manual policy.
+        expectsNativeOffset = false
+        let mixedItems = [items(35..<36)[0]] + heavyItems.map { item in
+            guard item.id == "controlled-44" else { return item }
+            return ConversationItem(id: item.id, kind: .assistant, title: "", text: "changed existing height",
+                                    isError: false, date: item.date)
+        }
+        fixture.controller.configure(sessionID: "controlled", timeline: fixture.timeline, supplementalEntries: [], makeEntries: { items in
+            items.map { item in
+                let content: AnyView
+                if item.id == "controlled-36" || item.id == "controlled-37" {
+                    content = AnyView(Markdown(item.text).markdownTheme(.gitHub))
+                } else {
+                    content = AnyView(Text(item.text).frame(height: item.id == "controlled-44" && item.text == "changed existing height" ? 90 : 60))
+                }
+                return .init(id: item.id, revision: item.text.count, content: content)
+            }
+        }, bottomInset: 0)
+        observe("mixed_after_configure_before_publish")
+        fixture.timeline.publish(mixedItems, historyPresentationStamp: .init(operationID: operation, projectionEpoch: 3))
+        observe("mixed_after_publish")
+        await wait({ epochs == [1, 2, 3] }, timeout: 8)
+        XCTAssertEqual(fixture.list.numberOfItems(inSection: 0), 25)
+        XCTAssertEqual(insertions, [1, 1, 1, 1, 1, 1])
+    }
+    func testNativeOffsetLeaseSurvivesInFlightDetachButCannotLeakIntoReplacementSession() async throws {
+        let fixture = try await fixture()
+        defer { fixture.controller.historyDiffableCompletionGateForTesting = nil; fixture.close() }
+        fixture.controller.scrollViewWillBeginDragging(fixture.list)
+        fixture.list.setContentOffset(CGPoint(x: 0, y: 180), animated: false)
+        fixture.controller.scrollViewDidEndDragging(fixture.list, willDecelerate: false)
+        await wait { !fixture.controller.isHistoryPresentationScheduledForTesting }
+        let entered = expectation(description: "old native offset transaction completed in UIKit")
+        var release: (() -> Void)?
+        fixture.controller.historyDiffableCompletionGateForTesting = { completion in
+            release = completion
+            fixture.controller.historyDiffableCompletionGateForTesting = nil
+            entered.fulfill()
+        }
+        let target = items(39..<60)
+        fixture.controller.seedPresentationHeightForTesting(entries(target), height: 60)
+        fixture.timeline.publish(target, historyPresentationStamp: .init(operationID: UUID(), projectionEpoch: 1))
+        await fulfillment(of: [entered], timeout: 4)
+        XCTAssertTrue(fixture.controller.isNativeHistoryOffsetCompensationActiveForTesting)
+        fixture.controller.scrollViewWillBeginDragging(fixture.list)
+        fixture.list.setContentOffset(CGPoint(x: 0, y: fixture.list.contentSize.height - fixture.list.bounds.height), animated: false)
+        fixture.controller.scrollViewDidScroll(fixture.list)
+        await wait { fixture.counter.pinnedChanges.last == true }
+        XCTAssertEqual(fixture.counter.pinnedChanges.last, true, "真实用户动作在native lease内仍能选择跟尾")
+        fixture.list.setContentOffset(CGPoint(x: 0, y: 180), animated: false)
+        fixture.controller.scrollViewDidScroll(fixture.list)
+        await wait { fixture.counter.pinnedChanges.last == false }
+        XCTAssertEqual(fixture.counter.pinnedChanges.last, false, "真实用户离尾仍须立即更新意图")
+        fixture.controller.scrollViewDidEndDragging(fixture.list, willDecelerate: false)
+        // The consumer can leave before our completion callback is admitted. Keep
+        // the old layout's policy until that UUID exits; never turn it off mid-update.
+        fixture.controller.detachHistoryPresentationConsumer()
+        XCTAssertTrue(fixture.controller.isNativeHistoryOffsetCompensationActiveForTesting)
+        try XCTUnwrap(release)()
+        XCTAssertFalse(fixture.controller.isNativeHistoryOffsetCompensationActiveForTesting)
+        XCTAssertFalse(fixture.controller.isHistorySnapshotCommitInFlightForTesting)
+        let replacement = ConversationTimeline()
+        replacement.publish(items(100..<103))
+        fixture.controller.configure(sessionID: "new-offset-session", timeline: replacement, supplementalEntries: [],
+            makeEntries: { self.entries($0) }, bottomInset: 0)
+        await wait { fixture.list.numberOfItems(inSection: 0) == 3
+            && !fixture.controller.isHistorySnapshotCommitInFlightForTesting }
+        XCTAssertFalse(fixture.controller.isNativeHistoryOffsetCompensationActiveForTesting)
+    }
+    func testShortContentHistoryAndReplacementKeepOriginalOffsetPolicy() async throws {
+        let fixture = try await fixture()
+        defer { fixture.controller.historyDiffableCompletionGateForTesting = nil; fixture.close() }
+        fixture.timeline.publish(items(40..<43))
+        await wait { fixture.list.numberOfItems(inSection: 0) == 3
+            && !fixture.controller.isHistorySnapshotCommitInFlightForTesting }
+        XCTAssertLessThan(fixture.list.contentSize.height, fixture.list.bounds.height)
+        fixture.controller.scrollViewWillBeginDragging(fixture.list)
+        fixture.controller.scrollViewDidEndDragging(fixture.list, willDecelerate: false)
+        await wait { !fixture.controller.isHistoryPresentationScheduledForTesting }
+        var completions = 0
+        fixture.controller.historyDiffableCompletionGateForTesting = { completion in
+            completions += 1
+            XCTAssertFalse(fixture.controller.isNativeHistoryOffsetCompensationActiveForTesting,
+                           "旧内容未填满viewport不能启用库的短内容底部补偿")
+            completion()
+        }
+        var acknowledged = 0
+        fixture.controller.onHistoryPresented = { _, _, _ in acknowledged += 1 }
+        fixture.timeline.publish(items(39..<43), historyPresentationStamp: .init(operationID: UUID(), projectionEpoch: 1))
+        await wait { acknowledged == 1 }
+        XCTAssertEqual(completions, 1)
+        fixture.timeline.publish(items(100..<120), historyPresentationStamp: .init(operationID: UUID(), projectionEpoch: 2))
+        await wait { acknowledged == 2 }
+        XCTAssertEqual(completions, 2, "replacement保原route，不分批冒充prepend")
+        XCTAssertFalse(fixture.controller.isNativeHistoryOffsetCompensationActiveForTesting)
+    }
+    func testWidthChangeAndNewEmptyEpochDiscardUnfinishedPreparedHistory() async throws {
+        let fixture = try await fixture()
+        defer { fixture.close() }
+        let operation = UUID()
+        var acknowledged: [Int] = []
+        fixture.controller.onHistoryPresented = { _, _, stamp in acknowledged.append(stamp.projectionEpoch) }
+        fixture.timeline.publish(items(0..<60), historyPresentationStamp: .init(operationID: operation, projectionEpoch: 1))
+        await wait { fixture.controller.isHistoryPreparationPendingForTesting }
+        fixture.controller.view.frame.size.width = 320
+        fixture.controller.view.layoutIfNeeded()
+        fixture.timeline.publish([], historyPresentationStamp: .init(operationID: operation, projectionEpoch: 2))
+        await wait { fixture.list.numberOfItems(inSection: 0) == 0 && acknowledged == [2] }
+        await InlineImageActualTick().next(); await InlineImageActualTick().next()
+        XCTAssertEqual(fixture.list.numberOfItems(inSection: 0), 0)
+        XCTAssertEqual(acknowledged, [2], "旧width/epoch准备不能复活历史或发送旧ack")
+    }
+    func testSessionSwitchDiscardsPausedTargetAndOldAcknowledgment() async throws {
+        let fixture = try await fixture()
+        defer { fixture.close() }
+        var oldAck = 0
+        fixture.controller.onHistoryPresented = { _, _, _ in oldAck += 1 }
+        fixture.controller.scrollViewWillBeginDragging(fixture.list)
+        fixture.timeline.publish(items(0..<60), historyPresentationStamp: .init(operationID: UUID(), projectionEpoch: 9))
+        let replacement = ConversationTimeline()
+        replacement.publish(items(100..<103))
+        fixture.controller.configure(sessionID: "replacement", timeline: replacement, supplementalEntries: [], makeEntries: { items in
+            items.map { .init(id: $0.id, revision: 0, content: AnyView(Text($0.text).frame(height: 60))) }
+        }, bottomInset: 0)
+        await wait { fixture.list.numberOfItems(inSection: 0) == 3 }
+        await InlineImageActualTick().next(); await InlineImageActualTick().next()
+        XCTAssertEqual(oldAck, 0)
+        XCTAssertEqual(fixture.list.numberOfItems(inSection: 0), 3)
+    }
+}
+#endif
+
+
+@MainActor
+private final class HistoryReadingProbe {
+    var began = 0
+    var terminals = 0
+    var outcomes: [HistoryPresentationOutcome] = []
+    func receive(_ event: HistoryPresentationLifecycleEvent) {
+        if case .began = event { began += 1 }
+        if case .terminal = event { terminals += 1 }
+        if case .finished(_, let outcome) = event { outcomes.append(outcome) }
+    }
+}
+
+final class HistoryReadingBatchTests: XCTestCase {
+    private func batch() -> HistoryReadingBatch {
+        .init(operationID: UUID(), originalIDs: ["existing"], viewportHeight: 400, contentWidth: 320,
+            fontScale: 1, startedAt: 0, beforeSequence: 100, rounds: 1)
+    }
+    private func item(_ id: String, kind: ConversationItem.Kind = .user, text: String = "短消息") -> ConversationItem {
+        .init(id: id, kind: kind, title: "", text: text, isError: false, date: .distantPast)
+    }
+    func testToolsDoNotCountAsReadableBody() {
+        let batch = batch()
+        let window = batch.window(in: (1...200).map { item("tool-\($0)", kind: .tool) } + [item("existing")])
+        XCTAssertEqual(window.messages, 0)
+        XCTAssertEqual(window.height, 0)
+        XCTAssertNil(batch.stopReason(window: window, earliestSequence: 50, hasMore: true, now: 0.1))
+    }
+    func testShortMessagesAccumulateToTwoScreens() {
+        let batch = batch()
+        XCTAssertNil(batch.stopReason(window: batch.window(in: [item("new")]), earliestSequence: 99, hasMore: true, now: 0.1))
+        let enough = batch.window(in: (1...16).map { item("new-\($0)") })
+        XCTAssertEqual(enough.messages, 16)
+        XCTAssertEqual(batch.stopReason(window: enough, earliestSequence: 80, hasMore: true, now: 0.1), "window-filled")
+    }
+    func testOneLongReplyCanFillWindowWithoutCountingMarkdownBlocks() {
+        let batch = batch(), text = String(repeating: "正文。\n\n", count: 200)
+        let window = batch.window(in: [item("new", kind: .assistant, text: text)])
+        XCTAssertEqual(window.messages, 1)
+        XCTAssertEqual(batch.stopReason(window: window, earliestSequence: 99, hasMore: true, now: 0.1), "window-filled")
+    }
+    func testExistingMessagesAndLiveTailDoNotFillOlderWindow() {
+        let batch = batch(), long = String(repeating: "x", count: 10000)
+        let window = batch.window(in: [item("new"), item("existing", text: long), item("live", text: long)])
+        XCTAssertEqual(window.messages, 1)
+        XCTAssertNil(batch.stopReason(window: window, earliestSequence: 99, hasMore: true, now: 0.1))
+    }
+    func testEndErrorAndNoProgressStopSupplementing() {
+        var batch = batch()
+        let empty = HistoryReadingBatch.Window()
+        XCTAssertEqual(batch.stopReason(window: empty, earliestSequence: 99, hasMore: false, now: 0.1), "end")
+        XCTAssertEqual(batch.stopReason(window: empty, earliestSequence: 100, hasMore: true, now: 0.1), "no-progress")
+        batch.failed = true
+        XCTAssertEqual(batch.stopReason(window: empty, earliestSequence: 99, hasMore: true, now: 0.1), "error")
+    }
+    func testSparseHistoryHasCountTimeAndContentBudgets() {
+        var batch = batch()
+        XCTAssertEqual(batch.stopReason(window: .init(), earliestSequence: 99, hasMore: true, now: 2.5), "time-budget")
+        batch.rounds = 8
+        XCTAssertEqual(batch.stopReason(window: .init(), earliestSequence: 99, hasMore: true, now: 0.1), "round-budget")
+        batch.rounds = 1
+        XCTAssertEqual(batch.stopReason(window: .init(characters: 1048576), earliestSequence: 99, hasMore: true, now: 0.1), "content-budget")
     }
 }

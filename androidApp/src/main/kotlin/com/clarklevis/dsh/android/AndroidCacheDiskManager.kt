@@ -46,6 +46,10 @@ internal class AndroidCacheDiskManager(
 
     @Volatile var epoch: Long = 0
         private set
+    private val categoryEpochs = mutableMapOf<String, Long>()
+
+    @Synchronized
+    fun categoryEpoch(category: String): Long = epoch + (categoryEpochs[category] ?: 0)
 
     /** 外部播放器延迟打开文件；租约落盘，进程重启后的清扫也会尊重它。 */
     @Synchronized
@@ -101,6 +105,21 @@ internal class AndroidCacheDiskManager(
     }
 
     fun statistics(): Statistics = measure(entries())
+
+    /** 分类清理不触发其他目录的自动淘汰，继续遵守下载与外部预览租约。 */
+    fun clearCategory(category: String): Statistics = maintenanceLock.withLock {
+        require(category in listOf(PREVIEWS, TEMPORARY, IMAGES, UPDATES))
+        synchronized(this) { categoryEpochs[category] = (categoryEpochs[category] ?: 0) + 1 }
+        entries().filter { it.category == category }.forEach { entry ->
+            val retired = withdraw(entry.file)
+            if (retired != null) {
+                safeDelete(retired)
+            } else if (entry.file.isDirectory && safeManagedDirectory(entry.file)) {
+                File(entry.file, ".evict").writeText("")
+            }
+        }
+        measure(entries())
+    }
 
     fun removeGateway(gatewayId: String) = maintenanceLock.withLock {
         synchronized(this) { epoch += 1 }

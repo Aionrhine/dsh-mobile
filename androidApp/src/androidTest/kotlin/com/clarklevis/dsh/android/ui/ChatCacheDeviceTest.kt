@@ -13,6 +13,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -93,14 +94,35 @@ class ChatCacheDeviceTest {
             parentFile!!.mkdirs()
             writeText("user original")
         }
+        val image = File(application.cacheDir, "gateway-image-attachments/storage-test/image").apply {
+            parentFile!!.mkdirs()
+            writeBytes(ByteArray(2048))
+        }
         try {
-            compose.setContent { DshTheme { SettingsScreen(holder, {}, {}, {}, {}) } }
-            compose.onNodeWithText("清理可回收缓存").performScrollTo().assertIsDisplayed().performClick()
+            compose.setContent {
+                var storageOpen by remember { mutableStateOf(false) }
+                DshTheme {
+                    if (storageOpen) StorageSpaceScreen(holder, { storageOpen = false })
+                    else SettingsScreen(holder, {}, {}, {}, {}, onOpenStorage = { storageOpen = true })
+                }
+            }
+            compose.onNodeWithTag("storage-space-settings-row").performScrollTo().assertIsDisplayed().performClick()
+            compose.waitUntil(15_000) { holder.storageUsage != null && !holder.cacheMaintenanceRunning }
+            compose.onNodeWithText(com.clarklevis.dsh.android.localization.appText("磁盘占用")).assertIsDisplayed()
+            compose.onNodeWithTag("storage-clear-previews").assertDoesNotExist()
+            compose.onNodeWithTag("storage-category-previews").performScrollTo().assertIsDisplayed().performClick()
+            compose.onNodeWithTag("storage-clear-previews").performScrollTo().assertIsDisplayed().performClick()
             compose.waitUntil(15_000) { !holder.cacheMaintenanceRunning && !cached.exists() }
-            compose.onNodeWithText("使用中保留", substring = true).assertExists()
+            compose.onNodeWithText("内存命中", substring = true).assertDoesNotExist()
+            compose.onNodeWithText("磁盘命中", substring = true).assertDoesNotExist()
+            assertTrue(image.exists())
             assertTrue(source.exists())
+            androidx.test.espresso.Espresso.pressBack()
+            compose.onNodeWithTag("storage-sort-menu").assertExists().performClick()
+            compose.onNodeWithText(com.clarklevis.dsh.android.localization.appText("名称")).performClick()
         } finally {
             source.parentFile!!.deleteRecursively()
+            image.parentFile!!.deleteRecursively()
         }
     }
 

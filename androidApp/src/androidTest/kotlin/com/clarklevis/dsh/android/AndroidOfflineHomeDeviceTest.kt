@@ -54,6 +54,7 @@ import org.junit.Test
 /** 真 Runtime + 模拟传输 + 真 Room + Compose，验证主页离线可读而非仅测试辅助筛选函数。 */
 class AndroidOfflineHomeDeviceTest {
     @get:Rule val compose = createComposeRule()
+    @get:Rule val locale = com.clarklevis.dsh.android.ui.ChineseDeviceLocaleRule()
     private val application get() = ApplicationProvider.getApplicationContext<Application>()
     private var animatorScale: String? = null
 
@@ -175,7 +176,7 @@ class AndroidOfflineHomeDeviceTest {
             onMain { graph.stateHolder.selectSession("s") }
             waitFor { "s" in transport.historySessions() }
             transport.receive(
-                """{"kind":"history","sessionId":"s","historyFormatVersion":1,"events":[{"type":"user/message","seq":150,"time":150,"data":{"content":[{"type":"text","text":"latest"}]}}],"hasMore":true,"nextBeforeSeq":150}"""
+                """{"kind":"history","sessionId":"s","historyFormatVersion":1,"events":[{"type":"user/message","seq":400,"time":400,"data":{"content":[{"type":"text","text":"latest"}]}}],"hasMore":true,"nextBeforeSeq":400}"""
             )
             waitFor { graph.stateHolder.snapshot.conversation.size == 1 }
             graph.gatewayRuntime.disconnect()
@@ -190,7 +191,7 @@ class AndroidOfflineHomeDeviceTest {
                     CachedHistoryWindow(
                         sessionId = "s",
                         historyFormatVersion = 1,
-                        events = (1..150).map { SessionEvent("s", it, it.toDouble(), GatewayEvent("user/message", text = "cached $it")) },
+                        events = (1..400).map { SessionEvent("s", it, it.toDouble(), GatewayEvent("user/message", text = "cached $it")) },
                         hasMore = true,
                         nextBeforeSequence = 1
                     )
@@ -199,9 +200,11 @@ class AndroidOfflineHomeDeviceTest {
             )
             val count = transport.payloads("history").size
             onMain { graph.stateHolder.loadOlderHistory() }
-            waitFor { graph.stateHolder.snapshot.conversation.size == 81 }
+            waitFor { graph.stateHolder.snapshot.conversation.size == 161 }
             onMain { graph.stateHolder.loadOlderHistory() }
-            waitFor { graph.stateHolder.snapshot.conversation.size == 150 }
+            waitFor { graph.stateHolder.snapshot.conversation.size == 321 }
+            onMain { graph.stateHolder.loadOlderHistory() }
+            waitFor { graph.stateHolder.snapshot.conversation.size == 400 }
             onMain { graph.stateHolder.loadOlderHistory() }
             waitFor { !graph.stateHolder.snapshot.selectedHistoryHasMore }
             assertFalse(graph.stateHolder.snapshot.selectedHistoryIsLoading)

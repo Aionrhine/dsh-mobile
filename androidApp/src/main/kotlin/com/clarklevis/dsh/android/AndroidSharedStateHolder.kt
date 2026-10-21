@@ -104,7 +104,7 @@ class AndroidSharedStateHolder(
                     appGraph.gatewayRuntime.requestHistory(
                         sessionId = sessionId,
                         beforeSequence = beforeSequence,
-                        maxMessages = HISTORY_PAGE_MESSAGE_LIMIT,
+                        maxMessages = if (beforeSequence == null) HISTORY_PAGE_MESSAGE_LIMIT else OLDER_HISTORY_PAGE_MESSAGE_LIMIT,
                         maxBytes = HISTORY_PAGE_BYTE_BUDGET,
                         view = HISTORY_VIEW,
                         historyFormatVersion = historyFormatVersion
@@ -386,6 +386,9 @@ class AndroidSharedStateHolder(
             runCatching { GatewayWireDecoder.decode(payload) }
                 .onSuccess { frame ->
                     projectionActor.acceptFrameImmediate(payload, frame, frame.sessionId)
+                    if (!snapshot.selectedHistoryIsLoadingOlder && frame.kind in setOf("history", "error", "session-stream-reset")) {
+                        frame.sessionId?.let { historyPagingSessionIds = historyPagingSessionIds - it }
+                    }
                     handleWorkspaceFrame(frame)
                 }
                 .onFailure { error -> platformError = GatewayWireDecoder.failureSummary(payload, error) }
@@ -906,7 +909,7 @@ class AndroidSharedStateHolder(
         }
         val operationId = UUID.randomUUID().also {
             workspaceFileOperationId = it
-            workspaceFileCacheEpoch = cacheStorage?.epoch ?: 0
+            workspaceFileCacheEpoch = cacheStorage?.categoryEpoch(AndroidCacheDiskManager.PREVIEWS) ?: 0
         }
         appGraph.gatewayScope.launch {
             if (operationId != workspaceFileOperationId || sessionId != snapshot.selectedSessionId) return@launch
@@ -949,7 +952,7 @@ class AndroidSharedStateHolder(
         workspaceFilePreviewRequest = AndroidWorkspaceFilePreviewRequest(sessionId, path, path.substringAfterLast('/'))
         val operationId = UUID.randomUUID().also {
             workspaceFileOperationId = it
-            workspaceFileCacheEpoch = cacheStorage?.epoch ?: 0
+            workspaceFileCacheEpoch = cacheStorage?.categoryEpoch(AndroidCacheDiskManager.PREVIEWS) ?: 0
         }
         appGraph.gatewayScope.launch {
             if (operationId != workspaceFileOperationId || sessionId != snapshot.selectedSessionId) return@launch
@@ -1127,67 +1130,105 @@ class AndroidSharedStateHolder(
         }
     }
 
-    var cacheStorageSummary: String by mutableStateOf("")
+    var storageUsage: AndroidStorageUsage? by mutableStateOf(null)
+        private set
+    var cacheStorageNotice: String? by mutableStateOf(null)
+        private set
+    var cacheStorageError: String? by mutableStateOf(null)
         private set
     var cacheMaintenanceRunning by mutableStateOf(false)
         private set
 
-    fun refreshCacheStorage(clear: Boolean = false) {
+    fun refreshCacheStorage(clear: Boolean = false, category: CacheStorageCategory? = null) {
         val appGraph = graph ?: return
         if (cacheMaintenanceRunning) return
         cacheMaintenanceRunning = true
-        if (clear) chatPrefetcher?.stop("clear")
+        cacheStorageNotice = null
+        cacheStorageError = null
+        val previousBytes = storageUsage?.totalBytes
+        val clearChats = clear || category == CacheStorageCategory.CHATS
+        if (clearChats) chatPrefetcher?.stop("clear")
         scope?.launch {
             try {
-                val (stats, memory) = withContext(Dispatchers.IO) {
-                    if (clear) projectionActor.clearDiskCache()
-                    val disk = requireNotNull(cacheStorage).maintain(clear)
-                    val payload = com.clarklevis.dsh.android.platform.AndroidChatHistoryCache.shared(appGraph.application).statistics()
-                    disk to AndroidChatCacheMemoryStatistics.decode(payload)
+                val stats = withContext(Dispatchers.IO) {
+                    if (clearChats) projectionActor.clearDiskCache()
+                    val disk = requireNotNull(cacheStorage)
+                    when {
+                        clear -> disk.maintain(clear = true)
+                        category == CacheStorageCategory.IMAGES -> disk.clearCategory(AndroidCacheDiskManager.IMAGES)
+                        category == CacheStorageCategory.PREVIEWS -> disk.clearCategory(AndroidCacheDiskManager.PREVIEWS)
+                        category == CacheStorageCategory.TEMPORARY -> disk.clearCategory(AndroidCacheDiskManager.TEMPORARY)
+                        category == CacheStorageCategory.UPDATES -> disk.clearCategory(AndroidCacheDiskManager.UPDATES)
+                        else -> disk.statistics()
+                    }
                 }
-                fun mb(bytes: Long): String = String.format(Locale.ROOT, "%.1f MiB", bytes.toDouble() / (1024 * 1024))
-                cacheStorageSummary =
-                    "聊天 ${mb(
-                        stats.chatBytes
-                    )} · 图片 ${mb(stats.imageBytes)} · 附件 ${mb(stats.previewBytes)} · 临时 ${mb(stats.temporaryBytes)}\n" +
-                    "更新包 ${mb(
-                        stats.updateBytes
-                    )} · 总计 ${mb(stats.totalBytes)} · 使用中保留 ${mb(stats.protectedBytes)} · 可用空间 ${mb(stats.freeBytes)}" +
-                    (if (stats.pressureUnresolved) "\n仍有容量压力，正在使用的文件会在租约结束后回收。" else "") +
-                    "\n共享窗口内存 ${mb(memory.memoryBytes)} / ${memory.memorySessions} 个会话" +
-                    " · 内存命中 ${memory.memoryHits} · 数据库命中 ${memory.diskHits} · 未命中 ${memory.misses}"
-                if (clear) {
-                    // 清正文会使旧目录票据失效；以清理后的新票据保存当前导航元数据。
+                storageUsage = AndroidStorageUsage(
+                    stats.chatBytes, stats.imageBytes, stats.previewBytes, stats.temporaryBytes,
+                    stats.updateBytes, stats.protectedBytes, stats.freeBytes
+                )
+                if (clear || category != null) {
+                    val reclaimed = ((previousBytes ?: stats.totalBytes) - stats.totalBytes).coerceAtLeast(0)
+                    cacheStorageNotice = if (reclaimed > 0) {
+                        com.clarklevis.dsh.android.localization.appText(
+                            "已释放 %1\$s", android.text.format.Formatter.formatFileSize(appGraph.application, reclaimed)
+                        )
+                    } else {
+                        com.clarklevis.dsh.android.localization.appText("没有更多可回收内容，正在使用的文件会保留。")
+                    }
+                }
+                if (clearChats) {
                     scheduleOfflineCatalogSave()
                     localChatMatches = emptyList()
+                }
+                if (clear || category == CacheStorageCategory.IMAGES) {
                     thumbnailCache.retainKeys(emptySet())
                     attachmentStateCache.retainKeys(emptySet())
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                cacheStorageSummary = "缓存维护失败，聊天仍可使用。请稍后重试。"
+                cacheStorageError = com.clarklevis.dsh.android.localization.appText("存储空间读取或清理失败，请稍后重试。")
             } finally {
                 cacheMaintenanceRunning = false
             }
         }
     }
 
-    fun loadOlderHistory() {
-        val sessionId = snapshot.selectedSessionId ?: return
-        snapshot.selectedHistoryEarliestSequence ?: return
+    fun loadOlderHistory(): Boolean {
+        val sessionId = snapshot.selectedSessionId ?: return false
+        snapshot.selectedHistoryEarliestSequence ?: return false
         if (
             !snapshot.selectedHistoryHasMore ||
             snapshot.selectedHistoryIsLoading ||
             sessionId in historyPagingSessionIds
-        ) return
-        val appGraph = graph ?: return
+        ) return false
         historyPagingSessionIds = historyPagingSessionIds + sessionId
+        val appGraph = graph
+        if (appGraph == null) {
+            projectionActor.loadHistoryImmediate(sessionId, older = true)
+            return true
+        }
+        android.util.Log.d("HistoryPresentation", "stage=request-start rows=${snapshot.conversation.size}")
         appGraph.gatewayScope.launch {
-            projectionActor.loadHistory(sessionId, older = true, offline = offlineBrowsing) {
-                if (!snapshot.selectedHistoryIsLoadingOlder) historyPagingSessionIds = historyPagingSessionIds - sessionId
+            try {
+                projectionActor.loadHistory(sessionId, older = true, offline = offlineBrowsing) {
+                    if (!snapshot.selectedHistoryIsLoadingOlder) historyPagingSessionIds = historyPagingSessionIds - sessionId
+                }
+            } catch (cancelled: CancellationException) {
+                withContext(kotlinx.coroutines.NonCancellable + Dispatchers.Main.immediate) {
+                    historyPagingSessionIds = historyPagingSessionIds - sessionId
+                }
+                throw cancelled
+            } catch (error: Exception) {
+                projectionActor.historyCancelled(sessionId)
+                withContext(Dispatchers.Main.immediate) {
+                    historyPagingSessionIds = historyPagingSessionIds - sessionId
+                    platformError = appText("历史记录加载失败")
+                }
+                android.util.Log.w("HistoryPresentation", "stage=request-failed type=${error.javaClass.simpleName}")
             }
         }
+        return true
     }
 
     fun setTrajectoryActive(active: Boolean) {
@@ -3022,6 +3063,7 @@ class AndroidSharedStateHolder(
             "session-stream-reset", "subscribed", "hello", "error"
         )
         private const val HISTORY_PAGE_MESSAGE_LIMIT = 60
+        private const val OLDER_HISTORY_PAGE_MESSAGE_LIMIT = 120
         private const val HISTORY_PAGE_BYTE_BUDGET = 4 * 1_024 * 1_024
         private const val HISTORY_VIEW = "conversation"
         const val UNGROUPED_WORKSPACE_ID = "__ungrouped__"

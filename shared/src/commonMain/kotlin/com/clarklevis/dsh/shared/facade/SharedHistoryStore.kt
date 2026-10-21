@@ -41,8 +41,39 @@ data class SharedHistoryEventPatch(
      * older payloads and hand-written fixtures decode unchanged.
      */
     val streamDelta: Boolean = false,
-    val authoritative: Boolean = false
+    val authoritative: Boolean = false,
+    val replacementReferences: List<SharedHistoryEventReference>? = null,
+    val referenceBaseEventSequence: Long? = null
 )
+
+@Serializable
+data class SharedHistoryEventReference(val source: String, val index: Int, val sequence: Int)
+
+/** 同一 MVI 事务的不可变记录；延迟 UI 交付不能重新读取已推进的活 Store。 */
+class SharedHistoryProjectionSnapshot internal constructor(
+    val sessionId: String,
+    val eventSequence: Long,
+    internal val records: List<SessionEvent>
+) {
+    /** 仅引用校验失败的恢复路径使用；正常投影不经过 JSON。 */
+    fun eventsJson(): String = wireJson.encodeToString(records)
+}
+
+/** 纯输入准备；解码对象不与调用方容器共享，不持有任何活 Store。 */
+class SharedPreparedHistoryPage private constructor(
+    val sessionId: String,
+    internal val records: List<SessionEvent>
+) {
+    companion object {
+        @Throws(Exception::class)
+        fun parse(sessionId: String, eventsJson: String): SharedPreparedHistoryPage {
+            require(sessionId.isNotBlank()) { "sessionId must not be blank" }
+            val records = wireJson.decodeFromString<List<SessionEvent>>(eventsJson)
+            require(records.all { it.sessionId == sessionId }) { "history page contains another session" }
+            return SharedPreparedHistoryPage(sessionId, records)
+        }
+    }
+}
 
 @Serializable
 data class SharedHistoryPatch(
@@ -78,7 +109,8 @@ class SharedHistoryStore(
 ) {
     private var state = HistoryState()
     private var eventsBySession: Map<String, List<SessionEvent>> = emptyMap()
-    private val events = SharedMviEventEmitter("history")
+    private val projectionSnapshots = mutableMapOf<Long, SharedHistoryProjectionSnapshot>()
+    private val events = SharedMviEventEmitter("history") { event -> projectionSnapshots.remove(event.sequence) }
     private var cachedSequences: Map<String, Set<Int>> = emptyMap()
 
     fun subscribe(observer: SharedMviEventObserver): SharedMviSubscription = try {
@@ -126,9 +158,51 @@ class SharedHistoryStore(
         hasMore: Boolean,
         nextBeforeSequence: Int?,
         remoteActivityTimestamp: Double?
+    ): SharedMviDispatchResult = receivePage(
+        sessionId, byteCount, hasMore, nextBeforeSequence, remoteActivityTimestamp, false
+    ) { wireJson.decodeFromString<List<SessionEvent>>(eventsJson) }
+
+    /** iOS 已持有输入及上一事务镜像，只传 KMP 合并指令，避免回传全部正文。 */
+    fun pageReceivedWithEventReferences(
+        sessionId: String,
+        eventsJson: String,
+        byteCount: Int,
+        hasMore: Boolean,
+        nextBeforeSequence: Int?,
+        remoteActivityTimestamp: Double?
+    ): SharedMviDispatchResult = receivePage(
+        sessionId, byteCount, hasMore, nextBeforeSequence, remoteActivityTimestamp, true
+    ) { wireJson.decodeFromString<List<SessionEvent>>(eventsJson) }
+
+    fun pageReceivedPreparedWithEventReferences(
+        sessionId: String,
+        page: SharedPreparedHistoryPage,
+        byteCount: Int,
+        hasMore: Boolean,
+        nextBeforeSequence: Int?,
+        remoteActivityTimestamp: Double?
+    ): SharedMviDispatchResult = receivePage(
+        sessionId, byteCount, hasMore, nextBeforeSequence, remoteActivityTimestamp, true
+    ) {
+        require(page.sessionId == sessionId) { "prepared history page contains another session" }
+        page.records
+    }
+
+    /** 只允许同步订阅回调捕获准确事务；快照持有的列表此后不会原地修改。 */
+    fun projectionSnapshotForEvent(sessionId: String, eventSequence: Long): SharedHistoryProjectionSnapshot? =
+        projectionSnapshots[eventSequence]?.takeIf { it.sessionId == sessionId }
+
+    private fun receivePage(
+        sessionId: String,
+        byteCount: Int,
+        hasMore: Boolean,
+        nextBeforeSequence: Int?,
+        remoteActivityTimestamp: Double?,
+        useReferences: Boolean,
+        pageRecords: () -> List<SessionEvent>
     ): SharedMviDispatchResult = dispatch("page", sessionId) {
         require(sessionId.isNotBlank()) { "sessionId must not be blank" }
-        val page = wireJson.decodeFromString<List<SessionEvent>>(eventsJson)
+        val page = pageRecords()
         require(page.all { it.sessionId == sessionId }) { "history page contains another session" }
         require(remoteActivityTimestamp == null || remoteActivityTimestamp.isFinite()) {
             "remoteActivityTimestamp must be finite"
@@ -164,8 +238,10 @@ class SharedHistoryStore(
             } else {
                 SharedHistoryEventPatch(
                     kind = "replace",
-                    replacementEvents = merged,
-                    authoritative = cached.isNotEmpty()
+                    replacementEvents = merged.takeUnless { useReferences },
+                    authoritative = cached.isNotEmpty(),
+                    replacementReferences = if (useReferences) eventReferences(merged, oldEvents, page) else null,
+                    referenceBaseEventSequence = events.currentSequence.takeIf { useReferences }
                 )
             },
             cacheSequences = when {
@@ -182,6 +258,25 @@ class SharedHistoryStore(
             },
             result = reduction.result
         )
+    }
+
+    private fun eventReferences(
+        merged: List<SessionEvent>,
+        retained: List<SessionEvent>,
+        incoming: List<SessionEvent>
+    ): List<SharedHistoryEventReference> {
+        val retainedIndexes = retained.withIndex().associate { it.value.seq to it.index }
+        val incomingIndexes = incoming.withIndex().associate { it.value.seq to it.index }
+        return merged.map { record ->
+            val oldIndex = retainedIndexes[record.seq]
+            if (oldIndex != null && retained[oldIndex] === record) {
+                SharedHistoryEventReference("retained", oldIndex, record.seq)
+            } else {
+                val index = requireNotNull(incomingIndexes[record.seq])
+                check(incoming[index] === record) { "merged event has no input source" }
+                SharedHistoryEventReference("incoming", index, record.seq)
+            }
+        }
     }
 
     fun liveEventReceived(eventJson: String): SharedMviDispatchResult = dispatch("live", null) {
@@ -424,6 +519,12 @@ class SharedHistoryStore(
         state = transition.state
         eventsBySession = transition.eventsBySession
         cachedSequences = transition.cacheSequences
+        if (transition.eventPatch != null) {
+            val sequence = events.currentSequence + 1
+            projectionSnapshots[sequence] = SharedHistoryProjectionSnapshot(
+                sessionId, sequence, transition.eventsBySession[sessionId].orEmpty()
+            )
+        }
         val event = events.emitTransition(
             transactionId = "history-$operation:${events.currentSequence + 1}",
             statePayloadJson = statePayload,

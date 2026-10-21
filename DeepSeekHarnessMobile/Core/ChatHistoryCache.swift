@@ -150,10 +150,10 @@ actor ChatHistoryCache {
         try? await service.remove(gatewayId: gatewayID, sessionId: sessionID, generation: Int64(clamping: generation))
     }
 
-    func loadTyped(gatewayID: String, sessionID: String, before: Int? = nil) async -> CachedHistoryWindow? {
+    func loadTyped(gatewayID: String, sessionID: String, before: Int? = nil, limit: Int = 80) async -> CachedHistoryWindow? {
         guard let service = try? database() else { return nil }
         return try? await service.loadTypedPage(gatewayId: gatewayID, sessionId: sessionID,
-            beforeSequence: before.map { KotlinInt(int: Int32(clamping: $0)) }, limit: 80)
+            beforeSequence: before.map { KotlinInt(int: Int32(clamping: $0)) }, limit: Int32(clamping: limit))
     }
 
     func epoch() async -> Int64 { (try? await database().epoch())?.int64Value ?? 0 }

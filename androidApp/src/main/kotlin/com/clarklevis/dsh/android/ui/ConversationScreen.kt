@@ -11,6 +11,7 @@ import android.view.HapticFeedbackConstants
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.MutableTransitionState
@@ -34,6 +35,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.scrollBy
@@ -104,6 +106,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -129,6 +134,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -773,20 +781,19 @@ private fun ConversationTimeline(
     val latestItems = stateHolder.snapshot.conversation
     val selectedSessionId = stateHolder.snapshot.selectedSessionId
     val latestHistoryLoading = selectedSessionId in stateHolder.historyPagingSessionIds
-    var items by remember(selectedSessionId) { mutableStateOf(latestItems) }
-    var hasHistoryLoadingRow by remember(selectedSessionId) {
-        mutableStateOf(latestHistoryLoading)
-    }
     val selectedSessionIsRunning = stateHolder.snapshot.sessions
         .firstOrNull { it.id == selectedSessionId }
         ?.isRunning == true
-    val displayEntries = remember(items) { makeConversationDisplayEntries(items) }
-    val activeStreamingMessageId = remember(items, selectedSessionIsRunning) {
-        activeStreamingAssistantMessageId(items, selectedSessionIsRunning)
+    val latestOnUserInteraction by rememberUpdatedState(onUserInteraction)
+    val latestSnapshot by rememberUpdatedState(stateHolder.snapshot)
+    val latestRunning by rememberUpdatedState(selectedSessionIsRunning)
+    var presentation by remember(selectedSessionId) {
+        mutableStateOf(prepareConversationPresentation(latestItems, selectedSessionIsRunning,
+            stateHolder.snapshot.selectedHistoryEarliestSequence))
     }
-    val timelineEntries = remember(displayEntries, activeStreamingMessageId) {
-        makeConversationTimelineEntries(displayEntries, activeStreamingMessageId)
-    }
+    val items = presentation.items
+    val timelineEntries = presentation.entries
+    val activeStreamingMessageId = presentation.streamingId
     val attachmentIdsByTimelineId = remember(timelineEntries) {
         timelineEntries.associate { entry ->
             entry.id to entry.images.mapTo(mutableSetOf()) { it.attachmentId }
@@ -795,7 +802,6 @@ private fun ConversationTimeline(
     val hasInitialContent = timelineEntries.isNotEmpty() || selectedSessionIsRunning
     val lastTimelineIndex = (
         timelineEntries.lastIndex +
-            (if (hasHistoryLoadingRow) 1 else 0) +
             (if (selectedSessionIsRunning) 1 else 0)
     ).coerceAtLeast(0)
     val listState = rememberLazyListState(
@@ -805,32 +811,189 @@ private fun ConversationTimeline(
     var isPinnedToBottom by remember { mutableStateOf(true) }
     var programmaticScrollCount by remember { mutableIntStateOf(0) }
     var timelineUpdatesPaused by remember(selectedSessionId) { mutableStateOf(false) }
+    var touchingTimeline by remember { mutableStateOf(false) }
+    var interactionGeneration by remember { mutableIntStateOf(0) }
+    var presentingHistory by remember { mutableStateOf(false) }
+    var revealIds by remember { mutableStateOf(emptySet<String>()) }
+    val revealAlpha = remember { Animatable(1f) }
     val isUserTimelineScrolling by remember(listState) {
-        derivedStateOf {
-            listState.isScrollInProgress && programmaticScrollCount == 0
+        derivedStateOf { listState.isScrollInProgress && programmaticScrollCount == 0 }
+    }
+    val hasQueuedHistory = presentation.earliestSequence?.let { old ->
+        stateHolder.snapshot.selectedHistoryEarliestSequence?.let { it < old }
+    } == true
+    var historyReadBatch by remember(selectedSessionId) { mutableStateOf<HistoryReadBatch?>(null) }
+    val historyBusy = latestHistoryLoading || stateHolder.snapshot.selectedHistoryIsLoadingOlder ||
+        hasQueuedHistory || presentingHistory || historyReadBatch != null
+    val latestHistoryBusy by rememberUpdatedState(historyBusy)
+    val readWindowDensity = LocalDensity.current
+    var historyEdgeRevealed by remember(selectedSessionId) { mutableStateOf(false) }
+    val edgePullThreshold = with(LocalDensity.current) { 8.dp.toPx() }
+    val historyEdgePull = remember(selectedSessionId, edgePullThreshold) { HistoryEdgePull(edgePullThreshold) }
+    val requestOlderHistory by rememberUpdatedState {
+        if (initialPositionApplied && hasInitialContent && latestSnapshot.selectedHistoryHasMore && !latestHistoryBusy) {
+            val before = latestSnapshot.selectedHistoryEarliestSequence
+            if (before != null) {
+                val viewport = listState.layoutInfo.viewportSize
+                val batch = HistoryReadBatch(
+                    originalIds = presentation.items.mapTo(mutableSetOf()) { it.id },
+                    beforeSequence = before,
+                    viewportHeightDp = (viewport.height / readWindowDensity.density - bottomContentHeight.value - 32f).coerceAtLeast(160f),
+                    contentWidthDp = (viewport.width / readWindowDensity.density - 40f).coerceAtLeast(120f),
+                    fontScale = readWindowDensity.fontScale,
+                    startedAtMillis = android.os.SystemClock.elapsedRealtime()
+                )
+                historyEdgeRevealed = true
+                isPinnedToBottom = false
+                onPinnedToBottomChanged(false)
+                if (stateHolder.loadOlderHistory()) {
+                    historyReadBatch = batch
+                    android.util.Log.d("HistoryPresentation", "stage=read-batch-start")
+                }
+            }
         }
     }
-    LaunchedEffect(isUserTimelineScrolling) {
-        if (isUserTimelineScrolling) {
-            timelineUpdatesPaused = true
-        } else if (timelineUpdatesPaused) {
-            // fling 结束后留一帧稳定窗口，再把滚动期间积累的 token 一次性提交给列表。
-            delay(TIMELINE_STREAM_RESUME_DELAY_MILLISECONDS)
-            timelineUpdatesPaused = false
+    val historyEdgeScroll = remember(selectedSessionId, listState, historyEdgePull) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                // 只在真正到顶后继续拖动时请求；惯性、程序定位、靠近顶部均不触发。
+                if (historyEdgePull.shouldRequest(
+                        deltaY = available.y,
+                        atStart = !listState.canScrollBackward,
+                        userInput = source == NestedScrollSource.UserInput && touchingTimeline &&
+                            kotlin.math.abs(available.y) > kotlin.math.abs(available.x),
+                        canLoad = programmaticScrollCount == 0 && !latestHistoryBusy
+                    )) requestOlderHistory()
+                return Offset.Zero
+            }
         }
     }
-    LaunchedEffect(
-        latestItems,
-        latestHistoryLoading,
-        timelineUpdatesPaused,
-        isUserTimelineScrolling
-    ) {
-        if (!timelineUpdatesPaused && !isUserTimelineScrolling) {
-            items = latestItems
-            hasHistoryLoadingRow = latestHistoryLoading
+    LaunchedEffect(selectedSessionId, listState) {
+        snapshotFlow { listState.canScrollBackward }.collect { canScrollBackward ->
+            if (canScrollBackward) historyEdgeRevealed = false
         }
     }
     val markdownPreloader = rememberDshMarkdownPreloader()
+    LaunchedEffect(selectedSessionId, listState, markdownPreloader) {
+        var preparedWhileMoving: ConversationTimelinePresentation? = null
+        suspend fun warmReadingWindow(target: ConversationTimelinePresentation) {
+            val visible = listState.layoutInfo.visibleItemsInfo.map { HistoryVisibleRow(it.key.toString(), it.offset) }
+            val anchor = historyReadingAnchor(presentation.entries, target.entries, visible)
+            val center = anchor?.index ?: 0
+            markdownPreloader.preload(target.entries.subList((center - 3).coerceAtLeast(0),
+                (center + 4).coerceAtMost(target.entries.size))
+                .filterIsInstance<ConversationTimelineEntry.AssistantMarkdown>().map { it.markdown })
+        }
+        snapshotFlow { HistoryPresentationTarget(latestSnapshot.conversation,
+            latestSnapshot.selectedHistoryEarliestSequence, latestRunning, isUserTimelineScrolling || touchingTimeline,
+            interactionGeneration, selectedSessionId in stateHolder.historyPagingSessionIds || latestSnapshot.selectedHistoryIsLoadingOlder,
+            latestSnapshot.selectedHistoryHasMore, latestSnapshot.selectedHistoryError != null,
+            historyReadBatch != null) }
+            .distinctUntilChanged()
+            .collect { targetState ->
+                val batch = historyReadBatch
+                if (batch != null) {
+                    // 传输页不是阅读页。补页期间只累计数据，保留当前显示快照。
+                    if (!targetState.readingBatch || targetState.loadingOlder) return@collect
+                    val window = withContext(Dispatchers.Default) { historyReadWindow(batch, targetState.items) }
+                    val stopReason = historyReadBatchStopReason(batch, window, targetState.earliestSequence,
+                        targetState.hasMore, targetState.failed, android.os.SystemClock.elapsedRealtime())
+                    if (stopReason == null) {
+                        historyReadBatch = batch.copy(beforeSequence = requireNotNull(targetState.earliestSequence), pages = batch.pages + 1)
+                        if (stateHolder.loadOlderHistory()) {
+                            android.util.Log.d("HistoryPresentation", "stage=read-batch-continue pages=${batch.pages + 1} " +
+                                "messages=${window.messages} heightDp=${window.estimatedHeightDp.toInt()}")
+                            return@collect
+                        }
+                    }
+                    historyReadBatch = null
+                    android.util.Log.d("HistoryPresentation", "stage=read-batch-ready pages=${batch.pages + 1} " +
+                        "messages=${window.messages} heightDp=${window.estimatedHeightDp.toInt()} reason=${stopReason ?: "unavailable"}")
+                }
+                if (targetState.moving) {
+                    timelineUpdatesPaused = true
+                    val older = presentation.earliestSequence?.let { old -> targetState.earliestSequence?.let { it < old } } == true
+                    if (older && preparedWhileMoving?.items !== targetState.items) {
+                        val target = withContext(Dispatchers.Default) {
+                            prepareConversationPresentation(targetState.items, targetState.running, targetState.earliestSequence)
+                        }
+                        warmReadingWindow(target)
+                        preparedWhileMoving = target
+                        android.util.Log.d("HistoryPresentation", "stage=background-ready entries=${target.entries.size} moving=true")
+                    }
+                    return@collect
+                }
+                if (timelineUpdatesPaused) {
+                    delay(TIMELINE_STREAM_RESUME_DELAY_MILLISECONDS)
+                    if (isUserTimelineScrolling || touchingTimeline) return@collect
+                    timelineUpdatesPaused = false
+                }
+                val source = latestSnapshot
+                val running = latestRunning
+                if (source.conversation === presentation.items && running == presentation.running &&
+                    source.selectedHistoryEarliestSequence == presentation.earliestSequence) return@collect
+                val generation = interactionGeneration
+                val older = presentation.earliestSequence?.let { old ->
+                    source.selectedHistoryEarliestSequence?.let { it < old }
+                } == true
+                val began = android.os.SystemClock.elapsedRealtime()
+                presentingHistory = older
+                if (older) android.util.Log.d("HistoryPresentation", "stage=prepare-start rows=${source.conversation.size}")
+                try {
+                    val target = preparedWhileMoving?.takeIf { it.items === source.conversation &&
+                        it.running == running && it.earliestSequence == source.selectedHistoryEarliestSequence }
+                        ?: withContext(Dispatchers.Default) {
+                            prepareConversationPresentation(source.conversation, running, source.selectedHistoryEarliestSequence)
+                        }
+                    preparedWhileMoving = null
+                    if (older) {
+                        // 只预热即将进入阅读窗口的几行，不等待整页Markdown都渲染完。
+                        warmReadingWindow(target)
+                        android.util.Log.d("HistoryPresentation", "stage=prepare-ready entries=${target.entries.size} " +
+                            "elapsedMs=${android.os.SystemClock.elapsedRealtime() - began}")
+                        withFrameNanos { }
+                    }
+                    if (isUserTimelineScrolling || touchingTimeline || generation != interactionGeneration) return@collect
+                    val oldIds = presentation.entries.mapTo(mutableSetOf()) { it.id }
+                    val structureChanged = presentation.entries.map { it.id } != target.entries.map { it.id }
+                    val anchor = if (structureChanged && initialPositionApplied && !isPinnedToBottom) {
+                        historyReadingAnchor(presentation.entries, target.entries,
+                            listState.layoutInfo.visibleItemsInfo.filter { it.offset + it.size > listState.layoutInfo.viewportStartOffset }
+                                .map { HistoryVisibleRow(it.key.toString(), it.offset) })
+                    } else null
+                    revealIds = if (older) target.entries.mapTo(mutableSetOf()) { it.id }.subtract(oldIds) else emptySet()
+                    revealAlpha.snapTo(if (revealIds.isEmpty()) 1f else 0f)
+                    Snapshot.withMutableSnapshot {
+                        presentation = target
+                        if (anchor != null) listState.requestScrollToItem(anchor.index, -anchor.offset)
+                    }
+                    if (older) {
+                        var stable = 0
+                        var previous: List<Pair<Any, Int>>? = null
+                        while (stable < 2 && generation == interactionGeneration && !isUserTimelineScrolling && !touchingTimeline) {
+                            withFrameNanos { }
+                            val geometry = listState.layoutInfo.visibleItemsInfo.map { it.key to it.offset }
+                            stable = if (geometry == previous && listState.layoutInfo.totalItemsCount ==
+                                target.entries.size + if (latestRunning) 1 else 0) stable + 1 else 0
+                            previous = geometry
+                        }
+                        val actual = anchor?.let { saved -> listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == saved.id } }
+                        android.util.Log.d("HistoryPresentation", "stage=presented inserted=${revealIds.size} " +
+                            "elapsedMs=${android.os.SystemClock.elapsedRealtime() - began} " +
+                            "anchorValid=${actual != null} anchorErrorPx=${actual?.let { it.offset - requireNotNull(anchor).offset }} " +
+                            "interrupted=${generation != interactionGeneration}")
+                    }
+                    presentingHistory = false
+                    if (revealIds.isNotEmpty() && generation == interactionGeneration && !touchingTimeline && !isUserTimelineScrolling) {
+                        revealAlpha.animateTo(1f, tween(180))
+                    } else revealAlpha.snapTo(1f)
+                    revealIds = emptySet()
+                } finally {
+                    presentingHistory = false
+                    revealIds = emptySet()
+                }
+            }
+    }
     LaunchedEffect(listState, timelineEntries, markdownPreloader) {
         snapshotFlow {
             val visible = listState.layoutInfo.visibleItemsInfo
@@ -878,7 +1041,7 @@ private fun ConversationTimeline(
             try {
                 isPinnedToBottom = false
                 onPinnedToBottomChanged(false)
-                listState.scrollToItem(index + if (hasHistoryLoadingRow) 1 else 0)
+                listState.scrollToItem(index)
                 initialPositionApplied = true
                 stateHolder.consumeLocalSearchScrollTarget()
             } finally {
@@ -946,26 +1109,6 @@ private fun ConversationTimeline(
                 }
             }
     }
-    LaunchedEffect(listState, stateHolder.snapshot.selectedHistoryHasMore, initialPositionApplied) {
-        if (!initialPositionApplied) return@LaunchedEffect
-        snapshotFlow {
-            HistoryPagingGestureState(
-                firstVisibleItemIndex = listState.firstVisibleItemIndex,
-                isScrollInProgress = listState.isScrollInProgress,
-                lastScrolledBackward = listState.lastScrolledBackward,
-                isProgrammaticScroll = programmaticScrollCount > 0
-            )
-        }
-            .distinctUntilChanged()
-            .collect { gesture ->
-                if (
-                    shouldLoadOlderHistory(gesture) &&
-                    stateHolder.snapshot.selectedHistoryHasMore
-                ) {
-                    stateHolder.loadOlderHistory()
-                }
-            }
-    }
     Box(
         Modifier
             .fillMaxSize()
@@ -977,17 +1120,23 @@ private fun ConversationTimeline(
                     drawRect(Color.Gray.copy(alpha = 0.35f), size = androidx.compose.ui.geometry.Size(size.width, 1f))
                 }
             }
-            .pointerInput(onUserInteraction) {
+            .pointerInput(selectedSessionId) {
                 awaitEachGesture {
                     awaitFirstDown(
                         requireUnconsumed = false,
                         pass = PointerEventPass.Initial
                     )
-                    onUserInteraction()
+                    touchingTimeline = true
+                    historyEdgePull.reset()
+                    interactionGeneration += 1
+                    revealIds = emptySet()
+                    latestOnUserInteraction()
+                    try { waitForUpOrCancellation(pass = PointerEventPass.Initial) }
+                    finally { touchingTimeline = false }
                 }
             }
     ) {
-        if (items.isEmpty() && (!selectedSessionIsRunning || stateHolder.offlineBrowsing) && !stateHolder.snapshot.selectedHistoryIsLoading) {
+        if (items.isEmpty() && latestItems.isEmpty() && (!selectedSessionIsRunning || stateHolder.offlineBrowsing) && !stateHolder.snapshot.selectedHistoryIsLoading) {
             val error = stateHolder.snapshot.selectedHistoryError
             if (stateHolder.offlineBrowsing) {
                 Text(
@@ -1019,77 +1168,96 @@ private fun ConversationTimeline(
                 }
             }
         }
+        if (historyEdgeRevealed && !listState.canScrollBackward &&
+            (historyBusy || stateHolder.snapshot.selectedHistoryHasMore)) {
+            Box(Modifier.align(Alignment.TopCenter).heightIn(min = 32.dp).zIndex(2f),
+                contentAlignment = Alignment.Center) {
+                if (historyBusy) {
+                    Row(Modifier.testTag("history-paging-progress").padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 1.5.dp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(appText(if (latestHistoryLoading || stateHolder.snapshot.selectedHistoryIsLoadingOlder)
+                            "正在加载更早记录…" else "正在准备会话"), fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                } else {
+                    Text(appText("加载更早记录"), fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.testTag("history-load-more")
+                            .clickable(onClick = requestOlderHistory)
+                            .padding(horizontal = 12.dp, vertical = 8.dp))
+                }
+            }
+        }
         LazyColumn(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
+                .nestedScroll(historyEdgeScroll)
                 .adaptiveContentWidth().testTag("conversation-message-list")
                 .imePadding()
                 .padding(horizontal = 20.dp)
                 .alpha(if (hasInitialContent && !initialPositionApplied) 0f else 1f),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                top = 8.dp,
+                // 首行给固定提示留出空间；加载状态变化不插入/删除列表行。
+                top = 32.dp,
                 bottom = bottomContentHeight + 22.dp
             )
         ) {
-            if (hasHistoryLoadingRow) {
-                item("history-loading") {
-                    Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                        Spacer(Modifier.width(9.dp))
-                        Text(appText("正在加载更早记录…"), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f))
-                    }
-                }
-            }
             items(
                 items = timelineEntries,
                 key = ConversationTimelineEntry::id,
                 contentType = ConversationTimelineEntry::contentType
             ) { entry ->
-                when (entry) {
-                    is ConversationTimelineEntry.Display -> when (val display = entry.entry) {
-                        is ConversationDisplayEntry.Message -> ConversationRow(
-                            item = display.item,
-                            thumbnails = stateHolder.attachmentThumbnails,
-                            attachmentStates = stateHolder.attachmentStates,
-                            onRetryAttachment = stateHolder::retryAttachment,
-                            onPreviewImages = onPreviewImages
-                        )
-                        is ConversationDisplayEntry.Process -> ConversationProcessRow(display.group)
-                    }
-                    is ConversationTimelineEntry.AssistantHeader -> AssistantMessageHeader(
-                        item = entry.item,
-                        thumbnails = stateHolder.attachmentThumbnails,
-                        states = stateHolder.attachmentStates,
-                        onRetry = stateHolder::retryAttachment
-                    )
-                    is ConversationTimelineEntry.AssistantMarkdown -> DshLazyMarkdownText(
-                        markdown = entry.markdown,
-                        knownFiles = entry.knownFiles,
-                        onOpenFile = { path ->
-                            selectedSessionId?.let { session ->
-                                stateHolder.openConversationFile(stateHolder.gatewayLocalId, session, path)
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
-                    )
-                    is ConversationTimelineEntry.AssistantFooter -> Column(
-                        Modifier.fillMaxWidth().padding(top = 7.dp, bottom = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        entry.files.forEach { file ->
-                            FileReferenceCard(
-                                path = file.path,
-                                description = file.description,
-                                modifier = Modifier.align(Alignment.End),
-                                onClick = {
-                                    selectedSessionId?.let { session ->
-                                        stateHolder.openConversationFile(stateHolder.gatewayLocalId, session, file.path)
-                                    }
-                                }
+                Box(Modifier.testTag("conversation-entry:${entry.id}").graphicsLayer {
+                    alpha = if (entry.id in revealIds) revealAlpha.value else 1f
+                }) {
+                    when (entry) {
+                        is ConversationTimelineEntry.Display -> when (val display = entry.entry) {
+                            is ConversationDisplayEntry.Message -> ConversationRow(
+                                item = display.item,
+                                thumbnails = stateHolder.attachmentThumbnails,
+                                attachmentStates = stateHolder.attachmentStates,
+                                onRetryAttachment = stateHolder::retryAttachment,
+                                onPreviewImages = onPreviewImages
                             )
+                            is ConversationDisplayEntry.Process -> ConversationProcessRow(display.group)
                         }
-                        if (entry.text.isNotEmpty()) CopyButton(entry.text)
+                        is ConversationTimelineEntry.AssistantHeader -> AssistantMessageHeader(
+                            item = entry.item,
+                            thumbnails = stateHolder.attachmentThumbnails,
+                            states = stateHolder.attachmentStates,
+                            onRetry = stateHolder::retryAttachment
+                        )
+                        is ConversationTimelineEntry.AssistantMarkdown -> DshLazyMarkdownText(
+                            markdown = entry.markdown,
+                            knownFiles = entry.knownFiles,
+                            onOpenFile = { path ->
+                                selectedSessionId?.let { session ->
+                                    stateHolder.openConversationFile(stateHolder.gatewayLocalId, session, path)
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                        )
+                        is ConversationTimelineEntry.AssistantFooter -> Column(
+                            Modifier.fillMaxWidth().padding(top = 7.dp, bottom = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            entry.files.forEach { file ->
+                                FileReferenceCard(
+                                    path = file.path,
+                                    description = file.description,
+                                    modifier = Modifier.align(Alignment.End),
+                                    onClick = {
+                                        selectedSessionId?.let { session ->
+                                            stateHolder.openConversationFile(stateHolder.gatewayLocalId, session, file.path)
+                                        }
+                                    }
+                                )
+                            }
+                            if (entry.text.isNotEmpty()) CopyButton(entry.text)
+                        }
                     }
                 }
             }
@@ -1255,21 +1423,8 @@ private val DEEP_SEARCH_PHRASES = mapOf(
     DeepSearchActivity.WORKING to listOf("继续推进中", "稳步探索中", "梳理当前进展中", "逐步展开中")
 )
 
-private const val TIMELINE_STREAM_RESUME_DELAY_MILLISECONDS = 80L
+private const val TIMELINE_STREAM_RESUME_DELAY_MILLISECONDS = 120L
 private const val MARKDOWN_PREFETCH_ROWS = 24
-
-internal data class HistoryPagingGestureState(
-    val firstVisibleItemIndex: Int,
-    val isScrollInProgress: Boolean,
-    val lastScrolledBackward: Boolean,
-    val isProgrammaticScroll: Boolean
-)
-
-internal fun shouldLoadOlderHistory(gesture: HistoryPagingGestureState): Boolean =
-    gesture.firstVisibleItemIndex <= 2 &&
-        gesture.isScrollInProgress &&
-        gesture.lastScrolledBackward &&
-        !gesture.isProgrammaticScroll
 
 private fun androidx.compose.foundation.lazy.LazyListState.isPinnedToBottom(): Boolean {
     return isTimelinePinnedToBottom(
