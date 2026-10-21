@@ -1036,12 +1036,77 @@ struct ConversationView: View {
     private var voiceState: SharedVoiceInputSnapshot { voiceSnapshot ?? store.voiceInput.state }
 
     private var composerCard: some View {
-        let slashPresentation = slashCommandComposerPresentation(
-            draft: draft,
-            token: store.slashCommands.commandToken,
-            hint: store.slashCommands.argumentHint
+        // Erased before the change handlers attach. The chrome chain below is
+        // deep enough that instantiating this type overflows the main thread
+        // stack in the Swift demangler (crash inside composerCard.getter).
+        AnyView(composerCardChrome)
+        .onChange(of: store.messageAcceptedRevision) { _, _ in
+            guard let submitted = submittedQueueDraft else { return }
+            defer { submittedQueueDraft = nil; submittedQueueImages = [] }
+            guard (submittedQueueSessionID == nil || submittedQueueSessionID == store.selectedSessionId),
+                  draft == submitted, pendingImages == submittedQueueImages else { return }
+            draft = ""
+            pendingImages = []
+            selectedPhotoItems = []
+            store.clearActiveSlashCommand()
+            composerIsFocused = false
+            viewportScrollToBottomToken &+= 1
+        }
+        .onChange(of: store.queueRevision) { _, _ in restoreQueuedDraft() }
+        .onChange(of: store.selectedSessionId) { _, _ in
+            queueExpanded = false
+            quotesExpanded = false
+            quoteInbox.clear()
+            selectionOffer.clear()
+            restoreQueuedDraft()
+        }
+        .onAppear { restoreQueuedDraft() }
+        .onChange(of: selectedPhotoItems) { _, items in
+            guard !items.isEmpty else { return }
+            store.voiceInput.setVoiceMode(false)
+            Task { await importPhotos(items) }
+        }
+        .onChange(of: draft) { _, value in
+            store.voiceInput.draftChanged(value)
+            store.updateSlashCommandInput(value)
+        }
+        .onChange(of: store.commandDraftClearToken) {
+            draft = ""
+            pendingImages = []
+            selectedPhotoItems = []
+            composerIsFocused = false
+        }
+    }
+    /// Padding, glass, border and shadow around the composer. Erased by the
+    /// caller so the two halves each stay shallow.
+    private var composerCardChrome: some View {
+        AnyView(
+            VStack(alignment: .leading, spacing: 12) {
+                AnyView(composerAuxiliary)
+                AnyView(composerInput)
+                AnyView(composerControlsRow)
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 14)
+            .padding(.bottom, 12)
+            .glassSurface(radius: 24, tint: glassTint, shadowOpacity: 0)
+            // 先收住玻璃自带的向下投影，再单独控制输入框阴影。
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .stroke(glassEdge, lineWidth: 0.7)
+            }
+            // 轻微下移增强底部层次，保持原有扩散范围。
+            .shadow(color: .black.opacity(colorScheme == .dark ? 0.24 : 0.10), radius: 10, x: 0, y: 2)
+            .padding(.horizontal, 14)
+            .padding(.bottom, composerBottomPadding)
         )
-        return VStack(alignment: .leading, spacing: 12) {
+    }
+
+
+    /// Offer bar, quote chips, pending images and the voice transcript notice.
+    private var composerAuxiliary: some View {
+        Group {
             if selectionOffer.excerpt != nil {
                 selectionOfferBar
                     .transition(.opacity)
@@ -1053,15 +1118,6 @@ struct ConversationView: View {
             if !pendingImages.isEmpty {
                 pendingImageStrip
             }
-            VoiceComposerTextInput(
-                text: $draft,
-                isFocused: $composerIsFocused,
-                presentation: slashPresentation,
-                state: voiceState,
-                voice: store.voiceInput,
-                onHoldingChanged: { voiceTouchActive = $0 }
-            )
-            .offset(y: voiceState.voiceMode ? -4 : 0)
             if let pending = voiceState.pendingTranscript {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(pending).appFont(.caption).lineLimit(3)
@@ -1073,6 +1129,27 @@ struct ConversationView: View {
                     }.appFont(.caption)
                 }
             }
+        }
+    }
+
+    private var composerInput: some View {
+            VoiceComposerTextInput(
+                text: $draft,
+                isFocused: $composerIsFocused,
+                presentation: slashCommandComposerPresentation(
+                    draft: draft,
+                    token: store.slashCommands.commandToken,
+                    hint: store.slashCommands.argumentHint
+                ),
+                state: voiceState,
+                voice: store.voiceInput,
+                onHoldingChanged: { voiceTouchActive = $0 }
+            )
+            .offset(y: voiceState.voiceMode ? -4 : 0)
+    }
+
+    /// The photo, permission, model, context and send controls.
+    private var composerControlsRow: some View {
             HStack(spacing: 7) {
                 PhotosPicker(
                     selection: $selectedPhotoItems,
@@ -1203,57 +1280,6 @@ struct ConversationView: View {
                         .allowsHitTesting(false)
                 }
             }
-        }
-        .padding(.horizontal, 14)
-        .padding(.top, 14)
-        .padding(.bottom, 12)
-        .glassSurface(radius: 24, tint: glassTint, shadowOpacity: 0)
-        // 先收住玻璃自带的向下投影，再单独控制输入框阴影。
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(glassEdge, lineWidth: 0.7)
-        }
-        // 轻微下移增强底部层次，保持原有扩散范围。
-        .shadow(color: .black.opacity(colorScheme == .dark ? 0.24 : 0.10), radius: 10, x: 0, y: 2)
-        .padding(.horizontal, 14)
-        .padding(.bottom, composerBottomPadding)
-        .onChange(of: store.messageAcceptedRevision) { _, _ in
-            guard let submitted = submittedQueueDraft else { return }
-            defer { submittedQueueDraft = nil; submittedQueueImages = [] }
-            guard (submittedQueueSessionID == nil || submittedQueueSessionID == store.selectedSessionId),
-                  draft == submitted, pendingImages == submittedQueueImages else { return }
-            draft = ""
-            pendingImages = []
-            selectedPhotoItems = []
-            store.clearActiveSlashCommand()
-            composerIsFocused = false
-            viewportScrollToBottomToken &+= 1
-        }
-        .onChange(of: store.queueRevision) { _, _ in restoreQueuedDraft() }
-        .onChange(of: store.selectedSessionId) { _, _ in
-            queueExpanded = false
-            quotesExpanded = false
-            quoteInbox.clear()
-            selectionOffer.clear()
-            restoreQueuedDraft()
-        }
-        .onAppear { restoreQueuedDraft() }
-        .onChange(of: selectedPhotoItems) { _, items in
-            guard !items.isEmpty else { return }
-            store.voiceInput.setVoiceMode(false)
-            Task { await importPhotos(items) }
-        }
-        .onChange(of: draft) { _, value in
-            store.voiceInput.draftChanged(value)
-            store.updateSlashCommandInput(value)
-        }
-        .onChange(of: store.commandDraftClearToken) {
-            draft = ""
-            pendingImages = []
-            selectedPhotoItems = []
-            composerIsFocused = false
-        }
     }
 
     @ViewBuilder
