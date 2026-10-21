@@ -2855,6 +2855,114 @@ final class GatewayProtocolTests: XCTestCase {
     }
 
     @MainActor
+    private func makeReadingWindowFixture() async throws -> (AppStore, SessionSummary, UUID, HistoryReadingProbe) {
+        let (store, session) = try await makeRc2HistoryLoadingStore()
+        try await deliverHistoryLoadingFrame(store,
+            #"{"kind":"subscribed","sessionId":"mask-session","subscriptionId":"sub","assistantStream":true}"#)
+        try await deliverHistoryLoadingFrame(store,
+            #"{"kind":"session-snapshot","sessionId":"mask-session","subscriptionId":"sub","streamId":"stream","historyFormatVersion":3,"cursor":100,"events":[{"type":"assistant/message","seq":100,"time":100,"data":{"message":{"content":[{"type":"text","text":"existing"}]}}}],"hasMore":true,"nextBeforeSeq":100}"#)
+        await store.awaitConversationProjectionForTesting(sessionID: session.id, expectedText: "existing")
+        let consumer = UUID(), probe = HistoryReadingProbe()
+        store.attachHistoryPresentationConsumer(sessionID: session.id, consumer: .init(id: consumer) { probe.receive($0) })
+        XCTAssertTrue(store.requestOlderHistoryPresentation(sessionID: session.id, consumerID: consumer,
+            readingWindow: CGSize(width: 320, height: 200)))
+        await store.awaitPendingKMPEventDeliveriesForTesting(includingHistoryPreparation: false)
+        return (store, session, consumer, probe)
+    }
+
+    @MainActor
+    private func readingPage(_ store: AppStore, _ range: ClosedRange<Int>, tools: Bool = false, more: Bool) async throws {
+        let events: [[String: Any]] = range.map { seq -> [String: Any] in
+            let payload: [String: Any]
+            if tools { payload = ["name": "fixture", "arguments": ["value": "tool use"]] }
+            else { payload = ["content": [["type": "text", "text": "short \(seq)"]]] }
+            return ["type": tools ? "tool/call" : "user/message", "seq": seq, "time": seq, "data": payload]
+        }
+        let data = try JSONSerialization.data(withJSONObject: ["kind": "history", "sessionId": "mask-session",
+            "historyFormatVersion": 3, "events": events, "hasMore": more, "nextBeforeSeq": range.lowerBound])
+        store.gateway.onFrame?(try GatewayWireDecoder.decode(data))
+        // 解析在后台完成；下一页只能在上一响应真正归并后送达。
+        try await waitReading { store.events["mask-session"]?.first?.seq == range.lowerBound }
+        await store.awaitPendingKMPEventDeliveriesForTesting()
+    }
+
+    @MainActor
+    private func waitReading(_ predicate: () -> Bool, file: StaticString = #filePath, line: UInt = #line) async throws {
+        for _ in 0..<600 {
+            if predicate() { return }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTFail("阅读批次状态等待超时", file: file, line: line)
+    }
+
+    @MainActor
+    func testReadingBatchToolsContinueUnderOneAdmissionAndPublishOnlyWithBody() async throws {
+        let (store, session, consumer, probe) = try await makeReadingWindowFixture()
+        defer { store.detachHistoryPresentationConsumer(sessionID: session.id, consumerID: consumer); store.deactivateGateway() }
+        let timeline = store.conversationTimeline(for: session.id), revision = timeline.currentSnapshot.revision
+        try await readingPage(store, 40...99, tools: true, more: true)
+        try await waitReading { store.events[session.id]?.first?.seq == 40 && store.historyLoadingOlderSessionIds.contains(session.id) }
+        XCTAssertEqual(timeline.currentSnapshot.revision, revision)
+        try await readingPage(store, 10...39, tools: true, more: true)
+        try await waitReading { store.events[session.id]?.first?.seq == 10 && store.historyLoadingOlderSessionIds.contains(session.id) }
+        XCTAssertEqual(timeline.currentSnapshot.revision, revision)
+        XCTAssertEqual(probe.began, 1)
+        XCTAssertEqual(probe.terminals, 0)
+        XCTAssertFalse(store.requestOlderHistoryPresentation(sessionID: session.id, consumerID: consumer))
+        try await readingPage(store, 1...9, more: false)
+        try await waitReading { timeline.currentSnapshot.historyPresentationStamp != nil }
+        XCTAssertEqual(timeline.currentSnapshot.items.filter { $0.kind == .tool }.count, 90)
+        XCTAssertEqual(timeline.currentSnapshot.items.filter { $0.kind == .user }.count, 9)
+        XCTAssertEqual(probe.began, 1)
+        XCTAssertEqual(probe.terminals, 1)
+        XCTAssertTrue(probe.outcomes.isEmpty, "必须等实际呈现确认，不能在收到数据时结束")
+        store.acknowledgeHistoryPresentation(sessionID: session.id, consumerID: consumer,
+            stamp: try XCTUnwrap(timeline.currentSnapshot.historyPresentationStamp))
+        XCTAssertEqual(probe.outcomes, [.presented])
+    }
+
+    @MainActor
+    func testReadingBatchShortPagesStayFrozenUntilReadingWindowIsFilled() async throws {
+        let (store, session, consumer, probe) = try await makeReadingWindowFixture()
+        defer { store.detachHistoryPresentationConsumer(sessionID: session.id, consumerID: consumer); store.deactivateGateway() }
+        let timeline = store.conversationTimeline(for: session.id), revision = timeline.currentSnapshot.revision
+        try await readingPage(store, 99...99, more: true)
+        try await readingPage(store, 98...98, more: true)
+        try await waitReading { store.events[session.id]?.first?.seq == 98 && store.historyLoadingOlderSessionIds.contains(session.id) }
+        XCTAssertEqual(timeline.currentSnapshot.revision, revision)
+        try await readingPage(store, 90...97, more: true)
+        XCTAssertEqual(timeline.currentSnapshot.revision, revision)
+        try await readingPage(store, 80...89, more: true)
+        try await waitReading { timeline.currentSnapshot.historyPresentationStamp != nil }
+        XCTAssertEqual(timeline.currentSnapshot.items.filter { $0.kind == .user }.count, 20)
+        XCTAssertFalse(store.historyLoadingOlderSessionIds.contains(session.id))
+        XCTAssertTrue(store.selectedHistoryHasMore)
+        XCTAssertEqual(probe.began, 1)
+        store.acknowledgeHistoryPresentation(sessionID: session.id, consumerID: consumer,
+            stamp: try XCTUnwrap(timeline.currentSnapshot.historyPresentationStamp))
+        XCTAssertEqual(probe.outcomes, [.presented])
+    }
+
+    @MainActor
+    func testReadingBatchFailureReleasesAlreadyReceivedTools() async throws {
+        let (store, session, consumer, probe) = try await makeReadingWindowFixture()
+        defer { store.detachHistoryPresentationConsumer(sessionID: session.id, consumerID: consumer); store.deactivateGateway() }
+        try await readingPage(store, 40...99, tools: true, more: true)
+        try await readingPage(store, 10...39, tools: true, more: true)
+        try await waitReading { store.events[session.id]?.first?.seq == 10 && store.historyLoadingOlderSessionIds.contains(session.id) }
+        try await deliverHistoryLoadingFrame(store,
+            #"{"kind":"error","sessionId":"mask-session","requestType":"history","code":"fixture-failure","message":"fixture failure"}"#)
+        let timeline = store.conversationTimeline(for: session.id)
+        try await waitReading { !store.historyLoadingSessionIds.contains(session.id) && timeline.currentSnapshot.items.count == 91 }
+        if let stamp = timeline.currentSnapshot.historyPresentationStamp {
+            store.acknowledgeHistoryPresentation(sessionID: session.id, consumerID: consumer, stamp: stamp)
+        }
+        XCTAssertEqual(timeline.currentSnapshot.items.filter { $0.kind == .tool }.count, 90)
+        XCTAssertEqual(probe.began, 1)
+        XCTAssertFalse(probe.outcomes.isEmpty)
+    }
+
+    @MainActor
     private func makeRc2HistoryLoadingStore(timeout: Duration = .seconds(20)) async throws -> (AppStore, SessionSummary) {
         let session = SessionSummary(id: "mask-session", title: "History", lastActivity: Date(),
             isRunning: false, hasUnread: false)
@@ -10744,3 +10852,68 @@ final class HistoryViewportControlledPresentationTests: XCTestCase {
     }
 }
 #endif
+
+
+@MainActor
+private final class HistoryReadingProbe {
+    var began = 0
+    var terminals = 0
+    var outcomes: [HistoryPresentationOutcome] = []
+    func receive(_ event: HistoryPresentationLifecycleEvent) {
+        if case .began = event { began += 1 }
+        if case .terminal = event { terminals += 1 }
+        if case .finished(_, let outcome) = event { outcomes.append(outcome) }
+    }
+}
+
+final class HistoryReadingBatchTests: XCTestCase {
+    private func batch() -> HistoryReadingBatch {
+        .init(operationID: UUID(), originalIDs: ["existing"], viewportHeight: 400, contentWidth: 320,
+            fontScale: 1, startedAt: 0, beforeSequence: 100, rounds: 1)
+    }
+    private func item(_ id: String, kind: ConversationItem.Kind = .user, text: String = "短消息") -> ConversationItem {
+        .init(id: id, kind: kind, title: "", text: text, isError: false, date: .distantPast)
+    }
+    func testToolsDoNotCountAsReadableBody() {
+        let batch = batch()
+        let window = batch.window(in: (1...200).map { item("tool-\($0)", kind: .tool) } + [item("existing")])
+        XCTAssertEqual(window.messages, 0)
+        XCTAssertEqual(window.height, 0)
+        XCTAssertNil(batch.stopReason(window: window, earliestSequence: 50, hasMore: true, now: 0.1))
+    }
+    func testShortMessagesAccumulateToTwoScreens() {
+        let batch = batch()
+        XCTAssertNil(batch.stopReason(window: batch.window(in: [item("new")]), earliestSequence: 99, hasMore: true, now: 0.1))
+        let enough = batch.window(in: (1...16).map { item("new-\($0)") })
+        XCTAssertEqual(enough.messages, 16)
+        XCTAssertEqual(batch.stopReason(window: enough, earliestSequence: 80, hasMore: true, now: 0.1), "window-filled")
+    }
+    func testOneLongReplyCanFillWindowWithoutCountingMarkdownBlocks() {
+        let batch = batch(), text = String(repeating: "正文。\n\n", count: 200)
+        let window = batch.window(in: [item("new", kind: .assistant, text: text)])
+        XCTAssertEqual(window.messages, 1)
+        XCTAssertEqual(batch.stopReason(window: window, earliestSequence: 99, hasMore: true, now: 0.1), "window-filled")
+    }
+    func testExistingMessagesAndLiveTailDoNotFillOlderWindow() {
+        let batch = batch(), long = String(repeating: "x", count: 10000)
+        let window = batch.window(in: [item("new"), item("existing", text: long), item("live", text: long)])
+        XCTAssertEqual(window.messages, 1)
+        XCTAssertNil(batch.stopReason(window: window, earliestSequence: 99, hasMore: true, now: 0.1))
+    }
+    func testEndErrorAndNoProgressStopSupplementing() {
+        var batch = batch()
+        let empty = HistoryReadingBatch.Window()
+        XCTAssertEqual(batch.stopReason(window: empty, earliestSequence: 99, hasMore: false, now: 0.1), "end")
+        XCTAssertEqual(batch.stopReason(window: empty, earliestSequence: 100, hasMore: true, now: 0.1), "no-progress")
+        batch.failed = true
+        XCTAssertEqual(batch.stopReason(window: empty, earliestSequence: 99, hasMore: true, now: 0.1), "error")
+    }
+    func testSparseHistoryHasCountTimeAndContentBudgets() {
+        var batch = batch()
+        XCTAssertEqual(batch.stopReason(window: .init(), earliestSequence: 99, hasMore: true, now: 2.5), "time-budget")
+        batch.rounds = 8
+        XCTAssertEqual(batch.stopReason(window: .init(), earliestSequence: 99, hasMore: true, now: 0.1), "round-budget")
+        batch.rounds = 1
+        XCTAssertEqual(batch.stopReason(window: .init(characters: 1048576), earliestSequence: 99, hasMore: true, now: 0.1), "content-budget")
+    }
+}

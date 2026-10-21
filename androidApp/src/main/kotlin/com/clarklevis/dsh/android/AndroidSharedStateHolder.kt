@@ -104,7 +104,7 @@ class AndroidSharedStateHolder(
                     appGraph.gatewayRuntime.requestHistory(
                         sessionId = sessionId,
                         beforeSequence = beforeSequence,
-                        maxMessages = HISTORY_PAGE_MESSAGE_LIMIT,
+                        maxMessages = if (beforeSequence == null) HISTORY_PAGE_MESSAGE_LIMIT else OLDER_HISTORY_PAGE_MESSAGE_LIMIT,
                         maxBytes = HISTORY_PAGE_BYTE_BUDGET,
                         view = HISTORY_VIEW,
                         historyFormatVersion = historyFormatVersion
@@ -386,6 +386,9 @@ class AndroidSharedStateHolder(
             runCatching { GatewayWireDecoder.decode(payload) }
                 .onSuccess { frame ->
                     projectionActor.acceptFrameImmediate(payload, frame, frame.sessionId)
+                    if (!snapshot.selectedHistoryIsLoadingOlder && frame.kind in setOf("history", "error", "session-stream-reset")) {
+                        frame.sessionId?.let { historyPagingSessionIds = historyPagingSessionIds - it }
+                    }
                     handleWorkspaceFrame(frame)
                 }
                 .onFailure { error -> platformError = GatewayWireDecoder.failureSummary(payload, error) }
@@ -1191,21 +1194,41 @@ class AndroidSharedStateHolder(
         }
     }
 
-    fun loadOlderHistory() {
-        val sessionId = snapshot.selectedSessionId ?: return
-        snapshot.selectedHistoryEarliestSequence ?: return
+    fun loadOlderHistory(): Boolean {
+        val sessionId = snapshot.selectedSessionId ?: return false
+        snapshot.selectedHistoryEarliestSequence ?: return false
         if (
             !snapshot.selectedHistoryHasMore ||
             snapshot.selectedHistoryIsLoading ||
             sessionId in historyPagingSessionIds
-        ) return
-        val appGraph = graph ?: return
+        ) return false
         historyPagingSessionIds = historyPagingSessionIds + sessionId
+        val appGraph = graph
+        if (appGraph == null) {
+            projectionActor.loadHistoryImmediate(sessionId, older = true)
+            return true
+        }
+        android.util.Log.d("HistoryPresentation", "stage=request-start rows=${snapshot.conversation.size}")
         appGraph.gatewayScope.launch {
-            projectionActor.loadHistory(sessionId, older = true, offline = offlineBrowsing) {
-                if (!snapshot.selectedHistoryIsLoadingOlder) historyPagingSessionIds = historyPagingSessionIds - sessionId
+            try {
+                projectionActor.loadHistory(sessionId, older = true, offline = offlineBrowsing) {
+                    if (!snapshot.selectedHistoryIsLoadingOlder) historyPagingSessionIds = historyPagingSessionIds - sessionId
+                }
+            } catch (cancelled: CancellationException) {
+                withContext(kotlinx.coroutines.NonCancellable + Dispatchers.Main.immediate) {
+                    historyPagingSessionIds = historyPagingSessionIds - sessionId
+                }
+                throw cancelled
+            } catch (error: Exception) {
+                projectionActor.historyCancelled(sessionId)
+                withContext(Dispatchers.Main.immediate) {
+                    historyPagingSessionIds = historyPagingSessionIds - sessionId
+                    platformError = appText("历史记录加载失败")
+                }
+                android.util.Log.w("HistoryPresentation", "stage=request-failed type=${error.javaClass.simpleName}")
             }
         }
+        return true
     }
 
     fun setTrajectoryActive(active: Boolean) {
@@ -3040,6 +3063,7 @@ class AndroidSharedStateHolder(
             "session-stream-reset", "subscribed", "hello", "error"
         )
         private const val HISTORY_PAGE_MESSAGE_LIMIT = 60
+        private const val OLDER_HISTORY_PAGE_MESSAGE_LIMIT = 120
         private const val HISTORY_PAGE_BYTE_BUDGET = 4 * 1_024 * 1_024
         private const val HISTORY_VIEW = "conversation"
         const val UNGROUPED_WORKSPACE_ID = "__ungrouped__"

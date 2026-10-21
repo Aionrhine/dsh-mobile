@@ -512,7 +512,8 @@ struct ConversationView: View {
                 onApproachingTop: {
                     guard let sessionID = store.selectedSessionId,
                           let consumerID = viewportProxy.historyPresentationConsumerID else { return }
-                    store.requestOlderHistoryPresentation(sessionID: sessionID, consumerID: consumerID)
+                    store.requestOlderHistoryPresentation(sessionID: sessionID, consumerID: consumerID,
+                        readingWindow: viewportProxy.historyReadingWindowSize)
                 },
                 onHistoryPresentationConsumerAttached: { sessionID, consumer in
                     store.attachHistoryPresentationConsumer(sessionID: sessionID, consumer: consumer)
@@ -1082,8 +1083,11 @@ struct ConversationView: View {
                         if isImportingImages {
                             ProgressView().controlSize(.small)
                         } else {
-                            Image(systemName: "photo.on.rectangle.angled")
-                                .appFont(.system(size: 16, weight: .semibold))
+                            Image("ComposerImage")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 22, height: 22)
                         }
                     }
                     .frame(width: 32, height: 32)

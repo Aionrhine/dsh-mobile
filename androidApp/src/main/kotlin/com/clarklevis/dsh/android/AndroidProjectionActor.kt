@@ -261,7 +261,7 @@ internal class AndroidProjectionActor(
             projection.snapshot().selectedHistoryEarliestSequence.takeIf { older && projection.canPrependCachedPage(sessionId) }
         }
         if (before != null && chatCache != null) {
-            val page = chatCache.loadTypedPage(gatewayCacheId, sessionId, before, 80)
+            val page = chatCache.loadTypedPage(gatewayCacheId, sessionId, before, 160)
             if (page != null && page.events.isNotEmpty()) {
                 val accepted = mutationLock.withLock {
                     if (projection.snapshot().selectedSessionId == sessionId && projection.canPrependCachedPage(sessionId, page)) {
@@ -349,6 +349,10 @@ internal class AndroidProjectionActor(
     fun selectSessionImmediate(sessionId: String?, afterPublish: () -> Unit = {}) {
         publish(projection.selectSession(sessionId), false)
         afterPublish()
+    }
+
+    fun loadHistoryImmediate(sessionId: String, older: Boolean) {
+        publish(projection.loadHistory(sessionId, older), false)
     }
 
     fun loadFixtureImmediate(afterPublish: () -> Unit = {}) {

@@ -1139,7 +1139,8 @@ struct StorageSpaceView: View {
                     ProgressView().accessibilityLabel(Text("正在统计…"))
                 } else {
                     Button { Task { await store.refreshCacheStorage() } } label: {
-                        Image(systemName: "arrow.clockwise")
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .appFont(.system(size: 17, weight: .medium))
                     }
                     .accessibilityLabel(Text("刷新存储统计"))
                 }

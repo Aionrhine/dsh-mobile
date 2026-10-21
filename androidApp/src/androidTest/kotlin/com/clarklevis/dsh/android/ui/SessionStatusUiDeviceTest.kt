@@ -201,7 +201,7 @@ class SessionStatusUiDeviceTest {
                     val dark = style == InterfaceStyle.DARK
                     assertTrue(
                         "Stats background must follow $style (hasStats=$hasStats): $backgroundLuminance",
-                        if (dark) backgroundLuminance < 0.1f else backgroundLuminance > 0.8f
+                        if (dark) backgroundLuminance in 0.02f..0.04f else backgroundLuminance > 0.8f
                     )
                     val title = compose.onNode(hasText("会话状态")).captureToImage().toPixelMap()
                     val titleLuminances = (0 until title.height).flatMap { y ->

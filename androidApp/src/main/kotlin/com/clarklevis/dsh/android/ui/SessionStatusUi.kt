@@ -254,6 +254,7 @@ internal fun SessionStatsSheet(
     onDismiss: () -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
+    val (sheetColor, cardColor) = sessionStatsSheetColors()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val coroutineScope = rememberCoroutineScope()
     val expandedTopInset = adaptiveWindowSize().height * 0.12f
@@ -273,7 +274,7 @@ internal fun SessionStatsSheet(
         modifier = Modifier.adaptiveSheetBounds().fillMaxHeight().padding(top = expandedTopInset),
         sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
-        containerColor = colors.background,
+        containerColor = sheetColor,
         contentColor = colors.onBackground,
         scrimColor = Color.Black.copy(alpha = 0.28f),
         dragHandle = {
@@ -301,7 +302,7 @@ internal fun SessionStatsSheet(
                     modifier = Modifier.align(Alignment.CenterEnd).height(44.dp)
                         .clickable(role = Role.Button, onClick = dismissWithAnimation),
                     shape = CircleShape,
-                    color = colors.surface,
+                    color = cardColor,
                     contentColor = colors.onSurface,
                     border = BorderStroke(0.7.dp, colors.outlineVariant)
                 ) {
@@ -327,6 +328,7 @@ internal fun SessionStatsSheet(
                 } else {
                     StatsMetricsSection(
                         title = appText("执行"),
+                        containerColor = cardColor,
                         metrics = listOf(
                             appText("轮次") to appText("%1\$s 轮", stats.turns ?: 0),
                             appText("步骤") to appText("%1\$s 步", stats.steps ?: 0),
@@ -339,6 +341,7 @@ internal fun SessionStatsSheet(
                     snapshot.tokenUsage?.totals?.let { totals ->
                         StatsMetricsSection(
                             title = appText("Token 用量"),
+                            containerColor = cardColor,
                             metrics = listOf(
                                 appText("输入") to token(totals.inputTokens),
                                 appText("输出") to token(totals.outputTokens),
@@ -352,6 +355,7 @@ internal fun SessionStatsSheet(
                     snapshot.contextPressure?.let { pressure ->
                         StatsMetricsSection(
                             title = appText("上下文"),
+                            containerColor = cardColor,
                             metrics = listOf(
                                 appText("当前压力") to token(pressure.pressureTokens),
                                 appText("预计用量") to token(pressure.projectedTokens),
@@ -374,13 +378,31 @@ internal fun SessionStatsSheet(
     }
 }
 
+private const val DARK_STATS_SHEET_BACKGROUND = 0xFF2A2A2B
+private const val DARK_STATS_SHEET_CARD = 0xFF2F2F2F
+
 @Composable
-private fun StatsMetricsSection(title: String, metrics: List<Pair<String, String>>) {
+private fun sessionStatsSheetColors(): Pair<Color, Color> {
+    val colors = MaterialTheme.colorScheme
+    // 对齐 iOS regularMaterial 弹层与 thinMaterial 卡片的中性灰层次。
+    return if (isSystemInDarkTheme()) {
+        Color(DARK_STATS_SHEET_BACKGROUND) to Color(DARK_STATS_SHEET_CARD)
+    } else {
+        colors.background to colors.surface
+    }
+}
+
+@Composable
+private fun StatsMetricsSection(
+    title: String,
+    containerColor: Color,
+    metrics: List<Pair<String, String>>,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(title, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
         Column(
             modifier = Modifier.fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
+                .background(containerColor, RoundedCornerShape(16.dp))
                 .padding(horizontal = 14.dp)
         ) {
             metrics.forEach { (label, value) ->

@@ -611,6 +611,7 @@ final class AppStore: ObservableObject {
     /// baseline is atomically installed for the same session.
     private var conversationProjectionEpochs: [String: Int] = [:]
     private let historyPresentationAdmission = HistoryPresentationAdmission()
+    private var historyReadingBatches: [String: HistoryReadingBatch] = [:]
     private var historyPresentationRequiredEpochs: [String: Int] = [:]
     private var historyPresentationCommittedEpochs: [String: Int] = [:]
     private struct ConversationHistoryRequest {
@@ -895,6 +896,10 @@ final class AppStore: ObservableObject {
             if case .finished(let id, _) = event {
                 self?.conversationTimelines[sessionID]?.clearHistoryPresentationStamp(operationID: id)
                 self?.searchContextTimeline?.clearHistoryPresentationStamp(operationID: id)
+                if self?.historyReadingBatches.removeValue(forKey: sessionID) != nil {
+                    // 失败、切换或卸载消费者时也释放已收到的有效历史。
+                    self?.scheduleConversationProjection(for: sessionID)
+                }
             }
             consumer.onEvent(event)
             if case .began = event { self?.updateChatPrefetchState() }
@@ -912,13 +917,25 @@ final class AppStore: ObservableObject {
     }
 
     @discardableResult
-    func requestOlderHistoryPresentation(sessionID: String, consumerID: UUID) -> Bool {
+    func requestOlderHistoryPresentation(sessionID: String, consumerID: UUID, readingWindow: CGSize? = nil) -> Bool {
         guard sessionID == selectedSessionId,
               let operationID = historyPresentationAdmission.begin(sessionID: sessionID, consumerID: consumerID,
                 domainLoading: kmpHistoryStore.isLoading(sessionID: sessionID), hasMore: selectedHistoryHasMore,
                 producerBusy: pendingConversationHistory[sessionID] != nil || activeConversationHistory[sessionID] != nil
                     || offlineHistoryLoadingOlderSessionIds[sessionID] != nil || searchContextLoadingOlder,
                 minimumHistoryEventSequence: (kmpHistoryStore.lastEventSequence ?? 0) + 1, activate: false) else { return false }
+        if !isShowingSearchContext, selectedSession?.isRunning != true,
+           gateway.state.isConnected || kmpHistoryStore.canPrependCachedPage(sessionID: sessionID),
+           let before = events[sessionID]?.first?.seq {
+            let size = readingWindow ?? CGSize(width: 340, height: 560)
+            historyReadingBatches[sessionID] = HistoryReadingBatch(operationID: operationID,
+                originalIDs: Set(conversationTimeline(for: sessionID).currentSnapshot.items.map(\.id)),
+                viewportHeight: max(160, Double(size.height)), contentWidth: max(120, Double(size.width)),
+                fontScale: Double(UIFont.appPreferredFont(forTextStyle: .body).pointSize / 17),
+                startedAt: ProcessInfo.processInfo.systemUptime, beforeSequence: before,
+                minimumEventSequence: (kmpHistoryStore.lastEventSequence ?? 0) + 1)
+            NSLog("history-read-batch stage=start")
+        }
         loadHistory(for: sessionID, older: true, presentationOperationID: operationID)
         return historyPresentationAdmission.matches(sessionID: sessionID, operationID: operationID)
     }
@@ -934,8 +951,22 @@ final class AppStore: ObservableObject {
         // Cached mutations enqueue their exact MVI snapshot before the UI terminal.
         drainKMPEventDeliveries()
         guard !kmpHistoryStore.isLoading(sessionID: sessionID) else { return }
+        if completeHistoryReadingPage(sessionID: sessionID) { return }
         historyPresentationAdmission.terminal(sessionID: sessionID, domainLoading: false,
             operationID: operationID)
+    }
+
+    /// 一个阅读批次只发送一次终态给 viewport，传输页终态只用于继续补页。
+    private func completeHistoryReadingPage(sessionID: String, failed: Bool = false,
+        historyEventSequence: Int64? = nil) -> Bool {
+        guard var batch = historyReadingBatches[sessionID] else { return false }
+        guard historyEventSequence.map({ $0 >= batch.minimumEventSequence }) ?? true else { return true }
+        if !batch.responseReady { batch.rounds += 1 }
+        batch.responseReady = true
+        batch.failed = batch.failed || failed
+        historyReadingBatches[sessionID] = batch
+        scheduleConversationProjection(for: sessionID)
+        return true
     }
 
     var selectedHistoryHasMore: Bool {
@@ -1658,7 +1689,8 @@ final class AppStore: ObservableObject {
                     finishCachedHistoryPresentation(sessionID: sessionId, operationID: presentationOperationID)
                 }
                 let epoch = await chatHistoryCache.epoch()
-                let page = await chatHistoryCache.loadTyped(gatewayID: gatewayLocalID, sessionID: sessionId, before: before)
+                let page = await chatHistoryCache.loadTyped(gatewayID: gatewayLocalID, sessionID: sessionId, before: before,
+                    limit: historyReadingBatches[sessionId] == nil ? 80 : 160)
                 let currentEpoch = await chatHistoryCache.epoch()
                 guard presentationOperationID.map({ historyPresentationAdmission.matches(sessionID: sessionId, operationID: $0) }) ?? true else { return }
                 guard selection == chatCacheSelectionGeneration, isShowingSearchContext,
@@ -1686,7 +1718,8 @@ final class AppStore: ObservableObject {
                         offlineHistoryLoadingOlderSessionIds[sessionId] = nil
                     }
                 }
-                let page = await chatHistoryCache.loadTyped(gatewayID: gatewayLocalID, sessionID: sessionId, before: before)
+                let page = await chatHistoryCache.loadTyped(gatewayID: gatewayLocalID, sessionID: sessionId, before: before,
+                    limit: historyReadingBatches[sessionId] == nil ? 80 : 160)
                 guard presentationOperationID.map({ historyPresentationAdmission.matches(sessionID: sessionId, operationID: $0) }) ?? true,
                       selection == chatCacheSelectionGeneration, selectedSessionId == sessionId else { return }
                 guard !gateway.state.isConnected else { return }
@@ -1708,7 +1741,8 @@ final class AppStore: ObservableObject {
                 guard let self else { return }
                 defer { finishCachedHistoryPresentation(sessionID: sessionId, operationID: presentationOperationID) }
                 let epoch = await chatHistoryCache.epoch()
-                let page = await chatHistoryCache.loadTyped(gatewayID: gatewayLocalID, sessionID: sessionId, before: before)
+                let page = await chatHistoryCache.loadTyped(gatewayID: gatewayLocalID, sessionID: sessionId, before: before,
+                    limit: historyReadingBatches[sessionId] == nil ? 80 : 160)
                 let currentEpoch = await chatHistoryCache.epoch()
                 guard presentationOperationID.map({ historyPresentationAdmission.matches(sessionID: sessionId, operationID: $0) }) ?? true else { return }
                 if let window = page,
@@ -1778,7 +1812,8 @@ final class AppStore: ObservableObject {
         gateway.requestHistory(
             sessionId: sessionId,
             beforeSeq: beforeSeq,
-            maxMessages: historySyncEngine.configuration.pageMessageLimit,
+            maxMessages: beforeSeq != nil && historyReadingBatches[sessionId] != nil
+                ? 120 : historySyncEngine.configuration.pageMessageLimit,
             maxBytes: historySyncEngine.configuration.pageByteBudget,
             view: "conversation",
             historyFormatVersion: assistantStreamState.formatVersion(sessionId: sessionId)?.intValue
@@ -3848,6 +3883,37 @@ final class AppStore: ObservableObject {
     private func projectIncrementally(for sessionId: String) async {
         guard !Task.isCancelled else { return }
         let items = kmpConversationStore.items(for: sessionId)
+        if let batch = historyReadingBatches[sessionId] {
+            guard batch.responseReady, !kmpHistoryStore.isLoading(sessionID: sessionId),
+                  pendingConversationHistory[sessionId] == nil, activeConversationHistory[sessionId] == nil else { return }
+            let epoch = conversationProjectionEpochs[sessionId, default: 0]
+            let window = await Task.detached(priority: .userInitiated) { batch.window(in: items) }.value
+            guard !Task.isCancelled, historyReadingBatches[sessionId] == batch,
+                  !kmpHistoryStore.isLoading(sessionID: sessionId),
+                  conversationProjectionEpochs[sessionId, default: 0] == epoch,
+                  historyPresentationAdmission.matches(sessionID: sessionId, operationID: batch.operationID) else { return }
+            let earliest = events[sessionId]?.first?.seq
+            let reason = batch.stopReason(window: window, earliestSequence: earliest,
+                hasMore: selectedHistoryHasMore, now: ProcessInfo.processInfo.systemUptime)
+            if reason == nil, sessionId == selectedSessionId, selectedSession?.isRunning != true {
+                var next = batch
+                next.beforeSequence = earliest ?? batch.beforeSequence
+                next.minimumEventSequence = (kmpHistoryStore.lastEventSequence ?? 0) + 1
+                next.responseReady = false
+                historyReadingBatches[sessionId] = next
+                NSLog("history-read-batch stage=continue rounds=%ld messages=%ld height=%.1f", batch.rounds, window.messages, window.height)
+                loadHistory(for: sessionId, older: true, presentationOperationID: batch.operationID)
+                return
+            }
+            historyReadingBatches[sessionId] = nil
+            NSLog("history-read-batch stage=ready rounds=%ld messages=%ld height=%.1f reason=%@", batch.rounds,
+                window.messages, window.height, reason ?? "active")
+            publishConversationItems(items, for: sessionId)
+            historyPresentationAdmission.terminal(sessionID: sessionId,
+                domainLoading: kmpHistoryStore.isLoading(sessionID: sessionId), failure: batch.failed ? .failed : nil,
+                operationID: batch.operationID)
+            return
+        }
         publishConversationItems(items, for: sessionId)
     }
     private func publishConversationItems(_ items: [ConversationItem], for sessionId: String) {
@@ -4499,9 +4565,12 @@ final class AppStore: ObservableObject {
         }
 
         if ["completed", "stopped", "failed"].contains(change.outcome) {
-            historyPresentationAdmission.terminal(sessionID: change.sessionID,
-                domainLoading: change.loadingSessionIDs.contains(change.sessionID),
-                failure: change.outcome == "failed" ? .failed : nil, historyEventSequence: change.eventSequence)
+            if !completeHistoryReadingPage(sessionID: change.sessionID, failed: change.outcome == "failed",
+                historyEventSequence: change.eventSequence) {
+                historyPresentationAdmission.terminal(sessionID: change.sessionID,
+                    domainLoading: change.loadingSessionIDs.contains(change.sessionID),
+                    failure: change.outcome == "failed" ? .failed : nil, historyEventSequence: change.eventSequence)
+            }
         }
         switch change.outcome {
         case "none", "request-page":

@@ -252,6 +252,7 @@ final class ConversationViewportProxy {
         }
     }
     var historyPresentationConsumerID: UUID? { controller?.historyPresentationConsumerID }
+    var historyReadingWindowSize: CGSize? { controller?.historyReadingWindowSize }
 
 #if DEBUG
     func historyPresentationLifecycle(_ event: HistoryPresentationLifecycleEvent) { controller?.recordHistoryPresentationLifecycle(event) }
@@ -274,6 +275,11 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
     var onBottomAlignmentCompleted: () -> Void
     var onApproachingTop: () -> Void
     let historyPresentationConsumerID = UUID()
+    var historyReadingWindowSize: CGSize {
+        CGSize(width: max(120, collectionView.bounds.width - 40),
+               height: max(160, collectionView.bounds.height - collectionView.adjustedContentInset.top
+                   - collectionView.adjustedContentInset.bottom))
+    }
     var onHistoryPresentationConsumerAttached: (String, HistoryPresentationConsumer) -> Void = { _, _ in }
     var onHistoryPresentationConsumerDetached: (String, UUID) -> Void = { _, _ in }
     var onHistoryPresented: (String, UUID, HistoryPresentationStamp) -> Void = { _, _, _ in }
