@@ -96,27 +96,37 @@ enum GenuiConfig {
     static let mountBudget = GenuiMountBudget(limit: concurrentRenderLimit)
 }
 
-/// Which fences currently hold a rendering slot. Main-thread only; every caller
-/// is a SwiftUI view callback.
-final class GenuiMountBudget {
-    private let limit: Int
-    private var active: Set<UUID> = []
+/// Which fences currently hold a rendering slot, oldest first.
+///
+/// Membership is the single source of truth: a view renders exactly when its id
+/// is in `active`, so evicting the oldest entry is enough to tear that web view
+/// down. Nothing ever blocks a newly visible fence, which matters because rows
+/// hosted in the conversation viewport are not guaranteed to report
+/// `onDisappear` when they scroll away.
+final class GenuiMountBudget: ObservableObject {
+    let limit: Int
+    @Published private(set) var active: [UUID] = []
 
     init(limit: Int) {
         self.limit = limit
     }
 
-    /// `force` is the reader tapping the mount button on a fence that could not
-    /// get a slot on its own.
-    func claim(_ id: UUID, force: Bool = false) -> Bool {
-        if active.contains(id) { return true }
-        if !force, active.count >= limit { return false }
-        active.insert(id)
-        return true
+    func claim(_ id: UUID) {
+        if active.last == id { return }
+        active.removeAll { $0 == id }
+        active.append(id)
+        while active.count > limit {
+            active.removeFirst()
+        }
     }
 
     func release(_ id: UUID) {
-        active.remove(id)
+        guard active.contains(id) else { return }
+        active.removeAll { $0 == id }
+    }
+
+    func isActive(_ id: UUID) -> Bool {
+        active.contains(id)
     }
 }
 
@@ -126,17 +136,16 @@ final class GenuiMountBudget {
 ///
 /// Fences render on their own, but only while they fit in `GenuiMountBudget`:
 /// each one is a separate WebContent process holding the multi-megabyte runtime,
-/// so a conversation with a dozen charts must not open a dozen of them. A fence
-/// that scrolls away gives its slot back and is rebuilt when it returns; one that
-/// cannot get a slot offers a manual mount button instead.
+/// so a conversation with a dozen charts must not open a dozen of them. The three
+/// most recently visible fences render; the rest offer a manual mount button.
 struct GenuiBlockContainer: View {
     let plan: GenuiRenderPlan
     /// Raw fence body, kept so a failed mount still shows something readable.
     let source: String
 
+    @ObservedObject private var budget = GenuiConfig.mountBudget
     @State private var height: CGFloat = 180
     @State private var failure: String?
-    @State private var isMounted = false
     /// Stable per rendered fence, so the budget can be claimed and released
     /// across appear/disappear cycles.
     @State private var identity = UUID()
@@ -145,7 +154,7 @@ struct GenuiBlockContainer: View {
         Group {
             if let failure {
                 failureView(failure)
-            } else if isMounted {
+            } else if budget.isActive(identity) {
                 GenuiBlockWebView(plan: plan, height: $height, failure: $failure)
                     .frame(height: max(height, 64))
                     // The runtime reads the presentation theme once, at mount
@@ -162,26 +171,22 @@ struct GenuiBlockContainer: View {
         .onChange(of: plan.artifactJSON) { _, _ in
             failure = nil
             height = 180
-            isMounted = false
+            claimSlot()
         }
     }
 
     private func claimSlot() {
-        guard !isMounted, failure == nil else { return }
-        isMounted = GenuiConfig.mountBudget.claim(identity)
+        guard failure == nil else { return }
+        budget.claim(identity)
     }
 
     private func releaseSlot() {
-        guard isMounted else { return }
-        // Leaving the viewport destroys the web view, which is the whole point:
-        // the WebContent process is what costs memory.
-        GenuiConfig.mountBudget.release(identity)
-        isMounted = false
+        budget.release(identity)
     }
 
     private var mountButton: some View {
         Button {
-            isMounted = GenuiConfig.mountBudget.claim(identity, force: true)
+            budget.claim(identity)
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "square.grid.2x2")
@@ -231,9 +236,7 @@ struct GenuiBlockContainer: View {
         .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
         // A fence that cannot render must not keep a slot the next one needs.
         .onAppear {
-            guard isMounted else { return }
             GenuiConfig.mountBudget.release(identity)
-            isMounted = false
         }
     }
 }
