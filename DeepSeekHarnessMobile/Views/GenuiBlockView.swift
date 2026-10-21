@@ -90,6 +90,10 @@ enum GenuiArtifact {
 /// One rendered fence: a shell that grows once the web view reports its content
 /// height, so the row never clips a long table or chart. When the runtime cannot
 /// mount the spec, the fence falls back to its own source instead of a blank box.
+///
+/// The web view is created on first tap rather than on appear: each fence is a
+/// separate WebContent process holding the multi-megabyte runtime, and mounting
+/// a conversation's worth of them at once is what gets the app killed.
 struct GenuiBlockContainer: View {
     let plan: GenuiRenderPlan
     /// Raw fence body, kept so a failed mount still shows something readable.
@@ -97,25 +101,55 @@ struct GenuiBlockContainer: View {
 
     @State private var height: CGFloat = 180
     @State private var failure: String?
+    @State private var isMounted = false
 
     var body: some View {
         Group {
             if let failure {
                 failureView(failure)
-            } else {
+            } else if isMounted {
                 GenuiBlockWebView(plan: plan, height: $height, failure: $failure)
                     .frame(height: max(height, 64))
                     // The runtime reads the presentation theme once, at mount
                     // time, so a theme switch needs a fresh document rather than
                     // a style tweak.
                     .id(plan.artifactJSON)
+            } else {
+                mountButton
             }
         }
-        // A recycled row must not inherit the previous fence's verdict.
+        // A recycled row must not inherit the previous fence's state.
         .onChange(of: plan.artifactJSON) { _, _ in
             failure = nil
             height = 180
+            isMounted = false
         }
+    }
+
+    private var mountButton: some View {
+        Button {
+            isMounted = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "square.grid.2x2")
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(String(localized: "genui.mount", defaultValue: "点按渲染 GenUI 组件"))
+                        .font(.subheadline)
+                    Text(String(localized: "genui.mount.hint", defaultValue: "不自动加载，避免一次打开过多占用内存"))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
     }
 
     private func failureView(_ message: String) -> some View {
@@ -250,6 +284,12 @@ private struct GenuiBlockWebView: UIViewRepresentable {
             let nsError = error as NSError
             guard nsError.code != NSURLErrorCancelled else { return }
             fail(nsError.localizedDescription)
+        }
+
+        /// WebKit kills an embedded process under memory pressure; without this
+        /// the card would sit as an empty frame with no explanation.
+        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+            fail(String(localized: "genui.failed.process", defaultValue: "渲染进程已被系统回收"))
         }
 
         func userContentController(

@@ -1,6 +1,54 @@
 {
   "sourceLanguage" : "zh-Hans",
   "strings" : {
+    "genui.mount" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap to render the GenUI component"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "点按渲染 GenUI 组件"
+          }
+        }
+      }
+    },
+    "genui.mount.hint" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not loaded automatically, so one conversation cannot open too many at once"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不自动加载，避免一次打开过多占用内存"
+          }
+        }
+      }
+    },
+    "genui.failed.process" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The rendering process was reclaimed by the system"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "渲染进程已被系统回收"
+          }
+        }
+      }
+    },
     "genui.failed" : {
       "localizations" : {
         "en" : {
