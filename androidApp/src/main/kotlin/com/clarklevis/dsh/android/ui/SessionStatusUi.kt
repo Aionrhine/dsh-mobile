@@ -222,7 +222,7 @@ private fun SessionStatsPopover(
         snapshot.tokenUsage?.totals?.inputTokens?.let {
             AgentStatusRow(appText("输入"), "${SessionStatsFormatter.compact(it)} tok")
         }
-        HorizontalDivider(color = Color.Black.copy(alpha = 0.08f))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Text(
             appText("查看完整统计"),
             modifier = Modifier.fillMaxWidth().clickable(onClick = onViewFullStats)
@@ -236,7 +236,7 @@ private fun SessionStatsPopover(
 @Composable
 private fun AgentStatusRow(title: String, value: String) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(title, color = Color(0xFF7A7A80), fontSize = 14.sp)
+        Text(title, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
         Spacer(Modifier.weight(1f))
         Text(
             value,
@@ -253,6 +253,7 @@ internal fun SessionStatsSheet(
     snapshot: GatewaySessionStatsSnapshot?,
     onDismiss: () -> Unit
 ) {
+    val colors = MaterialTheme.colorScheme
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val coroutineScope = rememberCoroutineScope()
     val expandedTopInset = adaptiveWindowSize().height * 0.12f
@@ -272,8 +273,8 @@ internal fun SessionStatsSheet(
         modifier = Modifier.adaptiveSheetBounds().fillMaxHeight().padding(top = expandedTopInset),
         sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
-        containerColor = Color(0xFFF2F2F7),
-        contentColor = Color(0xFF111217),
+        containerColor = colors.background,
+        contentColor = colors.onBackground,
         scrimColor = Color.Black.copy(alpha = 0.28f),
         dragHandle = {
             Box(
@@ -282,7 +283,7 @@ internal fun SessionStatsSheet(
             ) {
                 Box(
                     Modifier.width(36.dp).height(5.dp)
-                        .background(Color(0xFF8E8E93), CircleShape)
+                        .background(colors.outline, CircleShape)
                 )
             }
         }
@@ -300,8 +301,9 @@ internal fun SessionStatsSheet(
                     modifier = Modifier.align(Alignment.CenterEnd).height(44.dp)
                         .clickable(role = Role.Button, onClick = dismissWithAnimation),
                     shape = CircleShape,
-                    color = Color.White.copy(alpha = 0.72f),
-                    border = BorderStroke(0.7.dp, Color.Black.copy(alpha = 0.06f))
+                    color = colors.surface,
+                    contentColor = colors.onSurface,
+                    border = BorderStroke(0.7.dp, colors.outlineVariant)
                 ) {
                     Box(Modifier.padding(horizontal = 18.dp), contentAlignment = Alignment.Center) {
                         Text(appText("完成"), fontSize = 16.sp, fontWeight = FontWeight.Medium)
@@ -319,7 +321,7 @@ internal fun SessionStatsSheet(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(appText("正在读取会话统计"), fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                             Spacer(Modifier.height(8.dp))
-                            Text(appText("统计会在本轮结束后自动更新。"), color = Color(0xFF8E8E93), fontSize = 14.sp)
+                            Text(appText("统计会在本轮结束后自动更新。"), color = colors.onSurfaceVariant, fontSize = 14.sp)
                         }
                     }
                 } else {
@@ -360,7 +362,7 @@ internal fun SessionStatsSheet(
                     snapshot.asOfSeq?.let {
                         Text(
                             appText("数据截至事件 #%1\$s", it),
-                            color = Color(0xFFAEAEB2),
+                            color = colors.onSurfaceVariant,
                             fontSize = 12.sp,
                             fontFamily = FontFamily.Monospace
                         )
@@ -378,7 +380,7 @@ private fun StatsMetricsSection(title: String, metrics: List<Pair<String, String
         Text(title, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
         Column(
             modifier = Modifier.fillMaxWidth()
-                .background(Color.Black.copy(alpha = 0.025f), RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
                 .padding(horizontal = 14.dp)
         ) {
             metrics.forEach { (label, value) ->
@@ -386,10 +388,11 @@ private fun StatsMetricsSection(title: String, metrics: List<Pair<String, String
                     modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(label, color = Color(0xFF8E8E93), fontSize = 16.sp)
+                    Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 16.sp)
                     Spacer(Modifier.weight(1f))
                     Text(
                         value,
+                        color = MaterialTheme.colorScheme.onSurface,
                         style = MaterialTheme.typography.bodyLarge.copy(fontFeatureSettings = "tnum"),
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Medium

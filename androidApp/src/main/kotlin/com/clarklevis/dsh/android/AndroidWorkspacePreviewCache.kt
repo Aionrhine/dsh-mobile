@@ -20,7 +20,7 @@ internal class AndroidWorkspacePreviewCache(
         if (directory.canonicalFile != File(root.canonicalFile, directory.name)) return null
         val file = File(directory, safeName(version.name))
         if (file.canonicalFile != File(directory.canonicalFile, file.name)) return null
-        val epoch = storage?.epoch ?: 0
+        val epoch = storage?.categoryEpoch(AndroidCacheDiskManager.PREVIEWS) ?: 0
         val lease = access { storage?.lease(file) }
         var valid = false
         return try {
@@ -32,7 +32,7 @@ internal class AndroidWorkspacePreviewCache(
                 null
             } else {
                 access {
-                    if (file.isFile && (storage?.epoch ?: 0) == epoch) {
+                    if (file.isFile && (storage?.categoryEpoch(AndroidCacheDiskManager.PREVIEWS) ?: 0) == epoch) {
                         directory.setLastModified(System.currentTimeMillis())
                         onReady(file)
                         file
@@ -56,7 +56,7 @@ internal class AndroidWorkspacePreviewCache(
     fun store(
         source: File,
         completion: SharedWorkspaceFileCompletion,
-        expectedEpoch: Long = storage?.epoch ?: 0,
+        expectedEpoch: Long = storage?.categoryEpoch(AndroidCacheDiskManager.PREVIEWS) ?: 0,
         onReady: (File) -> Unit = {}
     ): File? {
         if (!safeRoot()) return null
@@ -79,7 +79,7 @@ internal class AndroidWorkspacePreviewCache(
             File(staging, "sha256").writeText(completion.sha256)
             File(staging, "gateway").writeText(gatewayId)
             val saved = access {
-                if ((storage?.epoch ?: 0) != expectedEpoch) return@access null
+                if ((storage?.categoryEpoch(AndroidCacheDiskManager.PREVIEWS) ?: 0) != expectedEpoch) return@access null
                 // 已存在的不可变版本可能正被别的 reader 使用，不覆盖它。
                 if (directory.exists()) return@access null
                 check(staging.renameTo(directory))

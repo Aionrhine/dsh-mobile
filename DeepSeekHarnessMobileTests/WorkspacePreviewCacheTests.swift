@@ -3,6 +3,35 @@ import CryptoKit
 @testable import DeepSeekHarnessMobile
 
 final class WorkspacePreviewCacheTests: XCTestCase {
+    func testSeparatePreviewAndTemporaryCleanupPreservesOtherCategoryAndLeasedFiles() throws {
+        try withDirectory { directory in
+            let previews = directory.appendingPathComponent("previews")
+            let temporary = directory.appendingPathComponent("temporary")
+            let preview = previews.appendingPathComponent("cached/document.pdf")
+            let temp = temporary.appendingPathComponent("download/document.pdf")
+            let saved = directory.appendingPathComponent("saved.pdf")
+            for file in [preview, temp, saved] {
+                try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try Data("content".utf8).write(to: file)
+            }
+            let cache = WorkspacePreviewCache(gatewayID: "test", root: previews)
+            XCTAssertGreaterThan(cache.statistics(temporaryRoot: temporary).temporaryBytes, 0)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: temp.path), "统计不应触发清理")
+            WorkspaceFileLifetime.shared.retain(temp)
+            cache.clearTemporaryFiles(temporaryRoot: temporary)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: preview.path))
+            XCTAssertTrue(FileManager.default.fileExists(atPath: temp.path))
+            WorkspaceFileLifetime.shared.release(temp)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: temp.path))
+            try FileManager.default.createDirectory(at: temp.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data("content".utf8).write(to: temp)
+            cache.maintain(temporaryRoot: nil, clear: true)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: preview.path))
+            XCTAssertTrue(FileManager.default.fileExists(atPath: temp.path))
+            XCTAssertTrue(FileManager.default.fileExists(atPath: saved.path))
+        }
+    }
+
     private let fileDigest = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
 
     func testPersistsAcrossInstancesAndSeparatesVersionsGatewaysSessionsAndPaths() throws {

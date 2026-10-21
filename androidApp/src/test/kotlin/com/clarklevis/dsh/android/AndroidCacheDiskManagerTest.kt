@@ -8,6 +8,43 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AndroidCacheDiskManagerTest {
+    @Test fun categoryCleanupKeepsOtherResourcesAndActiveFiles() {
+        val categories = listOf(
+            AndroidCacheDiskManager.PREVIEWS, AndroidCacheDiskManager.IMAGES,
+            AndroidCacheDiskManager.TEMPORARY, AndroidCacheDiskManager.UPDATES
+        )
+        categories.forEach { selected ->
+            directory { root ->
+                val files = categories.associateWith { category -> file(root, "$category/group/content", 20) }
+                val userFile = file(root, "exports/saved.txt", 12)
+                val manager = manager(root)
+                val epochs = categories.associateWith(manager::categoryEpoch)
+                val lease = manager.lease(files.getValue(selected))
+                manager.clearCategory(selected)
+                categories.forEach { category ->
+                    assertEquals(epochs.getValue(category) + if (category == selected) 1 else 0, manager.categoryEpoch(category))
+                }
+                files.values.forEach { assertTrue(it.exists()) }
+                lease.close()
+                val stats = manager.clearCategory(selected)
+                assertFalse(files.getValue(selected).exists())
+                files.filterKeys { it != selected }.values.forEach { assertTrue(it.exists()) }
+                assertTrue(userFile.exists())
+                assertEquals(60L, stats.totalBytes)
+            }
+        }
+    }
+
+    @Test fun statisticsDoesNotCleanTemporaryFilesOrExpiredImages() = directory { root ->
+        val temporary = file(root, "workspace-files/orphan/file", 20)
+        val image = file(root, "gateway-image-attachments/g/image", 15, 0)
+        val manager = manager(root, now = { Long.MAX_VALUE / 2 })
+        val stats = manager.statistics()
+        assertEquals(35L, stats.totalBytes)
+        assertTrue(temporary.exists())
+        assertTrue(image.exists())
+    }
+
     @Test fun orphanCleanupRetainsActiveDownloadAndPreservesUnmanagedSources() = directory { root ->
         val active = file(root, "workspace-files/active/video.mp4", 20)
         val orphan = file(root, "workspace-files/dead/video.mp4", 15)

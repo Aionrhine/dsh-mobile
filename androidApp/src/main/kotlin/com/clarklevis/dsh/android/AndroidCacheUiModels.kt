@@ -10,6 +10,28 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 
 // Android 模块未启用 serialization 编译插件，桥接响应通过共享 JSON 协议显式解析。
+enum class CacheStorageCategory { CHATS, IMAGES, PREVIEWS, TEMPORARY, UPDATES }
+
+data class AndroidStorageUsage(
+    val chatBytes: Long,
+    val imageBytes: Long,
+    val previewBytes: Long,
+    val temporaryBytes: Long,
+    val updateBytes: Long,
+    val protectedBytes: Long,
+    val freeBytes: Long
+) {
+    val totalBytes: Long get() = chatBytes + imageBytes + previewBytes + temporaryBytes + updateBytes
+
+    fun bytes(category: CacheStorageCategory): Long = when (category) {
+        CacheStorageCategory.CHATS -> chatBytes
+        CacheStorageCategory.IMAGES -> imageBytes
+        CacheStorageCategory.PREVIEWS -> previewBytes
+        CacheStorageCategory.TEMPORARY -> temporaryBytes
+        CacheStorageCategory.UPDATES -> updateBytes
+    }
+}
+
 data class AndroidLocalChatMatch(val sessionId: String, val seq: Int, val time: Double, val snippet: String)
 
 internal data class AndroidLocalChatMatches(val hasMore: Boolean = false, val results: List<AndroidLocalChatMatch> = emptyList()) {

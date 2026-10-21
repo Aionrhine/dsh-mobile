@@ -80,6 +80,7 @@ internal fun SettingsScreen(
     onOpenAgentPresets: () -> Unit,
     onOpenDefaultModel: () -> Unit,
     onOpenFontSize: () -> Unit,
+    onOpenStorage: () -> Unit = {},
     updateModel: com.clarklevis.dsh.android.update.AppUpdateViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 ) {
     val updateState by updateModel.state.collectAsStateWithLifecycle()
@@ -205,15 +206,15 @@ internal fun SettingsScreen(
                         SettingsDivider()
                         FontSizeSettingsRow(onOpenFontSize)
                     }
-                    SettingsSection(
-                        title = "本地缓存与存储",
-                        footer = "聊天和附件缓存可重新下载；正在预览、导出或交给其他应用使用的文件会保留。不会删除用户保存的文件、待发消息或上传源。外部应用文件最多保留 6 小时。"
-                    ) {
-                        Text(stateHolder.cacheStorageSummary, modifier = Modifier.padding(16.dp), fontSize = 13.sp)
-                        SettingsDivider()
-                        SettingsActionRow("清理可回收缓存", enabled = !stateHolder.cacheMaintenanceRunning) {
-                            stateHolder.refreshCacheStorage(clear = true)
-                        }
+                    SettingsSection(appText("本地存储")) {
+                        SettingsValueRow(
+                            title = appText("存储空间"),
+                            value = stateHolder.storageUsage?.let {
+                                android.text.format.Formatter.formatFileSize(context, it.totalBytes)
+                            }.orEmpty(),
+                            modifier = Modifier.testTag("storage-space-settings-row"),
+                            onClick = onOpenStorage
+                        )
                     }
                     SettingsSection(appText("关于")) {
                         SettingsValueRow(
@@ -729,11 +730,12 @@ private fun SettingsValueRow(
     value: String,
     enabled: Boolean = true,
     isLoading: Boolean = false,
+    modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null
 ) {
     val rowAlpha = if (enabled) 1f else 0.4f
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 54.dp)
+        modifier.fillMaxWidth().heightIn(min = 54.dp)
             .clickable(enabled = enabled && onClick != null) { onClick?.invoke() },
         verticalAlignment = Alignment.CenterVertically
     ) {

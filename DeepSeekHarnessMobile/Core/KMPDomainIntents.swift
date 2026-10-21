@@ -1,4 +1,5 @@
 import Foundation
+import DeepSeekHarnessShared
 
 /// iOS 平台层发往 KMP SessionList Store 的用户/网关 Intent。
 /// 这里只描述跨层输入，不包含 Swift 领域状态或 Reducer。
@@ -10,7 +11,7 @@ enum KMPSessionListIntent {
     case messageSent(sessionID: String, agentPreset: String?)
     case knownSessionAdded(String)
     case eventReceived(SessionEvent)
-    case historyReceived(sessionID: String, events: [SessionEvent])
+    case historyReceived(sessionID: String, events: [SessionEvent], snapshot: SharedHistoryProjectionSnapshot? = nil)
     case markRead(String)
 }
 

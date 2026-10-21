@@ -511,9 +511,17 @@ struct ConversationView: View {
                 },
                 onApproachingTop: {
                     guard let sessionID = store.selectedSessionId,
-                          store.selectedHistoryHasMore,
-                          !store.historyLoadingSessionIds.contains(sessionID) else { return }
-                    store.loadHistory(for: sessionID, older: true)
+                          let consumerID = viewportProxy.historyPresentationConsumerID else { return }
+                    store.requestOlderHistoryPresentation(sessionID: sessionID, consumerID: consumerID)
+                },
+                onHistoryPresentationConsumerAttached: { sessionID, consumer in
+                    store.attachHistoryPresentationConsumer(sessionID: sessionID, consumer: consumer)
+                },
+                onHistoryPresentationConsumerDetached: { sessionID, consumerID in
+                    store.detachHistoryPresentationConsumer(sessionID: sessionID, consumerID: consumerID)
+                },
+                onHistoryPresented: { sessionID, consumerID, stamp in
+                    store.acknowledgeHistoryPresentation(sessionID: sessionID, consumerID: consumerID, stamp: stamp)
                 }
             )
             // Session 是 UIKit viewport 的身份边界。切换时直接销毁旧
@@ -562,13 +570,16 @@ struct ConversationView: View {
                 .allowsHitTesting(false)
 
             VStack(spacing: 0) {
-                if shouldShowScrollToBottom {
-                    scrollToBottomButton {
-                        viewportScrollToBottomToken &+= 1
+                Group {
+                    if shouldShowScrollToBottom {
+                        scrollToBottomButton {
+                            viewportScrollToBottomToken &+= 1
+                        }
+                        .padding(.bottom, 8)
+                        .transition(.scale(scale: 0.85).combined(with: .opacity))
                     }
-                    .padding(.bottom, 8)
-                    .transition(.scale(scale: 0.85).combined(with: .opacity))
                 }
+                .animation(.easeOut(duration: 0.16), value: shouldShowScrollToBottom)
 
                 VStack(alignment: .leading, spacing: 0) {
                     if let request = store.selectedPendingApprovalRequest {
@@ -736,7 +747,6 @@ struct ConversationView: View {
                     .accessibilityIdentifier("voice-input-toast")
             }
         }
-        .animation(.easeOut(duration: 0.16), value: shouldShowScrollToBottom)
         .onPreferenceChange(ComposerHeightPreferenceKey.self) { height in
             guard height > 0, abs(height - composerHeight) > 0.5 else { return }
             composerHeight = height
@@ -4466,7 +4476,7 @@ struct MarkdownContent: View {
     }
 
     var body: some View {
-        Markdown(ParsedMarkdownCache.document(for: markdownSource).linkingInlineCode(codeDestinations))
+        Markdown(PreparedMarkdownCache.document(for: text, filePaths: knownFiles.map(\.path)))
             .environment(\.openURL, OpenURLAction { url in
                 guard let onOpenFile else { return .systemAction }
                 if url.scheme == "dsh-file-reference", let index = Int(url.lastPathComponent), knownFiles.indices.contains(index) {
@@ -4485,25 +4495,119 @@ struct MarkdownContent: View {
             .dynamicTypeSize(.large)
     }
 
-    private var codeDestinations: [String: String] {
-        let paths = knownFiles.map(\.path)
-        var destinations: [String: String] = [:]
-        for (index, file) in knownFiles.enumerated() {
-            let destination = "dsh-file-reference:///\(index)"
-            destinations[file.path] = destination
-            let name = file.path.replacingOccurrences(of: "\\", with: "/").split(separator: "/").last.map(String.init) ?? file.path
-            if ConversationFileReferences.shared.knownPath(code: name, paths: paths) != nil {
-                destinations[name] = destination
-            }
-        }
-        return destinations
+}
+
+/// Reuses only render products; callbacks, font sizes and themes stay on the
+/// current view. File order owns the synthetic URL indices and belongs in the key.
+enum PreparedMarkdownCache {
+    private struct Key: Hashable {
+        let source: String
+        let filePaths: [String]
     }
 
-    private var markdownSource: String {
-        // The thin spaces participate in text layout, keeping adjacent
-        // punctuation outside the chip. MarkdownUI's renderer merges their
-        // separate font runs into one rounded background on modern iOS.
-        knownFiles.isEmpty ? InlineCodePadding.apply(to: text) : text
+    private static let cache = MarkdownRenderProductCache<Key, MarkdownUI.MarkdownContent>(
+        countLimit: 128, costLimit: 8 * 1_024 * 1_024
+    )
+
+    static func document(for source: String, filePaths: [String]) -> MarkdownUI.MarkdownContent {
+        let key = Key(source: source, filePaths: filePaths)
+        return cache.value(for: key) {
+            // File references keep the original inline-code text for AST linking.
+            let padded = filePaths.isEmpty ? InlineCodePadding.apply(to: source) : source
+            var destinations: [String: String] = [:]
+            for (index, path) in filePaths.enumerated() {
+                let destination = "dsh-file-reference:///\(index)"
+                destinations[path] = destination
+                let name = path.replacingOccurrences(of: "\\", with: "/")
+                    .split(separator: "/").last.map(String.init) ?? path
+                if ConversationFileReferences.shared.knownPath(code: name, paths: filePaths) != nil {
+                    destinations[name] = destination
+                }
+            }
+            let document = ParsedMarkdownCache.document(for: padded).linkingInlineCode(destinations)
+            let bytes = source.utf16.count * 2 + filePaths.reduce(0) { $0 + $1.utf16.count * 2 }
+            // Account for the retained key/source and parsed/re-written tree.
+            return (document, bytes * 4)
+        }
+    }
+}
+
+/// A small, bounded LRU for immutable rendering products. Oversized entries are
+/// rendered normally without displacing the whole conversation's cached work.
+final class MarkdownRenderProductCache<Key: Hashable, Value>: @unchecked Sendable {
+    private struct Entry {
+        let value: Value
+        let cost: Int
+    }
+
+    private let lock = NSLock()
+    private let countLimit: Int
+    private let costLimit: Int
+    private var entries: [Key: Entry] = [:]
+    private var recency: [Key] = []
+    private var totalCost = 0
+    private var generation: UInt64 = 0
+    private var memoryWarningObserver: NSObjectProtocol?
+
+    init(countLimit: Int, costLimit: Int) {
+        self.countLimit = max(0, countLimit)
+        self.costLimit = max(0, costLimit)
+        memoryWarningObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: nil
+        ) { [weak self] _ in
+            self?.removeAll()
+        }
+    }
+
+    deinit {
+        if let memoryWarningObserver {
+            NotificationCenter.default.removeObserver(memoryWarningObserver)
+        }
+    }
+
+    func value(for key: Key, makeValue: () -> (Value, Int)) -> Value {
+        lock.lock()
+        if let entry = entries[key] {
+            touch(key)
+            lock.unlock()
+            return entry.value
+        }
+        let startedGeneration = generation
+        lock.unlock()
+        let (value, cost) = makeValue()
+        guard countLimit > 0, cost >= 0, cost <= costLimit else { return value }
+        lock.lock()
+        defer { lock.unlock() }
+        guard generation == startedGeneration else { return value }
+        if let entry = entries[key] {
+            touch(key)
+            return entry.value
+        }
+        while entries.count >= countLimit || cost > costLimit - totalCost {
+            guard let oldest = recency.first else { break }
+            recency.removeFirst()
+            if let removed = entries.removeValue(forKey: oldest) {
+                totalCost -= removed.cost
+            }
+        }
+        entries[key] = Entry(value: value, cost: cost)
+        totalCost += cost
+        recency.append(key)
+        return value
+    }
+
+    func removeAll() {
+        lock.lock()
+        defer { lock.unlock() }
+        entries.removeAll(keepingCapacity: false)
+        recency.removeAll(keepingCapacity: false)
+        totalCost = 0
+        generation &+= 1
+    }
+
+    private func touch(_ key: Key) {
+        recency.removeAll { $0 == key }
+        recency.append(key)
     }
 }
 
@@ -4662,9 +4766,7 @@ private struct DSHCodeSyntaxHighlighter: CodeSyntaxHighlighter {
 
     private func isJSON(_ code: String, language: String?) -> Bool {
         if let language, ["json", "jsonc"].contains(language.lowercased()) { return true }
-        guard let data = code.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) else { return false }
-        return JSONSerialization.isValidJSONObject(object)
+        return JSONSyntaxHighlighter.isJSON(code)
     }
 }
 
@@ -4672,8 +4774,29 @@ enum JSONSyntaxHighlighter {
     private static let expression = try! NSRegularExpression(
         pattern: #"\"(?:\\.|[^\"\\])*\"|-?\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b|\b(?:true|false|null)\b"#
     )
+    private static let keySuffixExpression = try! NSRegularExpression(pattern: #"\s*:"#)
+    private static let highlighted = MarkdownRenderProductCache<String, AttributedString>(
+        countLimit: 128, costLimit: 4 * 1_024 * 1_024
+    )
+    private static let classifications = MarkdownRenderProductCache<String, Bool>(
+        countLimit: 128, costLimit: 1_024 * 1_024
+    )
+
+    static func isJSON(_ source: String) -> Bool {
+        classifications.value(for: source) {
+            let object = source.data(using: .utf8).flatMap { try? JSONSerialization.jsonObject(with: $0) }
+            return (object.map(JSONSerialization.isValidJSONObject) ?? false, source.utf16.count * 2)
+        }
+    }
 
     static func highlight(_ source: String) -> AttributedString {
+        highlighted.value(for: source) {
+            // Store semantic colors without theme-resolved UIColor/font metrics.
+            (makeHighlight(source), source.utf16.count * 12)
+        }
+    }
+
+    private static func makeHighlight(_ source: String) -> AttributedString {
         let string = source as NSString
         let fullRange = NSRange(location: 0, length: string.length)
         let matches = expression.matches(in: source, range: fullRange)
@@ -4685,7 +4808,7 @@ enum JSONSyntaxHighlighter {
                 result += styled(string.substring(with: NSRange(location: cursor, length: match.range.location - cursor)), color: .primary)
             }
             let token = string.substring(with: match.range)
-            result += styled(token, color: color(for: token, in: string, after: NSMaxRange(match.range)))
+            result += styled(token, color: color(for: token, in: source, utf16Length: string.length, after: NSMaxRange(match.range)))
             cursor = NSMaxRange(match.range)
         }
         if cursor < string.length {
@@ -4694,10 +4817,14 @@ enum JSONSyntaxHighlighter {
         return result
     }
 
-    private static func color(for token: String, in source: NSString, after location: Int) -> Color {
+    private static func color(for token: String, in source: String, utf16Length: Int, after location: Int) -> Color {
         if token.hasPrefix("\"") {
-            let remainder = source.substring(from: location)
-            let isKey = remainder.range(of: #"^\s*:"#, options: .regularExpression) != nil
+            // Match the original text range: copying every remaining suffix
+            // makes key detection quadratic on long JSON blocks.
+            let isKey = keySuffixExpression.firstMatch(
+                in: source, options: .anchored,
+                range: NSRange(location: location, length: utf16Length - location)
+            ) != nil
             return isKey ? DSHColor.ocean : Color(red: 0.10, green: 0.55, blue: 0.38)
         }
         if token == "true" || token == "false" { return DSHColor.purple }

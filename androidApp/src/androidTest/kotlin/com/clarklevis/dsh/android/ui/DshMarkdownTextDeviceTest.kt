@@ -18,6 +18,7 @@ import io.noties.markwon.ext.tables.TableRowSpan
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -32,6 +33,7 @@ class DshMarkdownTextDeviceTest {
         var rootView: View? = null
         val source = mutableStateOf("s1")
         val opened = mutableListOf<String>()
+        var originalText: CharSequence? = null
         val markdown = "[正文](<build/旅游%20攻略.pdf#L24>) `tutorial.pdf` `report.pdf` `unknown.pdf` [网页](https://example.com)"
         compose.setContent {
             rootView = LocalView.current
@@ -50,10 +52,58 @@ class DshMarkdownTextDeviceTest {
             assertEquals(setOf("正文", "tutorial.pdf", "网页"), labels.toSet())
             spans.filterIndexed { index, _ -> labels[index] != "网页" }.forEach { it.onClick(view) }
         }
-        compose.runOnIdle { clickFileReferences(); source.value = "s2" }
+        compose.runOnIdle {
+            clickFileReferences()
+            originalText = requireNotNull(rootView?.findMarkdownTextView()).text
+            source.value = "s2"
+        }
         compose.waitForIdle()
-        compose.runOnIdle { clickFileReferences() }
+        compose.runOnIdle {
+            assertSame("只改变会话回调不能重新设置正文和触发测量", originalText, rootView?.findMarkdownTextView()?.text)
+            clickFileReferences()
+        }
         assertEquals(listOf("s1:build/旅游 攻略.pdf", "s1:build/tutorial.pdf", "s2:build/旅游 攻略.pdf", "s2:build/tutorial.pdf"), opened)
+    }
+
+    @Test
+    fun knownFileChangesAndCallbackRemovalRebindOnlyAffectedLinks() {
+        var rootView: View? = null
+        val files = mutableStateOf(listOf(PresentedFile("a/report.pdf")))
+        val enabled = mutableStateOf(true)
+        val opened = mutableListOf<String>()
+        compose.setContent {
+            rootView = LocalView.current
+            DshTheme {
+                DshLazyMarkdownText(
+                    "请看 `report.pdf`",
+                    knownFiles = files.value,
+                    onOpenFile = if (enabled.value) ({ path -> opened += path }) else null
+                )
+            }
+        }
+        fun clickSingleLink() {
+            val view = requireNotNull(rootView?.findMarkdownTextView())
+            val text = view.text as Spanned
+            text.getSpans(0, text.length, ClickableSpan::class.java).single().onClick(view)
+        }
+        compose.runOnIdle {
+            clickSingleLink()
+            files.value = listOf(PresentedFile("b/report.pdf"))
+        }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            clickSingleLink()
+            enabled.value = false
+        }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            val text = requireNotNull(rootView?.findMarkdownTextView()).text as Spanned
+            assertTrue(text.getSpans(0, text.length, ClickableSpan::class.java).isEmpty())
+            enabled.value = true
+        }
+        compose.waitForIdle()
+        compose.runOnIdle { clickSingleLink() }
+        assertEquals(listOf("a/report.pdf", "b/report.pdf", "b/report.pdf"), opened)
     }
 
     @Test
