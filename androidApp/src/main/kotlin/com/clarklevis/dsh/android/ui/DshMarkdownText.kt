@@ -72,7 +72,9 @@ internal data class DshMarkdownPalette(
 
 private data class MarkdownRenderTag(
     val source: String,
-    val palette: DshMarkdownPalette
+    val palette: DshMarkdownPalette,
+    val knownFilePaths: List<String>,
+    val fileLinksEnabled: Boolean
 )
 
 private data class MarkdownRenderCacheKey(
@@ -167,6 +169,7 @@ internal suspend fun trimMarkdownMemory() {
     DshAsyncMarkdownRenderer.clear()
     DshMarkdownRenderCache.clear()
     DshMarkdownTextApplier.clear()
+    markdownLayoutBlocksCache.clear()
 }
 
 private object DshMarkdownTextApplier {
@@ -293,6 +296,7 @@ private fun DshRenderedMarkdownText(
     val markwon = remember(context, palette) {
         DshMarkdownTextApplier.get(context, palette)
     }
+    val knownFilePaths = remember(knownFiles) { knownFiles.map { it.path } }
     AndroidView(
         factory = { viewContext ->
             DshMarkdownTextView(viewContext).apply {
@@ -306,19 +310,27 @@ private fun DshRenderedMarkdownText(
         onReset = { textView ->
             // Opt in to AndroidView reuse inside LazyColumn. update 会在下一次测量前写入新内容。
             textView.tag = null
+            textView.onOpenFile = null
         },
+        onRelease = { textView -> textView.onOpenFile = null },
         update = { textView ->
-            textView.setTextSize(TypedValue.COMPLEX_UNIT_PX, textSizePx)
-            textView.setLineSpacing(lineSpacingExtra, 1f)
+            if (textView.textSize != textSizePx) {
+                textView.setTextSize(TypedValue.COMPLEX_UNIT_PX, textSizePx)
+            }
+            if (textView.lineSpacingExtra != lineSpacingExtra) {
+                textView.setLineSpacing(lineSpacingExtra, 1f)
+            }
             textView.setTextColor(palette.textColor)
             textView.setLinkTextColor(palette.linkColor)
-            val nextTag = MarkdownRenderTag(markdown, palette)
+            // 回调更新不改变文本排版，span 只引用所属 View，避免缓存捕获旧会话。
+            textView.onOpenFile = onOpenFile
+            val nextTag = MarkdownRenderTag(markdown, palette, knownFilePaths, onOpenFile != null)
+            if (textView.tag == nextTag) return@AndroidView
             if (onOpenFile != null) {
-                // 每个 TextView 独立持有回调；缓存的 Spanned 不捕获旧会话。
                 val linked = SpannableStringBuilder(rendered)
                 fun addFileSpan(start: Int, end: Int, path: String) {
                     linked.setSpan(object : ClickableSpan() {
-                        override fun onClick(widget: View) { onOpenFile(path) }
+                        override fun onClick(widget: View) { textView.onOpenFile?.invoke(path) }
                         override fun updateDrawState(ds: TextPaint) { ds.color = palette.linkColor }
                     }, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 }
@@ -338,16 +350,15 @@ private fun DshRenderedMarkdownText(
                         // Markwon 在 Code AST 的字面值两侧各插入一个 NBSP，匹配时只去掉这两个布局字符。
                         val codeStart = start + if (start < end && linked[start] == '\u00a0') 1 else 0
                         val codeEnd = end - if (end > codeStart && linked[end - 1] == '\u00a0') 1 else 0
-                        ConversationFileReferences.knownPath(linked.subSequence(codeStart, codeEnd).toString(), knownFiles.map { it.path })
+                        ConversationFileReferences.knownPath(linked.subSequence(codeStart, codeEnd).toString(), knownFilePaths)
                             ?.let { addFileSpan(codeStart, codeEnd, it) }
                     }
                 }
                 markwon.setParsedMarkdown(textView, linked)
-                textView.tag = null
-            } else if (textView.tag != nextTag) {
+            } else {
                 markwon.setParsedMarkdown(textView, rendered)
-                textView.tag = nextTag
             }
+            textView.tag = nextTag
         },
         modifier = modifier.fillMaxWidth()
     )
@@ -443,6 +454,8 @@ internal class DshInlineCodeSpan(
 }
 
 internal class DshMarkdownTextView(context: Context) : AppCompatTextView(context) {
+    internal var onOpenFile: ((String) -> Unit)? = null
+
     override fun onDraw(canvas: Canvas) {
         drawInlineCodeBackgrounds(canvas)
         super.onDraw(canvas)

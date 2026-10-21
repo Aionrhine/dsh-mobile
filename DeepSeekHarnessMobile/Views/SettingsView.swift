@@ -1,6 +1,7 @@
 import SwiftUI
 import WebKit
 import MarkdownUI
+import Charts
 
 struct SettingsView: View {
     @Environment(\.openURL) private var openURL
@@ -230,15 +231,19 @@ struct SettingsView: View {
             }
 
             Section {
-                Text(store.cacheStorageSummary.isEmpty ? "正在统计…" : store.cacheStorageSummary)
-                    .font(.footnote).foregroundStyle(.secondary)
-                Button("刷新缓存统计") { Task { await store.refreshCacheStorage() } }
-                Button("清理可回收缓存", role: .destructive) { Task { await store.refreshCacheStorage(clear: true) } }
-                    .disabled(store.cacheStorageBusy)
-            } header: {
-                Text("本地缓存")
-            } footer: {
-                Text("正在预览、下载或导出的文件在关闭后回收；已导出的文件和待发内容保留。")
+                NavigationLink {
+                    StorageSpaceView()
+                } label: {
+                    HStack {
+                        Text("存储空间")
+                        Spacer()
+                        if let usage = store.storageUsage {
+                            Text(verbatim: ByteCountFormatter.string(fromByteCount: usage.totalBytes, countStyle: .file))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .accessibilityIdentifier("storage-space-settings-row")
             }
 
             Section("关于") {
@@ -968,5 +973,238 @@ private struct BundledAppReleaseInfo: Decodable {
               let notes = try? String(contentsOf: notesURL, encoding: .utf8) else { return nil }
         info.notes = notes
         return info
+    }
+}
+
+private extension CacheStorageCategory {
+    var title: String {
+        switch self {
+        case .chats: String(localized: "聊天记录")
+        case .images: String(localized: "图片")
+        case .previews: String(localized: "文件预览")
+        case .temporary: String(localized: "临时文件")
+        }
+    }
+    var detail: String {
+        switch self {
+        case .chats: String(localized: "已缓存的聊天内容与搜索索引")
+        case .images: String(localized: "聊天中已下载的图片")
+        case .previews: String(localized: "已打开的文档、音视频等附件")
+        case .temporary: String(localized: "预览、下载和分享产生的临时副本")
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .chats: "bubble.left.and.bubble.right.fill"
+        case .images: "photo.fill"
+        case .previews: "doc.text.fill"
+        case .temporary: "folder.fill"
+        }
+    }
+    var color: Color {
+        switch self {
+        case .chats: Color(red: 0.24, green: 0.48, blue: 0.78)
+        case .images: Color(red: 0.23, green: 0.64, blue: 0.55)
+        case .previews: Color(red: 0.86, green: 0.64, blue: 0.28)
+        case .temporary: Color(red: 0.63, green: 0.51, blue: 0.76)
+        }
+    }
+}
+
+struct StorageSpaceView: View {
+    @EnvironmentObject private var store: AppStore
+    @State private var sortsBySize = true
+
+    private func size(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+
+    private func sortedCategories(_ usage: AppStorageUsage) -> [CacheStorageCategory] {
+        let categories = CacheStorageCategory.allCases
+        return categories.sorted { lhs, rhs in
+            if sortsBySize, usage.bytes(for: lhs) != usage.bytes(for: rhs) {
+                return usage.bytes(for: lhs) > usage.bytes(for: rhs)
+            }
+            if !sortsBySize { return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending }
+            return lhs.rawValue < rhs.rawValue
+        }
+    }
+
+    var body: some View {
+        List {
+            Section {
+                if let usage = store.storageUsage {
+                    ZStack {
+                        if usage.totalBytes > 0 {
+                            Chart(CacheStorageCategory.allCases) { category in
+                                if usage.bytes(for: category) > 0 {
+                                    SectorMark(angle: .value("磁盘占用", usage.bytes(for: category)),
+                                        innerRadius: .ratio(0.72), angularInset: 1.5)
+                                        .foregroundStyle(category.color)
+                                        .cornerRadius(3)
+                                }
+                            }
+                            .chartLegend(.hidden)
+                            .accessibilityHidden(true)
+                        } else {
+                            Circle().stroke(Color.secondary.opacity(0.12), lineWidth: 26)
+                                .padding(13)
+                                .accessibilityHidden(true)
+                        }
+                        VStack(spacing: 6) {
+                            Text(verbatim: size(usage.totalBytes))
+                                .appFont(.system(size: 28, weight: .semibold, design: .rounded))
+                                .monospacedDigit()
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.6)
+                            Text("本机缓存").appFont(.subheadline).foregroundStyle(.secondary)
+                        }
+                        .frame(width: 154)
+                        .accessibilityElement(children: .combine)
+                    }
+                    .frame(width: 200, height: 200)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 22)
+                    if usage.freeBytes != Int64.max {
+                        LabeledContent("设备可用空间", value: size(usage.freeBytes))
+                            .appFont(.subheadline).foregroundStyle(.secondary)
+                    }
+                } else {
+                    ProgressView("正在统计…")
+                        .frame(maxWidth: .infinity, minHeight: 230)
+                }
+            } header: {
+                Text("磁盘占用")
+            }
+
+            if let usage = store.storageUsage {
+                Section {
+                    ForEach(sortedCategories(usage)) { category in
+                        NavigationLink {
+                            StorageCategoryDetailView(category: category)
+                        } label: {
+                            HStack(spacing: 14) {
+                                StorageCategoryIcon(category: category)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(category.title).appFont(.body).foregroundStyle(.primary)
+                                    Text(category.detail).appFont(.caption).foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                                Spacer(minLength: 8)
+                                Text(verbatim: size(usage.bytes(for: category)))
+                                    .appFont(.body.monospacedDigit()).foregroundStyle(.secondary)
+                                    .lineLimit(1).fixedSize()
+                            }
+                            .padding(.vertical, 8)
+                        }
+                        .accessibilityIdentifier("storage-category-\(category.rawValue)")
+                        .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] + 46 }
+                    }
+                } header: {
+                    HStack {
+                        Spacer()
+                        Menu {
+                            Picker("排序方式", selection: $sortsBySize) {
+                                Text("大小").tag(true)
+                                Text("名称").tag(false)
+                            }
+                        } label: {
+                            HStack(spacing: 5) {
+                                Text(sortsBySize ? "大小" : "名称")
+                                Image(systemName: "chevron.up.chevron.down").imageScale(.small)
+                            }
+                            .appFont(.body)
+                            .foregroundStyle(.tint)
+                        }
+                        .textCase(nil)
+                        .accessibilityIdentifier("storage-sort-menu")
+                    }
+                    .padding(.bottom, 6)
+                } footer: {
+                    if usage.resources.protectedBytes > 0 {
+                        Text(String(localized: "storage.in-use", defaultValue: "其中 \(size(usage.resources.protectedBytes)) 正在使用，关闭文件后可释放。"))
+                    }
+                }
+            }
+            if let notice = store.cacheStorageNotice {
+                Section { Text(notice).appFont(.footnote).foregroundStyle(.secondary) }
+            }
+        }
+        .navigationTitle("存储空间")
+        .navigationBarTitleDisplayMode(.inline)
+        .accessibilityIdentifier("storage-space-page")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                if store.cacheStorageBusy {
+                    ProgressView().accessibilityLabel(Text("正在统计…"))
+                } else {
+                    Button { Task { await store.refreshCacheStorage() } } label: {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .appFont(.system(size: 17, weight: .medium))
+                    }
+                    .accessibilityLabel(Text("刷新存储统计"))
+                }
+            }
+        }
+        .task { await store.refreshCacheStorage() }
+        .refreshable { await store.refreshCacheStorage() }
+    }
+}
+
+private struct StorageCategoryIcon: View {
+    let category: CacheStorageCategory
+    var side: CGFloat = 32
+
+    var body: some View {
+        Image(systemName: category.symbol)
+            .font(.system(size: side * 0.52, weight: .medium))
+            .foregroundStyle(.white)
+            .frame(width: side, height: side)
+            .background(category.color.gradient, in: RoundedRectangle(cornerRadius: side * 0.23))
+            .accessibilityHidden(true)
+    }
+}
+
+private struct StorageCategoryDetailView: View {
+    @EnvironmentObject private var store: AppStore
+    let category: CacheStorageCategory
+
+    var body: some View {
+        List {
+            Section {
+                HStack(spacing: 16) {
+                    StorageCategoryIcon(category: category, side: 56)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(category.title).appFont(.title3.weight(.semibold))
+                        Text(category.detail).appFont(.subheadline).foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 12)
+                LabeledContent("占用空间", value: ByteCountFormatter.string(
+                    fromByteCount: store.storageUsage?.bytes(for: category) ?? 0, countStyle: .file))
+            }
+            Section {
+                Button(role: .destructive) {
+                    Task { await store.refreshCacheStorage(category: category) }
+                } label: {
+                    HStack {
+                        Spacer()
+                        if store.cacheStorageBusy { ProgressView() }
+                        else { Text("清理本机缓存") }
+                        Spacer()
+                    }
+                    .padding(.vertical, 4)
+                }
+                .disabled(store.cacheStorageBusy || (store.storageUsage?.bytes(for: category) ?? 0) == 0)
+                .accessibilityLabel(String(localized: "storage.clear.category", defaultValue: "清理\(category.title)"))
+                .accessibilityIdentifier("storage-clear-\(category.rawValue)")
+            }
+            if let notice = store.cacheStorageNotice {
+                Section { Text(notice).appFont(.footnote).foregroundStyle(.secondary) }
+            }
+        }
+        .navigationTitle(category.title)
+        .navigationBarTitleDisplayMode(.inline)
+        .accessibilityIdentifier("storage-category-detail")
     }
 }

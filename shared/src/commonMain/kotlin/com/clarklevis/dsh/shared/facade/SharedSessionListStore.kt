@@ -142,6 +142,11 @@ class SharedSessionListStore(
         SessionListReducer.reduce(state, SessionListAction.HistoryReceived(sessionId, records), labels)
     }
 
+    fun receiveHistorySnapshot(sessionId: String, snapshot: SharedHistoryProjectionSnapshot): SharedSessionListResult = mutate("history") {
+        require(sessionId == snapshot.sessionId) { "history snapshot contains another session" }
+        SessionListReducer.reduce(state, SessionListAction.HistoryReceived(sessionId, snapshot.records), labels)
+    }
+
     private fun reduce(operation: String, action: SessionListAction): SharedSessionListResult =
         mutate(operation) { SessionListReducer.reduce(state, action, labels) }
 

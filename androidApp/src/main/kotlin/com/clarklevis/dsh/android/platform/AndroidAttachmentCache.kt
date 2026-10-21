@@ -1,6 +1,7 @@
 package com.clarklevis.dsh.android.platform
 
 import android.content.Context
+import com.clarklevis.dsh.android.AndroidCacheDiskManager
 import com.clarklevis.dsh.android.AndroidCacheStorage
 import com.clarklevis.dsh.shared.platform.GatewayAttachmentCache
 import java.io.File
@@ -21,11 +22,11 @@ class AndroidAttachmentCache(
     private val storage = AndroidCacheStorage.shared(context)
     private val memoryPrefix = directory.absolutePath + "/"
     private val readEpochs = LinkedHashMap<String, Long>()
-    private val instanceEpoch = storage.epoch
+    private val instanceEpoch = storage.categoryEpoch(AndroidCacheDiskManager.IMAGES)
 
     override suspend fun read(attachmentId: String): ByteArray? = withContext(Dispatchers.IO) {
         if (!storage.safeManagedDirectory(directory)) return@withContext null
-        val epoch = storage.epoch
+        val epoch = storage.categoryEpoch(AndroidCacheDiskManager.IMAGES)
         synchronized(lock) {
             readEpochs[attachmentId] = epoch
             while (readEpochs.size > 512) readEpochs.remove(readEpochs.keys.first())
@@ -45,7 +46,7 @@ class AndroidAttachmentCache(
             val bytes = runCatching {
                 file.inputStream().use { readBytesWithLimit(it, DISK_LIMIT_BYTES.toInt()) }
             }.getOrNull() ?: return@withContext null
-            if (epoch != storage.epoch) return@withContext null
+            if (epoch != storage.categoryEpoch(AndroidCacheDiskManager.IMAGES)) return@withContext null
             file.setLastModified(now())
             putMemory(attachmentId, bytes, epoch)
             bytes
@@ -58,7 +59,7 @@ class AndroidAttachmentCache(
         if (!storage.safeManagedDirectory(directory)) return@withContext false
         val epoch = synchronized(lock) { readEpochs.remove(attachmentId) ?: instanceEpoch }
         if (bytes.size > DISK_LIMIT_BYTES ||
-            epoch != storage.epoch ||
+            epoch != storage.categoryEpoch(AndroidCacheDiskManager.IMAGES) ||
             !storage.canWriteTemporary(bytes.size.toLong())
         ) {
             return@withContext false
@@ -70,7 +71,7 @@ class AndroidAttachmentCache(
             directory.mkdirs()
             writeFile(temporary, bytes)
             val committed = storage.access {
-                if (epoch != storage.epoch || !storage.canRemove(target)) return@access false
+                if (epoch != storage.categoryEpoch(AndroidCacheDiskManager.IMAGES) || !storage.canRemove(target)) return@access false
                 if (target.exists() && !target.delete()) return@access false
                 if (!temporary.renameTo(target)) return@access false
                 target.setLastModified(now())

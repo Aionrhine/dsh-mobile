@@ -98,6 +98,7 @@ import kotlinx.coroutines.launch
 private const val ROUTE_WORKSPACE = "workspace"
 private const val ROUTE_CONVERSATION = "conversation"
 private const val ROUTE_SETTINGS = "settings"
+private const val ROUTE_SETTINGS_STORAGE = "settings/storage"
 private const val ROUTE_SETTINGS_FONT_SIZE = "settings/font-size"
 private const val ROUTE_SETTINGS_AGENT_PRESETS = "settings/agent-presets"
 private const val ROUTE_SETTINGS_DEFAULT_MODEL = "settings/default-model"
@@ -188,8 +189,12 @@ internal fun DshProductApp(
                 onBack = navController::popBackStack,
                 onOpenAgentPresets = { navController.navigate(ROUTE_SETTINGS_AGENT_PRESETS) },
                 onOpenDefaultModel = { navController.navigate(ROUTE_SETTINGS_DEFAULT_MODEL) },
-                onOpenFontSize = { navController.navigate(ROUTE_SETTINGS_FONT_SIZE) }
+                onOpenFontSize = { navController.navigate(ROUTE_SETTINGS_FONT_SIZE) },
+                onOpenStorage = { navController.navigate(ROUTE_SETTINGS_STORAGE) }
             )
+        }
+        composable(ROUTE_SETTINGS_STORAGE) {
+            StorageSpaceScreen(stateHolder, navController::popBackStack)
         }
         composable(ROUTE_SETTINGS_FONT_SIZE) {
             FontSizeSettingsScreen(navController::popBackStack)

@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		CF205000000000000000001 /* DebugHistoryScrollMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF205000000000000000002 /* DebugHistoryScrollMetrics.swift */; };
+		CF205000000000000000011 /* HistoryPresentationAdmission.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF205000000000000000012 /* HistoryPresentationAdmission.swift */; };
+		CF204000000000000000001 /* RealSessionScrollPerformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF204000000000000000002 /* RealSessionScrollPerformanceTests.swift */; };
 		CF2030000000000000000001 /* ChatSessionPrefetcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF2030000000000000000002 /* ChatSessionPrefetcherTests.swift */; };
 		CF2020000000000000000001 /* ChatSessionPrefetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF2020000000000000000002 /* ChatSessionPrefetcher.swift */; };
 		CF2010000000000000000003 /* ChatHistoryCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF2010000000000000000004 /* ChatHistoryCacheTests.swift */; };
@@ -119,6 +122,9 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		CF205000000000000000002 /* DebugHistoryScrollMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugHistoryScrollMetrics.swift; sourceTree = "<group>"; };
+		CF205000000000000000012 /* HistoryPresentationAdmission.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryPresentationAdmission.swift; sourceTree = "<group>"; };
+		CF204000000000000000002 /* RealSessionScrollPerformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealSessionScrollPerformanceTests.swift; sourceTree = "<group>"; };
 		CF2030000000000000000002 /* ChatSessionPrefetcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSessionPrefetcherTests.swift; sourceTree = "<group>"; };
 		CF2020000000000000000002 /* ChatSessionPrefetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSessionPrefetcher.swift; sourceTree = "<group>"; };
 		CF2010000000000000000004 /* ChatHistoryCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatHistoryCacheTests.swift; sourceTree = "<group>"; };
@@ -256,6 +262,8 @@
                 AF18C0000000000000000002 /* WorkspacePreviewCache.swift */,
 				CF2010000000000000000002 /* ChatHistoryCache.swift */,
 				CF2020000000000000000002 /* ChatSessionPrefetcher.swift */,
+				CF205000000000000000002 /* DebugHistoryScrollMetrics.swift */,
+				CF205000000000000000012 /* HistoryPresentationAdmission.swift */,
 				CA11E0000000000000000002 /* ImageAttachmentCache.swift */,
 				CA11E0000000000000000004 /* ImagePreprocessor.swift */,
 				A0C0FFEE0000000000000004 /* ConversationTimeline.swift */,
@@ -290,6 +298,7 @@
 			isa = PBXGroup;
 			children = (
 				F2B000000000000000000002 /* WorkspaceDrawerUITests.swift */,
+				CF204000000000000000002 /* RealSessionScrollPerformanceTests.swift */,
 			);
 			path = DeepSeekHarnessMobileUITests;
 			sourceTree = "<group>";
@@ -644,6 +653,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F2B000000000000000000001 /* WorkspaceDrawerUITests.swift in Sources */,
+				CF204000000000000000001 /* RealSessionScrollPerformanceTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -688,6 +698,8 @@
                 AF18C0000000000000000001 /* WorkspacePreviewCache.swift in Sources */,
 				CF2010000000000000000001 /* ChatHistoryCache.swift in Sources */,
 				CF2020000000000000000001 /* ChatSessionPrefetcher.swift in Sources */,
+				CF205000000000000000001 /* DebugHistoryScrollMetrics.swift in Sources */,
+				CF205000000000000000011 /* HistoryPresentationAdmission.swift in Sources */,
 				CA11E0000000000000000001 /* ImageAttachmentCache.swift in Sources */,
 				CA11E0000000000000000003 /* ImagePreprocessor.swift in Sources */,
 				A0C0FFEE0000000000000003 /* ConversationTimeline.swift in Sources */,

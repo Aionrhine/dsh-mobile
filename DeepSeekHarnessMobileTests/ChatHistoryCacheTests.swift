@@ -4,6 +4,61 @@ import DeepSeekHarnessShared
 
 final class ChatHistoryCacheTests: XCTestCase {
     @MainActor
+    func testReadingBatchContinuesToolOnlyRoomPageUntilBodyWithoutAnotherGesture() async throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let suite = UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = UserDefaultsAppPreferences(userDefaults: defaults)
+        preferences.automaticallyConnect = false
+        let session = SessionSummary(id: "reading", title: "离线批量", lastActivity: .distantPast, isRunning: false, hasUnread: false)
+        preferences.saveSessions([session])
+        let cache = ChatHistoryCache(url: directory.appendingPathComponent("reading.db"))
+        let records = (1...400).map { seq -> [String: Any] in
+            let event: [String: Any]
+            if seq <= 60 { event = ["type": "user/message", "text": "old \(seq)"] }
+            else if seq == 400 { event = ["type": "assistant/message", "text": "existing"] }
+            else { event = ["type": "tool/call", "name": "fixture", "arguments": ["value": "tool use"]] }
+            return ["sessionId": session.id, "seq": seq, "time": Double(seq), "event": event]
+        }
+        let object: [String: Any] = ["schema": 1, "sessionId": session.id, "historyFormatVersion": 1,
+            "persistentCursor": 400, "hasMore": false, "events": records]
+        let saved = await cache.save(gatewayID: "reading-g", sessionID: session.id,
+            json: String(decoding: try JSONSerialization.data(withJSONObject: object), as: UTF8.self), generation: 1)
+        XCTAssertTrue(saved)
+        let store = AppStore(preferences: preferences, gatewayLocalID: "reading-g", chatHistoryCache: cache)
+        defer { store.deactivateGateway() }
+        _ = await store.prepareConversation(for: session)
+        await store.awaitPendingKMPEventDeliveriesForTesting()
+        await store.awaitConversationProjectionForTesting(sessionID: session.id, expectedText: "existing")
+        XCTAssertEqual(store.events[session.id]?.first?.seq, 321, "首屏仍保持80事件，不改变首屏成本")
+        let consumer = UUID()
+        var began = 0, terminal = 0
+        var outcomes: [HistoryPresentationOutcome] = []
+        store.attachHistoryPresentationConsumer(sessionID: session.id, consumer: .init(id: consumer) {
+            if case .began = $0 { began += 1 }
+            if case .terminal = $0 { terminal += 1 }
+            if case .finished(_, let result) = $0 { outcomes.append(result) }
+        })
+        XCTAssertTrue(store.requestOlderHistoryPresentation(sessionID: session.id, consumerID: consumer,
+            readingWindow: CGSize(width: 320, height: 200)))
+        let timeline = store.conversationTimeline(for: session.id)
+        for _ in 0..<600 where timeline.currentSnapshot.historyPresentationStamp == nil { try await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertEqual(timeline.currentSnapshot.items.filter { $0.kind == .user }.count, 60)
+        XCTAssertEqual(timeline.currentSnapshot.items.filter { $0.kind == .tool }.count, 339)
+        XCTAssertEqual(began, 1)
+        XCTAssertEqual(terminal, 1)
+        XCTAssertTrue(outcomes.isEmpty)
+        XCTAssertFalse(store.gateway.state.isConnected)
+        let stamp = try XCTUnwrap(timeline.currentSnapshot.historyPresentationStamp)
+        store.acknowledgeHistoryPresentation(sessionID: session.id, consumerID: consumer, stamp: stamp)
+        XCTAssertEqual(outcomes, [.presented])
+        store.detachHistoryPresentationConsumer(sessionID: session.id, consumerID: consumer)
+        await cache.close()
+    }
+
+    @MainActor
     func testOfflineConversationRestoresRoomContentThenAcceptsAuthoritativeSnapshot() async throws {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -770,6 +825,94 @@ final class ChatHistoryCacheTests: XCTestCase {
         let bytes = try XCTUnwrap(object["logicalBytes"] as? NSNumber).int64Value
         await probe.close()
         return bytes
+    }
+
+    @MainActor
+    func testDetachedSearchCachePageReleasesBusyWithoutClearingNewConsumerOperation() async throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let suite = UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = UserDefaultsAppPreferences(userDefaults: defaults)
+        preferences.automaticallyConnect = false
+        let session = SessionSummary(id: "s1", title: "搜索", lastActivity: .distantPast, isRunning: false, hasUnread: false)
+        preferences.saveSessions([session])
+        let cache = ChatHistoryCache(url: directory.appendingPathComponent("presentation-search.db"))
+        _ = await cache.save(gatewayID: "g", sessionID: session.id, json: try window(session.id, text: "needle-old"), generation: 1)
+        let store = AppStore(preferences: preferences, gatewayLocalID: "g", chatHistoryCache: cache)
+        store.search("needle-old")
+        for _ in 0..<100 where store.searchResults.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertFalse(store.searchResults.isEmpty)
+        _ = await store.prepareConversation(for: session)
+        for _ in 0..<100 where !store.isShowingSearchContext { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertTrue(store.isShowingSearchContext)
+        XCTAssertTrue(store.selectedHistoryHasMore)
+        let oldConsumer = UUID(), newConsumer = UUID()
+        var oldOutcomes: [HistoryPresentationOutcome] = []
+        var newOutcomes: [HistoryPresentationOutcome] = []
+        store.attachHistoryPresentationConsumer(sessionID: session.id, consumer: .init(id: oldConsumer) {
+            if case .finished(_, let outcome) = $0 { oldOutcomes.append(outcome) }
+        })
+        XCTAssertTrue(store.requestOlderHistoryPresentation(sessionID: session.id, consumerID: oldConsumer))
+        XCTAssertTrue(store.searchContextLoadingOlder)
+        // MainActor 不让旧 cache task 在 detach/reattach 之间先返回。
+        store.detachHistoryPresentationConsumer(sessionID: session.id, consumerID: oldConsumer)
+        store.attachHistoryPresentationConsumer(sessionID: session.id, consumer: .init(id: newConsumer) {
+            if case .finished(_, let outcome) = $0 { newOutcomes.append(outcome) }
+        })
+        XCTAssertFalse(store.requestOlderHistoryPresentation(sessionID: session.id, consumerID: newConsumer))
+        for _ in 0..<200 where store.searchContextLoadingOlder { try await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertFalse(store.searchContextLoadingOlder, "旧op被detach也必须清理自己的cache busy")
+        XCTAssertEqual(oldOutcomes, [.detached])
+        XCTAssertTrue(newOutcomes.isEmpty, "旧任务的defer不可结束新consumer的操作")
+        XCTAssertTrue(store.requestOlderHistoryPresentation(sessionID: session.id, consumerID: newConsumer))
+        for _ in 0..<200 where newOutcomes.isEmpty { try await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertEqual(newOutcomes, [.empty])
+        store.detachHistoryPresentationConsumer(sessionID: session.id, consumerID: newConsumer)
+        store.deactivateGateway()
+        await cache.close()
+    }
+
+    @MainActor
+    func testHistoryPresentationCacheMissTransfersToNetworkWithoutSecondAcceptedCall() async throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let suite = UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = UserDefaultsAppPreferences(userDefaults: defaults)
+        preferences.automaticallyConnect = false
+        let session = SessionSummary(id: "s1", title: "缓存回退", lastActivity: .distantPast, isRunning: false, hasUnread: false)
+        preferences.saveSessions([session])
+        let cache = ChatHistoryCache(url: directory.appendingPathComponent("presentation-fallback.db"))
+        _ = await cache.save(gatewayID: "g", sessionID: session.id, json: try window(session.id, text: "cached"), generation: 1)
+        let store = AppStore(preferences: preferences, gatewayLocalID: "g", chatHistoryCache: cache)
+        _ = await store.prepareConversation(for: session)
+        await store.awaitPendingKMPEventDeliveriesForTesting()
+        await store.awaitConversationProjectionForTesting(sessionID: session.id, expectedText: "cached")
+        store.gateway.installConnectedTransportForTesting()
+        let consumerID = UUID()
+        var accepted = 0
+        var outcomes: [HistoryPresentationOutcome] = []
+        store.attachHistoryPresentationConsumer(sessionID: session.id, consumer: .init(id: consumerID) {
+            if case .began = $0 { accepted += 1 }
+            if case .finished(_, let outcome) = $0 { outcomes.append(outcome) }
+        })
+        XCTAssertTrue(store.requestOlderHistoryPresentation(sessionID: session.id, consumerID: consumerID))
+        XCTAssertEqual(accepted, 1, "Room await 前已准入并计数")
+        for _ in 0..<200 where !store.historyLoadingSessionIds.contains(session.id) { try await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertTrue(store.historyLoadingSessionIds.contains(session.id), "没有更早缓存时沿原路径转 network")
+        XCTAssertEqual(accepted, 1, "同一个已接受的 cache 调用转 network 不能再次 Began")
+        store.gateway.onFrame?(try GatewayWireDecoder.decode(Data(
+            #"{"kind":"history","sessionId":"s1","historyFormatVersion":1,"events":[],"hasMore":false}"#.utf8)))
+        await store.awaitPendingKMPEventDeliveriesForTesting()
+        for _ in 0..<200 where outcomes.isEmpty { try await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertEqual(outcomes, [.empty])
+        XCTAssertEqual(accepted, 1)
+        store.detachHistoryPresentationConsumer(sessionID: session.id, consumerID: consumerID)
+        store.deactivateGateway()
+        await cache.close()
     }
 
     private func window(_ sessionID: String, text: String = String(repeating: "正", count: 1024)) throws -> String {

@@ -495,7 +495,8 @@ data class GatewaySessionStats(
     val decodeMs: Double? = null,
     val decodeTokens: Int? = null,
     val lastTurn: Int? = null,
-    val openStep: Int? = null,
+    // 运行中的投影携带步骤边界对象；同时兼容旧网关的步骤编号和已完成时的 null。
+    val openStep: JsonValue? = null,
     val pendingCalls: JsonValue? = null
 )
 
