@@ -11,15 +11,18 @@ final class MultiGatewayStore: ObservableObject {
     @Published private(set) var onlineIDs: Set<String> = []
     @Published var error: String?
     private let defaults: UserDefaults
+    private let credentials: (any GatewayCredentialStoring)?
     private var pendingProfile: GatewayProfile?
     private var observation: AnyCancellable?
     private var pairingObservation: AnyCancellable?
     private var probes: [GatewayClient] = []
     private static let profilesKey = "gateway.profiles.v1"
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, credentials: (any GatewayCredentialStoring)? = nil) {
         self.defaults = defaults
-        activeStore = AppStore(preferences: UserDefaultsAppPreferences(userDefaults: defaults, gatewayID: "unpaired"), gatewayLocalID: "unpaired")
+        self.credentials = credentials
+        activeStore = AppStore(preferences: UserDefaultsAppPreferences(userDefaults: defaults, gatewayID: "unpaired"),
+                               gatewayClient: GatewayClient(credentials: credentials), gatewayLocalID: "unpaired")
         do {
             if let data = defaults.data(forKey: Self.profilesKey) {
                 profiles = try JSONDecoder().decode([GatewayProfile].self, from: data)
@@ -35,7 +38,7 @@ final class MultiGatewayStore: ObservableObject {
                     scoped.endpoint = legacy.endpoint
                     scoped.saveSessions(legacy.loadSessions())
                     scoped.selectedWorkspaceID = legacy.selectedWorkspaceID
-                    let client = GatewayClient()
+                    let client = GatewayClient(credentials: credentials)
                     client.credentialID = profile.id
                     if let url = URL(string: legacy.endpoint) { try client.migrateCredential(from: url) }
                     try migrateLegacyFiles(to: profile.id)
@@ -103,7 +106,7 @@ final class MultiGatewayStore: ObservableObject {
     private func makeStore(_ profile: GatewayProfile) -> AppStore {
         let preferences = UserDefaultsAppPreferences(userDefaults: defaults, gatewayID: profile.id)
         preferences.endpoint = profile.connectionEndpoints.first ?? profile.endpoints[0]
-        let store = AppStore(preferences: preferences, gatewayLocalID: profile.id)
+        let store = AppStore(preferences: preferences, gatewayClient: GatewayClient(credentials: credentials), gatewayLocalID: profile.id)
         store.gatewayDisplayName = profile.displayName
         store.gateway.credentialID = profile.id
         store.gateway.expectedGatewayID = profile.gatewayId
@@ -245,7 +248,8 @@ final class MultiGatewayStore: ObservableObject {
             activeStore.deactivateGateway()
             activeID = nil
             defaults.removeObject(forKey: "gateway.activeID")
-            activeStore = AppStore(preferences: UserDefaultsAppPreferences(userDefaults: defaults, gatewayID: "unpaired"), gatewayLocalID: "unpaired")
+            activeStore = AppStore(preferences: UserDefaultsAppPreferences(userDefaults: defaults, gatewayID: "unpaired"),
+                                   gatewayClient: GatewayClient(credentials: credentials), gatewayLocalID: "unpaired")
             activeStore.interfaceStyle = style
             installPairingHandler(on: activeStore)
         }
@@ -281,7 +285,7 @@ final class MultiGatewayStore: ObservableObject {
     }
 
     private func probe(_ profile: GatewayProfile) async {
-        let client = GatewayClient()
+        let client = GatewayClient(credentials: credentials)
         client.credentialID = profile.id
         client.expectedGatewayID = profile.gatewayId
         client.trustedEndpoints = profile.endpoints

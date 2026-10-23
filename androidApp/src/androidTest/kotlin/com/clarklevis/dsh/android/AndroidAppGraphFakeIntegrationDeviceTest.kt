@@ -7,8 +7,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.clarklevis.dsh.android.ui.WorkspaceFilePreviewHost
+import com.clarklevis.dsh.android.ui.ConversationScreen
+import com.clarklevis.dsh.android.ui.DshTheme
 import com.clarklevis.dsh.android.ui.decodeWorkspaceLoadingLogo
 import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import com.clarklevis.dsh.shared.protocol.GatewayDirectoryItem
 import java.util.UUID
 import java.util.Locale
@@ -208,6 +211,64 @@ class AndroidAppGraphFakeIntegrationDeviceTest {
 
     private companion object {
         const val HELLO_DIGEST = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+    }
+
+    @Test
+    fun runningComposerKeepsCircularBackgroundBeforeAndAfterStopRequest() = runBlocking {
+        val transport = FakeTransport()
+        val graph = AndroidAppGraph(
+            application = ApplicationProvider.getApplicationContext<Application>(),
+            transportOverride = transport,
+            preferencesOverride = FakePreferences(),
+            credentialStoreOverride = FakeCredentials,
+            attachmentCacheOverride = FakeCache(),
+            networkMonitorOverride = FakeNetwork,
+            clockOverride = FakeClock
+        )
+        val holder = graph.stateHolder
+        try {
+            waitUntil { transport.specs.isNotEmpty() }
+            transport.open()
+            transport.receive("""{"kind":"hello","authenticated":true,"protocol":3,"capabilities":["session-cancel"]}""")
+            waitUntil { holder.gatewayState.connection.name == "CONNECTED" }
+            transport.receive(
+                """{"kind":"sessions","items":[{
+                    "sessionId":"stop-button","updatedAt":1,"running":true,"blank":false
+                }]}"""
+            )
+            waitUntil("运行中的会话已载入") { holder.snapshot.sessions.any { it.id == "stop-button" } }
+            onMain { holder.selectSession("stop-button") }
+            waitUntil("运行中的会话显示停止按钮") { holder.showsSessionStopButton }
+            compose.setContent {
+                DshTheme { ConversationScreen(holder, onPickImage = {}, onBack = {}) }
+            }
+            val action = compose.onNodeWithTag("composer-action")
+            for (pending in listOf(false, true)) {
+                if (pending) {
+                    action.performClick()
+                    waitUntil { !holder.canCancelSelectedSession }
+                    action.assertIsNotEnabled()
+                } else {
+                    action.assertIsEnabled()
+                }
+                val image = action.captureToImage()
+                val pixels = image.toPixelMap()
+                for (x in listOf(1, image.width - 2)) {
+                    for (y in listOf(1, image.height - 2)) {
+                        val corner = pixels[x, y]
+                        assertTrue("停止按钮四角不能出现蓝色方形背景，pending=$pending", corner.blue - corner.red < 0.1f)
+                    }
+                }
+                val edge = pixels[image.width / 2, image.height / 8]
+                assertTrue("圆形内部应保留蓝色背景", edge.blue - edge.red > 0.2f)
+                val output = graph.application.cacheDir.resolve("composer-stop-$pending.png")
+                output.outputStream().use {
+                    image.asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it)
+                }
+            }
+        } finally {
+            onMain { holder.close() }
+        }
     }
 
     @Test

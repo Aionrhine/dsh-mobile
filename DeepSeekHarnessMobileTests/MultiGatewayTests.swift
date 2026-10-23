@@ -1,6 +1,14 @@
 import XCTest
 @testable import DeepSeekHarnessMobile
 
+@MainActor
+private final class MigrationTestCredentials: GatewayCredentialStoring {
+    func loadToken(for endpoint: URL) -> String? { nil }
+    func saveToken(_ token: String, for endpoint: URL) {}
+    func deleteToken(for endpoint: URL) {}
+    func loadOrCreateDeviceID() -> String { "migration-test-device" }
+}
+
 final class MultiGatewayTests: XCTestCase {
     private let gatewayID = "d56a1098-8519-43a1-9dce-fb99863bf5bb"
 
@@ -45,8 +53,8 @@ final class MultiGatewayTests: XCTestCase {
         let defaults = UserDefaults(suiteName: "multi-migrate-\(UUID())")!
         defaults.set("wss://legacy.example/ws/mobile", forKey: "gateway.endpoint")
         defaults.set("workspace-a", forKey: "gateway.selectedWorkspaceId")
-        let first = MultiGatewayStore(defaults: defaults)
-        let second = MultiGatewayStore(defaults: defaults)
+        let first = MultiGatewayStore(defaults: defaults, credentials: MigrationTestCredentials())
+        let second = MultiGatewayStore(defaults: defaults, credentials: MigrationTestCredentials())
         XCTAssertEqual(first.profiles.count, 1)
         XCTAssertEqual(first.profiles, second.profiles)
         XCTAssertEqual(first.activeStore.selectedWorkspaceId, "workspace-a")
@@ -99,7 +107,7 @@ final class MultiGatewayTests: XCTestCase {
     func testRemovingCurrentHostClearsStateAndDoesNotRemigrateLegacy() throws {
         let defaults = UserDefaults(suiteName: "multi-remove-\(UUID())")!
         defaults.set("wss://legacy.example/ws/mobile", forKey: "gateway.endpoint")
-        let hosts = MultiGatewayStore(defaults: defaults)
+        let hosts = MultiGatewayStore(defaults: defaults, credentials: MigrationTestCredentials())
         let profile = try XCTUnwrap(hosts.activeProfile)
         let old = hosts.activeStore
         old.selectedWorkspaceId = "old-workspace"

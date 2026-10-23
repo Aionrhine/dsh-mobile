@@ -844,6 +844,12 @@ private struct ConversationNavigationHeader: Hashable {
     let agentPresetTitle: String
 }
 
+private struct WorkspaceFilesPresentation: Identifiable {
+    let id = UUID()
+    let sessionID: String
+    let initialPath: String?
+}
+
 /// Owns only navigation chrome. The content below it may observe the complete
 /// app store and update at WebSocket frequency without invalidating the toolbar.
 private struct ConversationNavigationShell<Content: View>: View {
@@ -852,9 +858,10 @@ private struct ConversationNavigationShell<Content: View>: View {
     let store: AppStore
     let onActivate: () async -> Void
     @ViewBuilder let content: () -> Content
-    @State private var showsWorkspaceFiles = false
+    @State private var workspaceFilesPresentation: WorkspaceFilesPresentation?
     @State private var liveTitle: String?
     @State private var livePresetTitle: String?
+    @State private var showsTeamEntry = false
 
     var body: some View {
         content()
@@ -867,37 +874,41 @@ private struct ConversationNavigationShell<Content: View>: View {
                 guard state.sessionId == (header.sessionID ?? store.selectedSessionId), let id = state.agentPreset else { return }
                 livePresetTitle = state.presets.first { $0.id == id }?.name ?? L10n.presetModeName(for: id)
             }
+            .onReceive(store.$teamSnapshot) { snapshot in
+                showsTeamEntry = snapshot.visible
+            }
             .navigationBarTitleDisplayMode(.inline)
             .toolbarRole(.editor)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 if #available(iOS 26.0, *) {
                     ToolbarItem(placement: .topBarTrailing) {
-                        ConversationNavigationStatus(
-                            gateway: gateway,
-                            agentPresetTitle: livePresetTitle ?? header.agentPresetTitle
-                        )
+                        conversationStatus
+                            .padding(.trailing, showsTeamEntry ? -8 : 0)
                     }
                     .sharedBackgroundVisibility(.hidden)
-
-                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
+                    if showsTeamEntry {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            TeamNavigationEntry(store: store)
+                                .fixedSize(horizontal: true, vertical: false)
+                        }
+                        .sharedBackgroundVisibility(.hidden)
+                        ToolbarSpacer(.fixed, placement: .topBarTrailing)
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        moreMenu
+                    }
                 } else {
                     ToolbarItem(placement: .topBarTrailing) {
-                        ConversationNavigationStatus(
-                            gateway: gateway,
-                            agentPresetTitle: livePresetTitle ?? header.agentPresetTitle
-                        )
+                        conversationStatus
                     }
-                }
-
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button(String(localized: "工作区文件"), systemImage: "folder", action: {
-                            showsWorkspaceFiles = true
-                        })
-                        .disabled(header.sessionID == nil)
-                    } label: {
-                        Image(systemName: "ellipsis")
+                    if showsTeamEntry {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            TeamNavigationEntry(store: store)
+                        }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        moreMenu
                     }
                 }
             }
@@ -908,15 +919,41 @@ private struct ConversationNavigationShell<Content: View>: View {
                 guard !Task.isCancelled else { return }
                 await onActivate()
             }
-            .sheet(isPresented: $showsWorkspaceFiles) {
-                WorkspaceFilesSheet(store: store, sessionID: header.sessionID)
+            .onReceive(store.$conversationDirectoryPath) { path in
+                guard let path, let sessionID = store.selectedSessionId,
+                      store.conversationDirectorySessionID == sessionID else { return }
+                workspaceFilesPresentation = WorkspaceFilesPresentation(sessionID: sessionID, initialPath: path)
             }
+            .sheet(item: $workspaceFilesPresentation, onDismiss: { store.conversationDirectoryPath = nil }) { request in
+                WorkspaceFilesSheet(store: store, sessionID: request.sessionID, initialPath: request.initialPath)
+            }
+    }
+
+    private var moreMenu: some View {
+        Menu {
+            Button(String(localized: "工作区文件"), systemImage: "folder") {
+                guard let sessionID = store.selectedSessionId else { return }
+                workspaceFilesPresentation = WorkspaceFilesPresentation(sessionID: sessionID, initialPath: nil)
+            }
+            .disabled(header.sessionID == nil)
+        } label: {
+            Image(systemName: "ellipsis")
+        }
+        .accessibilityLabel("更多")
+    }
+
+    private var conversationStatus: some View {
+        ConversationNavigationStatus(
+            gateway: gateway,
+            agentPresetTitle: livePresetTitle ?? header.agentPresetTitle
+        )
     }
 }
 
 private struct WorkspaceFilesSheet: View {
     @ObservedObject var store: AppStore
     let sessionID: String?
+    var initialPath: String? = nil
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @State private var downloadedPaths: Set<String> = []
@@ -986,7 +1023,7 @@ private struct WorkspaceFilesSheet: View {
         .presentationDragIndicator(.visible)
         .task(id: sessionID) {
             guard sessionID != nil else { return }
-            store.browseWorkspaceFiles()
+            store.browseWorkspaceFiles(path: initialPath)
             refreshDownloadedPaths()
         }
         .onChange(of: store.workspaceFileEntries) { _, _ in
@@ -1585,6 +1622,7 @@ final class WorkspaceCodeTextKitContainer: UIView, UIScrollViewDelegate {
         codeTextView.textContainer.lineBreakMode = .byClipping
 
         let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .right
         paragraph.lineSpacing = lineSpacing
         lineNumberLabel.attributedText = NSAttributedString(
             string: (1...lineCount).map(String.init).joined(separator: "\n"),

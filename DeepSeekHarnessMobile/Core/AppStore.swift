@@ -300,6 +300,82 @@ private struct TrajectoryHistoryVersion: Equatable {
 final class AppStore: ObservableObject {
     static let ungroupedWorkspaceID = "__ungrouped__"
 
+    let teamStore = SharedTeamStore()
+    @Published private(set) var teamSnapshot = MobileTeamSnapshot()
+    @Published private(set) var teamLeadSessionID: String?
+    private var persistedTeamRouting = "[]"
+    private var persistedTeamAvatars = "[]"
+    private var teamMemberProfileTimeouts: [String: Task<Void, Never>] = [:]
+
+    var teamSessionTitle: String {
+        sessions.first { $0.id == teamLeadSessionID }?.title ?? "Lead 会话"
+    }
+
+    var isViewingTeamMember: Bool { selectedSessionId.map { teamStore.isChild(sessionId: $0) } == true }
+    var selectedMemberCanSend: Bool { selectedSessionId.map { teamStore.canSend(sessionId: $0) } ?? true }
+
+    private func publishTeamSnapshot() {
+        guard let lead = teamLeadSessionID,
+              let data = teamStore.snapshotJson(leadSessionId: lead).data(using: .utf8),
+              let snapshot = try? JSONDecoder().decode(MobileTeamSnapshot.self, from: data) else { return }
+        if teamSnapshot != snapshot { teamSnapshot = snapshot }
+        let avatars = teamStore.avatarAssignmentsJson()
+        if avatars != persistedTeamAvatars {
+            persistedTeamAvatars = avatars
+            persistOfflineCatalog()
+        }
+        prepareTeamMemberProfiles()
+    }
+
+    private struct TeamMemberProfileRequest: Decodable {
+        let sessionId: String
+        let requestId: String
+        let payload: String
+    }
+
+    private func prepareTeamMemberProfiles() {
+        guard let lead = teamLeadSessionID, gateway.state.isConnected,
+              let data = teamStore.memberProfileRequestsJson(leadSessionId: lead).data(using: .utf8),
+              let requests = try? JSONDecoder().decode([TeamMemberProfileRequest].self, from: data) else { return }
+        for request in requests {
+            gateway.sendRequestPayload(request.payload)
+            teamMemberProfileTimeouts[request.requestId] = Task { [weak self] in
+                do { try await Task.sleep(for: .seconds(10)) } catch { return }
+                guard let self else { return }
+                teamMemberProfileTimeouts.removeValue(forKey: request.requestId)
+                teamStore.finishMemberProfileRequest(requestId: request.requestId)
+                prepareTeamMemberProfiles()
+            }
+        }
+    }
+
+    func refreshTeam() {
+        requestTeam(refresh: true)
+    }
+
+    private func ensureTeamLoaded() {
+        requestTeam(refresh: false)
+    }
+
+    private func requestTeam(refresh: Bool) {
+        guard let lead = teamLeadSessionID, gateway.state.isConnected else { return }
+        for kind in ["agent-team", "subagents"] {
+            let payload = refresh
+                ? teamStore.queryJson(leadSessionId: lead, kind: kind)
+                : teamStore.queryIfNeededJson(leadSessionId: lead, kind: kind)
+            if let payload { gateway.sendRequestPayload(payload) }
+        }
+    }
+
+    func selectTeamMember(_ member: MobileTeamMember) async {
+        guard member.canOpen, let lead = teamLeadSessionID,
+              member.id != kmpSessionListStore.snapshot.selectedSessionId else { return }
+        let summary = sessions.first { $0.id == member.id } ?? SessionSummary(
+            id: member.id, title: member.name, lastActivity: Date(), isRunning: member.running == true, hasUnread: false)
+        guard await prepareConversation(for: summary, teamLeadID: lead) else { return }
+        await activatePreparedConversation(sessionID: member.id)
+    }
+
     @Published private(set) var selectedSessionId: String?
     @Published private(set) var sessions: [SessionSummary] = []
     @Published private(set) var scheduledTasks: [ScheduledTask] = []
@@ -383,6 +459,9 @@ final class AppStore: ObservableObject {
     @Published private(set) var questionRequestStatuses: [String: GatewayQuestionRequestStatus] = [:]
     @Published private(set) var pendingApprovalRequests: [GatewayPendingApprovalRequest] = []
     @Published private(set) var approvalRequestStatuses: [String: GatewayApprovalRequestStatus] = [:]
+    let fileUploads = FileUploadController()
+    private var submittedUploadIDs: [String] = []
+
     @Published private(set) var supportsImages = false
     @Published private(set) var supportsFileDownloads = false
     private var supportsFileReferences = false
@@ -421,8 +500,10 @@ final class AppStore: ObservableObject {
     }
     @Published private(set) var conversationFilePreviewRequested = false
     @Published private(set) var conversationFileIsOpening = false
+    @Published var conversationDirectoryPath: String?
+    private(set) var conversationDirectorySessionID: String?
 
-    let gateway = GatewayClient()
+    let gateway: GatewayClient
     let voiceInput: VoiceInputAdapter
     let gatewayLocalID: String
     var pairingHandler: ((String) throws -> Void)?
@@ -529,6 +610,8 @@ final class AppStore: ObservableObject {
     @Published private(set) var queueState = DeepSeekHarnessShared.SharedQueueSnapshot(queues: [:], pendingItemId: nil, lastError: nil)
     @Published private(set) var queueRevision = 0
     @Published private(set) var messageSubmissionPending = false
+    private var messageSubmissionRequestID: String?
+    private var messageSubmissionSessionID: String?
     @Published private(set) var messageAcceptedRevision = 0
     private var messageSubmissionTimeout: Task<Void, Never>?
     @Published private(set) var supportsQueueControl = false
@@ -598,6 +681,7 @@ final class AppStore: ObservableObject {
     private var usesAssistantStream = false
     private var pendingSnapshotSessionID: String?
     private let historyRequestTimeout: Duration
+    private let sessionControlRequestTimeout: Duration
     private var conversationProjectionDrivers: [String: ConversationProjectionDriver] = [:]
     private var conversationTimelines: [String: ConversationTimeline] = [:]
     private var trajectoryTimelines: [String: TrajectoryTimeline] = [:]
@@ -635,11 +719,14 @@ final class AppStore: ObservableObject {
     private var pendingDirectoryCreationParentPath: String?
     private var workspaceFileHandle: FileHandle?
     private var workspaceFileOperationID = UUID()
+    private var pendingConversationFilePreviewRequest: WorkspaceFilePreviewRequest?
     private var workspaceFileTemporaryURL: URL?
     private var workspaceFileOperationCache: WorkspacePreviewCache?
     private var imageAttachmentRequestEpochs: [String: UInt64] = [:]
     private let sessionControlRequestTracker = RequestTracker()
     private let defaultConfigurationRequestTracker = RequestTracker()
+    private var sessionControlRequestsSuspended = false
+    private var deferredSessionControlEffects: [KMPSessionControlEffect] = []
     /// Navigation preparation is intentionally cheap. Remote activation begins
     /// from the destination lifecycle, after NavigationStack installs its bar.
     private var preparedConversationActivationKey: String?
@@ -662,6 +749,7 @@ final class AppStore: ObservableObject {
 
     init(
         preferences: AppPreferences = UserDefaultsAppPreferences(),
+        gatewayClient: GatewayClient? = nil,
         gatewayLocalID: String = "legacy",
         sessionListBridge: (any KMPSessionListStoreBridging)? = nil,
         questionBridge: (any KMPQuestionStoreBridging)? = nil,
@@ -675,12 +763,15 @@ final class AppStore: ObservableObject {
         sessionControlEffectExecutor: (any GatewaySessionControlEffectExecuting)? = nil,
         backgroundExecutionController: AgentBackgroundExecutionController? = nil,
         historyRequestTimeout: Duration = .seconds(20),
+        sessionControlRequestTimeout: Duration = .seconds(12),
         chatHistoryCache: ChatHistoryCache? = .shared,
         voiceInput: VoiceInputAdapter? = nil,
         offlineCatalogRestoreBarrier: (@Sendable () async -> Void)? = nil
     ) {
+        gateway = gatewayClient ?? GatewayClient()
         self.voiceInput = voiceInput ?? VoiceInputAdapter()
         self.historyRequestTimeout = historyRequestTimeout
+        self.sessionControlRequestTimeout = sessionControlRequestTimeout
         self.gatewayLocalID = gatewayLocalID
         imageAttachmentCache = ImageAttachmentCache(directoryURL: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?.appendingPathComponent("GatewayAttachments/\(gatewayLocalID)", isDirectory: true))
         slashCommands = kmpSlashCommandStore.snapshot()
@@ -793,7 +884,19 @@ final class AppStore: ObservableObject {
                 self?.historyPresentationAdmission.cancelAll(outcome: .failed)
             }
         }
+        fileUploads.changed = { [weak self] in self?.objectWillChange.send() }
+        fileUploads.send = { [weak self] payload in self?.gateway.sendRequestPayload(payload, decorate: false) }
+        fileUploads.reportError = { [weak self] message in self?.lastError = message }
         self.voiceInput.bind(gateway)
+        gateway.conversationTarget = { [weak self] id in
+            guard let self, let data = self.teamStore.targetJson(sessionId: id).data(using: .utf8) else { return nil }
+            return try? JSONDecoder().decode(MobileConversationTarget.self, from: data)
+        }
+        gateway.requestDecorator = { [weak self] payload in
+            guard let self else { return nil }
+            if payload.contains("\"sessions\"") { self.teamStore.sessionsRequested() }
+            return self.teamStore.decorateRequestJson(payload: payload)
+        }
         gateway.onFrame = { [weak self] frame in self?.handle(frame) }
         gateway.onCommandFrame = { [weak self] json in
             guard let self else { return }
@@ -802,6 +905,12 @@ final class AppStore: ObservableObject {
         gateway.onConnectionFailure = { [weak self] detail in
             self?.handleConnectionFailure(detail)
         }
+        gateway.onConnectionInvalidated = { [weak self] in
+            self?.pauseSessionControlRequests()
+            self?.resetOutstandingRequests()
+        }
+        gateway.onConnectionCheckStarted = { [weak self] in self?.pauseSessionControlRequests() }
+        gateway.onConnectionReady = { [weak self] in self?.resumeSessionControlRequests() }
         offlineCatalogRestoreTask = Task { [weak self] in
             await offlineCatalogRestoreBarrier?()
             guard let self, offlineCatalogActive else { return }
@@ -826,7 +935,12 @@ final class AppStore: ObservableObject {
     var selectedNotices: [GatewayNotice] {
         Array(protocolNotices.filter { $0.sessionId == nil || $0.sessionId == selectedSessionId }.suffix(20))
     }
-    var selectedSession: SessionSummary? { sessions.first { $0.id == selectedSessionId } }
+    var selectedSession: SessionSummary? {
+        if let member = teamSnapshot.members.first(where: { $0.id == selectedSessionId }), member.role != "lead" {
+            return SessionSummary(id: member.id, title: member.name, lastActivity: Date(), isRunning: member.running == true, hasUnread: false)
+        }
+        return sessions.first { $0.id == selectedSessionId }
+    }
     var isCancellingSelectedSession: Bool {
         selectedSessionId.map(cancellingSessionIDs.contains) == true
     }
@@ -1113,6 +1227,10 @@ final class AppStore: ObservableObject {
         gateway.onFrame = nil
         gateway.onCommandFrame = nil
         gateway.onConnectionFailure = nil
+        gateway.onConnectionInvalidated = nil
+        gateway.onConnectionCheckStarted = nil
+        gateway.onConnectionReady = nil
+        fileUploads.clear()
         gateway.disconnect()
         pendingKMPEventDeliveries.removeAll()
         attachmentLoader.reset()
@@ -1150,10 +1268,10 @@ final class AppStore: ObservableObject {
     /// intentionally unpaired state into a transport error.
     func connectOnColdLaunchIfPaired() {
         guard !hasHandledColdLaunchConnection else { return }
-        hasHandledColdLaunchConnection = true
         guard preferences.automaticallyConnect else { return }
         // 离线目录可能仍在异步恢复；缺少凭据只维持未连接状态，配对入口始终可见。
         guard gateway.hasStoredCredential(for: endpoint) else { return }
+        hasHandledColdLaunchConnection = true
         connect()
     }
 
@@ -1162,9 +1280,13 @@ final class AppStore: ObservableObject {
         case .active:
             backgroundExecutionController.applicationDidBecomeActive()
             gateway.applicationDidBecomeActive()
+            // 首次读取 Keychain 失败时没有建立连接意图；解锁回前台后允许再次恢复。
+            if case .disconnected = gateway.state { connectOnColdLaunchIfPaired() }
+            refreshTeam()
             // 健康连接恢复前台不会重新 hello；补查后台期间漏掉的会话终态。
             if gateway.state.isConnected { gateway.requestSessions() }
         case .background:
+            pauseSessionControlRequests()
             chatPrefetcher.stop(reason: "background")
             backgroundExecutionController.applicationDidEnterBackground()
             imageAttachmentCache.removeExpiredFiles()
@@ -1247,7 +1369,19 @@ final class AppStore: ObservableObject {
             isConnected: true
         ))
     }
+    func ensureFileUploadSession() async -> Bool {
+        guard !isViewingTeamMember else { return false }
+        if selectedSessionId != nil { return true }
+        guard supportsSessionCreation else {
+            lastError = String(localized: "当前网关不支持创建附件会话，请升级网关")
+            return false
+        }
+        return await prepareNewConversation() && selectedSessionId != nil
+    }
+
     func prepareNewConversation() async -> Bool {
+        teamLeadSessionID = nil
+        teamSnapshot = MobileTeamSnapshot()
         guard !isPreparingNewConversation else { return false }
         if let id = selectedSessionId { historyPresentationAdmission.cancel(sessionID: id, outcome: .detached) }
         clearSearchContext()
@@ -1276,7 +1410,10 @@ final class AppStore: ObservableObject {
         return selectedSessionId == sessionID
     }
 
-    func prepareConversation(for session: SessionSummary) async -> Bool {
+    func prepareConversation(for session: SessionSummary, teamLeadID: String? = nil) async -> Bool {
+        teamLeadSessionID = teamLeadID ?? session.id
+        publishTeamSnapshot()
+        if teamLeadID == nil { ensureTeamLoaded() }
         if let id = selectedSessionId, id != session.id { historyPresentationAdmission.cancel(sessionID: id, outcome: .detached) }
         chatPrefetcher.prioritizeSelection(sessionID: session.id, assistantStream: usesAssistantStream)
         leaveSessionAgentPreset()
@@ -1617,6 +1754,7 @@ final class AppStore: ObservableObject {
         // the key and skips the subscribe request even though none was sent.
         activeConversationActivationKey = activationKey
 
+        ensureTeamLoaded()
         if let sessionID {
             markRead(sessionID)
             subscribeToSession(sessionID)
@@ -2041,6 +2179,10 @@ final class AppStore: ObservableObject {
             lastError = String(localized: "当前 Mobile Gateway 不支持文件下载，请升级并重启网关。")
             return
         }
+        kmpWorkspaceFileStore.setWorkspaceSession(
+            sessionId: sessionID,
+            workspaceSessionId: teamStore.workspaceSessionId(sessionId: sessionID)
+        )
         let transition = kmpWorkspaceFileStore.load(
             sessionId: sessionID,
             path: path,
@@ -2052,6 +2194,10 @@ final class AppStore: ObservableObject {
     func openWorkspaceFile(_ item: GatewayDirectoryItem, purpose: String) {
         guard item.kind == "file", let sessionID = selectedSessionId,
               workspaceFilePreviewRequest == nil, !conversationFileIsOpening else { return }
+        kmpWorkspaceFileStore.setWorkspaceSession(
+            sessionId: sessionID,
+            workspaceSessionId: teamStore.workspaceSessionId(sessionId: sessionID)
+        )
         conversationFilePreviewRequested = false
         completedWorkspaceFile = nil
         workspaceFileOperationCache = WorkspacePreviewCache(gatewayID: gatewayLocalID)
@@ -2084,6 +2230,10 @@ final class AppStore: ObservableObject {
             lastError = "请先连接支持文件下载的 Mobile Gateway。"
             return
         }
+        kmpWorkspaceFileStore.setWorkspaceSession(
+            sessionId: sessionID,
+            workspaceSessionId: teamStore.workspaceSessionId(sessionId: sessionID)
+        )
         completedWorkspaceFile = nil
         workspaceFileOperationCache = WorkspacePreviewCache(gatewayID: gatewayLocalID)
         conversationFilePreviewRequested = true
@@ -2091,14 +2241,18 @@ final class AppStore: ObservableObject {
         lastError = nil
         let request = WorkspaceFilePreviewRequest(sessionID: sessionID, path: path)
         workspaceFilePreviewProgress = 0
-        workspaceFilePreviewRequest = request
-        beginWorkspaceFileTransition(kmpWorkspaceFileStore.resolve(
+        // 链接可能指向目录；确认是文件后再创建预览弹层。
+        pendingConversationFilePreviewRequest = request
+        let workspaceSessionID = teamStore.workspaceSessionId(sessionId: sessionID)
+        beginWorkspaceFileTransition(kmpWorkspaceFileStore.resolveReference(
             sessionId: sessionID, path: path, requestId: request.id.uuidString,
-            supportsResolve: supportsFileReferences, useCache: true
+            supportsResolve: supportsFileReferences,
+            workspaceRoot: workspaces.first { $0.sessionIds.contains(workspaceSessionID) }?.path
         ))
     }
 
     func cancelWorkspaceFileDownload() {
+        pendingConversationFilePreviewRequest = nil
         workspaceFileOperationID = UUID()
         conversationFileIsOpening = false
         workspaceFilePreviewRequest = nil
@@ -2135,6 +2289,11 @@ final class AppStore: ObservableObject {
     }
     func refreshSessionControls(for sessionId: String) {
         guard gateway.state.isConnected else { return }
+        if teamStore.isChild(sessionId: sessionId) {
+            if supportsTasks { gateway.requestTasks(sessionId: sessionId) }
+            if supportsGoals { gateway.requestGoal(sessionId: sessionId) }
+            return
+        }
         if sessionId == selectedSessionId { refreshSessionAgentPreset() }
         dispatchSessionControl(.requestModels(sessionID: sessionId, isConnected: true))
         dispatchSessionControl(.requestPermissionOptions(sessionID: sessionId, isConnected: true))
@@ -2145,6 +2304,7 @@ final class AppStore: ObservableObject {
     }
 
     func refreshSessionAgentPreset() {
+        guard !isViewingTeamMember else { leaveSessionAgentPreset(); return }
         applySessionAgentPresetTransition(sessionAgentPresetStore.open(
             sessionId: selectedSessionId, supported: supportsSessionAgentPreset,
             connected: gateway.state.isConnected
@@ -2292,7 +2452,7 @@ final class AppStore: ObservableObject {
             sessionId: selectedSessionId,
             text: text,
             isConnected: gateway.state.isConnected,
-            isSupported: supportsSlashCommands,
+            isSupported: supportsSlashCommands && !isViewingTeamMember,
             locale: Locale.current.identifier
         ))
     }
@@ -2323,7 +2483,13 @@ final class AppStore: ObservableObject {
     @discardableResult
     func send(_ text: String, images: [GatewayOutgoingImage] = [], mode: String = "queue") -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty || !images.isEmpty else { return false }
+        let hasFiles = !fileUploads.drafts.isEmpty
+        guard !trimmed.isEmpty || !images.isEmpty || hasFiles else { return false }
+        guard !fileUploads.preparing, !hasFiles || (fileUploads.sessionID == selectedSessionId && fileUploads.canSend && !isViewingTeamMember) else {
+            lastError = String(localized: "请等待附件上传完成，失败的附件可重试或移除")
+            return false
+        }
+        guard selectedMemberCanSend else { lastError = "此子智能体会话为只读，无法继续对话"; return false }
         guard gateway.state.isConnected else { lastError = String(localized: "请先在设置中连接 DeepSeek Harness"); return false }
         guard images.isEmpty || supportsImages else {
             lastError = String(localized: "当前 Mobile Gateway 不支持图片，请升级并重启 dsh web。")
@@ -2331,7 +2497,8 @@ final class AppStore: ObservableObject {
         }
         guard !sessionAgentPreset.blocksSending else { return false }
         if isShowingSearchContext { clearSearchContext(); conversationSearchTarget = nil }
-        if let command = kmpSlashCommandStore.commandExecutionForInput(text: trimmed) {
+        if !isViewingTeamMember, let command = kmpSlashCommandStore.commandExecutionForInput(text: trimmed) {
+            guard !hasFiles else { lastError = String(localized: "斜杠命令不支持文件，请使用普通消息发送"); return false }
             guard images.isEmpty || command.allowsImages else {
                 lastError = String(localized: "此命令不支持图片")
                 return false
@@ -2344,6 +2511,11 @@ final class AppStore: ObservableObject {
         guard !messageSubmissionPending else { return false }
         applySessionAgentPresetTransition(sessionAgentPresetStore.beginMessage())
         messageSubmissionPending = true
+        messageSubmissionRequestID = hasFiles
+            ? fileUploads.submission(text: trimmed, imageKey: images.map { $0.id.uuidString }.joined(separator: ",") + "|" + mode)
+            : UUID().uuidString
+        submittedUploadIDs = fileUploads.drafts.map { $0.id }
+        messageSubmissionSessionID = selectedSessionId
         updateChatPrefetchState()
         messageSubmissionTimeout?.cancel()
         messageSubmissionTimeout = Task { [weak self] in
@@ -2352,7 +2524,7 @@ final class AppStore: ObservableObject {
             self.messageSubmissionPending = false
             self.updateChatPrefetchState()
             self.applySessionAgentPresetTransition(self.sessionAgentPresetStore.requestFailed(
-                type: "message", sessionId: self.selectedSessionId, requestId: nil, message: nil
+                type: "message", sessionId: self.messageSubmissionSessionID, requestId: self.messageSubmissionRequestID, message: nil
             ))
             self.waitingForNewSession = false
             self.lastError = "发送确认超时，请确认队列状态后重试"
@@ -2362,15 +2534,17 @@ final class AppStore: ObservableObject {
         gateway.sendMessage(
             text: trimmed,
             images: images,
+            receipts: fileUploads.receipts,
             sessionId: selectedSessionId,
             workspaceId: selectedSessionId == nil ? activeWorkspace?.id : nil,
-            mode: mode
+            mode: mode,
+            requestId: messageSubmissionRequestID
         )
         return true
     }
 
     func cancelSelectedSession() {
-        guard supportsSessionCancel,
+        guard supportsSessionCancel, selectedMemberCanSend,
               gateway.state.isConnected,
               let sessionID = selectedSessionId,
               selectedSession?.isRunning == true,
@@ -2500,6 +2674,40 @@ final class AppStore: ObservableObject {
     }
 
     private func handle(_ frame: GatewayFrame) {
+        if frame.kind.hasPrefix("file-upload-") || frame.requestType?.hasPrefix("file-upload-") == true {
+            fileUploads.accept(frame)
+            return
+        }
+        if frame.kind == "hello" {
+            teamMemberProfileTimeouts.values.forEach { $0.cancel() }
+            teamMemberProfileTimeouts.removeAll()
+        }
+        if ["history", "error"].contains(frame.kind), let requestID = frame.requestId,
+           requestID.hasPrefix("team-profile-") {
+            if let data = try? JSONEncoder().encode(frame),
+               teamStore.acceptFrameJson(json: String(decoding: data, as: UTF8.self)) { publishTeamSnapshot() }
+            if !teamStore.memberProfileRequestPending(requestId: requestID) {
+                teamMemberProfileTimeouts.removeValue(forKey: requestID)?.cancel()
+            }
+            prepareTeamMemberProfiles()
+            return
+        }
+        if frame.kind == "hello" { gateway.resetSubscriptionRequests() }
+        if frame.kind == "subscribed", !gateway.acceptSubscriptionAck(sessionID: frame.sessionId) { return }
+        if frame.kind == "error", frame.requestType == "subscribe" { gateway.resetSubscriptionRequests() }
+        if ["hello", "sessions", "session-status", "projection-baseline", "agent-team", "agent-team-updated", "subagents", "subagents-updated", "subagent-identity-updated", "subagent-timing-updated", "session-snapshot", "history", "error"].contains(frame.kind),
+           let data = try? JSONEncoder().encode(frame),
+           teamStore.acceptFrameJson(json: String(decoding: data, as: UTF8.self)) {
+            publishTeamSnapshot()
+            let routing = teamStore.routingJson()
+            if routing != persistedTeamRouting {
+                persistedTeamRouting = routing
+                persistOfflineCatalog()
+            }
+            if frame.kind == "hello" { refreshTeam() }
+        }
+        if ["agent-team", "agent-team-updated", "subagents", "subagents-updated", "subagent-identity-updated", "subagent-timing-updated", "session-status"].contains(frame.kind) { return }
+
         if chatPrefetcher.consume(frame) || chatPrefetcher.consumeHistoryError(frame,
             foregroundHistoryPending: !historyLoadingSessionIds.isEmpty) { return }
         defer { updateChatPrefetchState() }
@@ -2552,15 +2760,20 @@ final class AppStore: ObservableObject {
         if ["session-agent-preset", "select-agent-preset", "session-agent-preset-updated"].contains(frame.kind) ||
             (frame.kind == "error" && ["session-agent-preset", "select-agent-preset"].contains(frame.requestType)) { return }
         acceptQueueFrame(frame)
-        if frame.kind == "sent" && messageSubmissionPending {
+        let matchesSubmission = (frame.requestId == messageSubmissionRequestID || (submittedUploadIDs.isEmpty && frame.requestId == nil)) &&
+            (messageSubmissionSessionID == nil || frame.sessionId == nil || frame.sessionId == messageSubmissionSessionID)
+        if frame.kind == "sent" && messageSubmissionPending && matchesSubmission {
             messageSubmissionPending = false
             messageSubmissionTimeout?.cancel()
+            fileUploads.accepted(submittedUploadIDs)
+            submittedUploadIDs = []
             messageAcceptedRevision &+= 1
         }
-        if frame.kind == "error" && (frame.requestType == "message" || frame.requestType == nil) && messageSubmissionPending {
+        if frame.kind == "error" && (frame.requestType == "message" || frame.requestType == nil) && messageSubmissionPending && matchesSubmission {
             messageSubmissionPending = false
             messageSubmissionTimeout?.cancel()
             waitingForNewSession = false
+            if frame.code == "session/attachment-invalid" { fileUploads.invalidReceipts() }
         }
         if ["session-queues", "session-queue", "queue-item-updated"].contains(frame.kind) { return }
         if frame.kind == "hello" {
@@ -2701,9 +2914,15 @@ final class AppStore: ObservableObject {
                 let transition = kmpWorkspaceFileStore.acceptFrame(
                     json: String(decoding: data, as: UTF8.self)
                 )
+                if transition.directory == nil,
+                   transition.cacheLookup != nil || transition.snapshot.activeDownload != nil ||
+                   (frame.kind == "file-resolved" && transition.request?.requestType == "file-download-open") {
+                    presentResolvedConversationFilePreview()
+                }
                 applyWorkspaceFileTransition(transition)
             }
-            if frame.kind != "error" { return }
+            // 文件错误由文件状态机处理；目录识别响应不能再弹成会话错误。
+            return
         }
         let context = GatewayFrameRoutingContext(
             selectedSessionID: selectedSessionId,
@@ -2767,11 +2986,15 @@ final class AppStore: ObservableObject {
             // 再发送本代 refresh，避免旧 token 或迟到响应跨连接污染新请求。
             resetOutstandingRequests()
             chatPrefetcher.connectedHello()
+            resumeSessionControlRequests()
             // 主动后台挂起不触发 onConnectionFailure，也必须重新激活订阅。
             activeConversationActivationKey = nil
             backgroundExecutionController.releaseAllQuestionAnswers()
             dispatchQuestionIntent(.reset)
             dispatchApprovalIntent(.reset)
+            // 本代上传能力必须在旧连接清理后初始化，避免被 disconnected() 再次关闭。
+            fileUploads.connected(sessionID: selectedSessionId,
+                supported: payload.protocolVersion >= 3 && payload.capabilities.contains("file-upload-v1"))
             supportsImages = payload.protocolVersion >= 3 && payload.capabilities.contains("images")
             supportsFileDownloads = payload.protocolVersion >= 3 && payload.capabilities.contains("file-downloads")
             supportsFileReferences = payload.capabilities.contains("file-references-v1")
@@ -2787,6 +3010,8 @@ final class AppStore: ObservableObject {
             queueRevision &+= 1
             cancellingSessionIDs = []
             applySlashCommandTransition(kmpSlashCommandStore.reset(sessionId: selectedSessionId))
+            if pendingConversationFilePreviewRequest != nil { conversationFileIsOpening = false }
+            pendingConversationFilePreviewRequest = nil
             workspaceFileOperationID = UUID()
             applyWorkspaceFileTransition(kmpWorkspaceFileStore.reset(sessionId: selectedSessionId))
             attachmentLoader.reset()
@@ -2806,7 +3031,10 @@ final class AppStore: ObservableObject {
             }
             refreshRemoteState()
             refreshDefaultConfiguration()
-            if let selectedSessionId {
+            // 主页恢复的 selectedSessionId 只是目录元数据，不能据此打开会话。
+            // 尤其旧缓存中的子智能体可能尚未恢复直接父地址。
+            if let selectedSessionId,
+               preparedConversationActivationKey != nil || backgroundMonitoredSessionID == selectedSessionId {
                 refreshSessionControls(for: selectedSessionId)
             }
             // 恢复旧预加载槽时，即使当前只选中而尚未激活视图，也必须重发真实前台请求。
@@ -2854,6 +3082,13 @@ final class AppStore: ObservableObject {
         }
     }
 
+    private func presentResolvedConversationFilePreview() {
+        guard let request = pendingConversationFilePreviewRequest else { return }
+        pendingConversationFilePreviewRequest = nil
+        guard request.sessionID == selectedSessionId else { return }
+        workspaceFilePreviewRequest = request
+    }
+
     private func beginWorkspaceFileTransition(_ transition: DeepSeekHarnessShared.SharedWorkspaceFileTransition) {
         if transition.request != nil, transition.snapshot.lastError == nil {
             workspaceFileOperationID = UUID()
@@ -2865,6 +3100,21 @@ final class AppStore: ObservableObject {
         _ transition: DeepSeekHarnessShared.SharedWorkspaceFileTransition,
         cachedURL: URL? = nil
     ) {
+        if let directory = transition.directory {
+            pendingConversationFilePreviewRequest = nil
+            guard directory.sessionId == selectedSessionId else { return }
+            conversationFileIsOpening = false
+            workspaceFilePreviewRequest = nil
+            conversationFilePreviewRequested = false
+            workspaceFilePreviewProgress = 0
+            workspaceFilePath = directory.path
+            workspaceFileEntries = []
+            workspaceFilesAreLoading = true
+            conversationDirectorySessionID = directory.sessionId
+            conversationDirectoryPath = directory.path
+            return
+        }
+        if transition.snapshot.lastError != nil { presentResolvedConversationFilePreview() }
         let cache = workspaceFileOperationCache ?? WorkspacePreviewCache(gatewayID: gatewayLocalID)
         if let lookup = transition.cacheLookup {
             let entry = WorkspacePreviewCacheEntry(lookup)
@@ -4152,6 +4402,7 @@ final class AppStore: ObservableObject {
     }
 
     private func handleConnectionFailure(_ detail: String) {
+        pendingConversationFilePreviewRequest = nil
         conversationFileIsOpening = false
         workspaceFileOperationID = UUID()
         applyWorkspaceFileTransition(kmpWorkspaceFileStore.reset(sessionId: selectedSessionId))
@@ -4189,13 +4440,20 @@ final class AppStore: ObservableObject {
     }
 
     private func resetOutstandingRequests() {
+        deferredSessionControlEffects.removeAll()
+        fileUploads.disconnected()
+        for (id, task) in teamMemberProfileTimeouts {
+            task.cancel()
+            teamStore.finishMemberProfileRequest(requestId: id)
+        }
+        teamMemberProfileTimeouts.removeAll()
         chatPrefetcher.stop(reason: "reset")
         sessionAgentPresetTimeout?.cancel()
         applySessionAgentPresetTransition(sessionAgentPresetStore.disconnected())
         cancelSnapshotWait()
         backgroundExecutionController.releaseAllQuestionAnswers()
-        for kind in Array(sessionControlLoadingKinds) { sessionControlRequestTracker.finish(kind) }
-        for kind in Array(defaultConfigurationLoadingKinds) { defaultConfigurationRequestTracker.finish(kind) }
+        sessionControlRequestTracker.finishAll()
+        defaultConfigurationRequestTracker.finishAll()
         submitSessionControlIntent(.requestsDisconnected)
         for id in Array(historyLoadingSessionIds) { finishHistoryLoading(id) }
         directoryIsLoading = false
@@ -4635,7 +4893,9 @@ final class AppStore: ObservableObject {
     private func handleSessionControlEvent(_ transition: KMPSessionControlTransition) {
         applySessionControlTransition(transition)
         guard transition.error == nil else { return }
-        transition.effects.forEach(executeSessionControlEffect)
+        for effect in transition.effects where kmpSessionControlStore.snapshot.requestTokens[effect.requestKey] == effect.requestToken {
+            executeSessionControlEffect(effect)
+        }
     }
     @discardableResult
     private func applySessionControlTransition(
@@ -4729,7 +4989,32 @@ final class AppStore: ObservableObject {
             : sessionControlRequestTracker
         tracker.finish(kind)
     }
+    private func pauseSessionControlRequests() {
+        sessionControlRequestsSuspended = true
+        sessionControlRequestTracker.pause()
+        defaultConfigurationRequestTracker.pause()
+    }
+
+    private func resumeSessionControlRequests() {
+        sessionControlRequestsSuspended = false
+        sessionControlRequestTracker.resume()
+        defaultConfigurationRequestTracker.resume()
+        let pending = deferredSessionControlEffects
+        deferredSessionControlEffects.removeAll()
+        for effect in pending where kmpSessionControlStore.snapshot.requestTokens[effect.requestKey] == effect.requestToken {
+            executeSessionControlEffect(effect)
+        }
+    }
+
     func executeSessionControlEffect(_ effect: KMPSessionControlEffect) {
+        guard !sessionControlRequestsSuspended else {
+            if let index = deferredSessionControlEffects.firstIndex(where: { $0.requestKey == effect.requestKey }) {
+                deferredSessionControlEffects[index] = effect
+            } else {
+                deferredSessionControlEffects.append(effect)
+            }
+            return
+        }
         let isDefault = Self.defaultConfigurationRequestKinds.contains(effect.requestKey)
         let tracker = isDefault ? defaultConfigurationRequestTracker : sessionControlRequestTracker
         let startedAt = Date()
@@ -4737,7 +5022,7 @@ final class AppStore: ObservableObject {
             agentPresetsLoadError = nil
             notice("Agent 预设诊断", "开始请求 token=\(effect.requestToken) connected=\(gateway.state.isConnected)")
         }
-        tracker.begin(effect.requestKey, timeout: .seconds(12)) { [weak self] in
+        tracker.begin(effect.requestKey, timeout: sessionControlRequestTimeout) { [weak self] in
             guard let self,
                   self.kmpSessionControlStore.snapshot.requestTokens[effect.requestKey] == effect.requestToken else {
                 return
@@ -4812,10 +5097,18 @@ final class AppStore: ObservableObject {
         searchResults = localSearchResults
     }
 
-    /// 目录恢复只进入 SessionList，绝不安装历史/流 baseline 或发送订阅。
+    /// 目录恢复只安装导航元数据和父子地址，绝不安装历史/流 baseline 或发送订阅。
     private func restoreOfflineCatalog(_ json: String?) {
         if let json {
             let codec = SharedOfflineCatalogCodec()
+            if let avatars = codec.teamAvatarsJson(catalogJson: json) {
+                _ = teamStore.restoreAvatarAssignmentsJson(json: avatars)
+                persistedTeamAvatars = teamStore.avatarAssignmentsJson()
+            }
+            if let routing = codec.conversationTargetsJson(catalogJson: json) {
+                _ = teamStore.restoreRoutingJson(json: routing)
+                persistedTeamRouting = teamStore.routingJson()
+            }
             if let value = codec.sessionListJson(catalogJson: json),
                var snapshot = try? JSONDecoder().decode(KMPSessionListSnapshot.self, from: Data(value.utf8)) {
                 if offlineSessionRevision == 0 {
@@ -4858,7 +5151,10 @@ final class AppStore: ObservableObject {
                     sessionListJson: String(decoding: encodedSessions, as: UTF8.self),
                     workspacesJson: String(decoding: encodedWorkspaces, as: UTF8.self),
                     selectedWorkspaceId: selectedWorkspaceId) else { return }
-            _ = await cache.saveOfflineCatalog(owner: owner, json: json)
+            let codec = SharedOfflineCatalogCodec()
+            guard let routed = codec.withConversationTargets(catalogJson: json, targetsJson: teamStore.routingJson()),
+                  let catalog = codec.withTeamAvatars(catalogJson: routed, avatarsJson: teamStore.avatarAssignmentsJson()) else { return }
+            _ = await cache.saveOfflineCatalog(owner: owner, json: catalog)
         }
     }
 

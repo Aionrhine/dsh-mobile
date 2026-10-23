@@ -2,6 +2,7 @@ import Foundation
 import UIKit
 import Security
 import OSLog
+import Network
 
 @MainActor
 final class GatewayClient: ObservableObject {
@@ -16,12 +17,52 @@ final class GatewayClient: ObservableObject {
     }
 
     private let channel: String
+    var requestDecorator: ((String) -> String?)?
+    var conversationTarget: ((String) -> MobileConversationTarget?)?
+    private var subscriptionPending = false
+    private var pendingSubscriptionID: String?
+    private var desiredSubscriptionID: String?
+    private var subscriptionDirty = false
+    private var subscriptionTimeout: Task<Void, Never>?
+
+    func resetSubscriptionRequests() {
+        subscriptionTimeout?.cancel()
+        subscriptionTimeout = nil
+        subscriptionPending = false
+        subscriptionDirty = false
+    }
+
+    /// subscribed 无 requestId，必须单飞并合并快速切换意图。
+    func acceptSubscriptionAck(sessionID: String?) -> Bool {
+        // 兼容未经过前台选择入口的历史订阅与旧网关；托管切换仍严格单飞。
+        guard subscriptionPending else { return true }
+        guard pendingSubscriptionID == sessionID else { return false }
+        subscriptionTimeout?.cancel()
+        subscriptionTimeout = nil
+        subscriptionPending = false
+        if subscriptionDirty {
+            subscriptionDirty = false
+            subscribe(sessionId: desiredSubscriptionID)
+            return false
+        }
+        return true
+    }
+
     var credentialID: String?
     var expectedGatewayID: String?
     var trustedEndpoints: [String] = []
     var onIdentity: ((GatewayFrame, String) throws -> Void)?
     var probeOnly = false
     private var reconnectAttempt = 0
+    private var networkPathMonitor: NWPathMonitor?
+    private lazy var networkRecovery = GatewayNetworkRecovery(
+        canRecover: { [weak self] in
+            guard let self else { return false }
+            return self.wantsConnection && self.channel == "control" && !self.probeOnly &&
+                !self.isManualPairingAttempt && !self.isApplicationInBackground
+        },
+        recover: { [weak self] in self?.recoverNetworkConnection() }
+    )
     private var pendingConversationPayloads: [String] = []
     private var pendingConversationBytes = 0
     private var outboundTask: Task<Void, Never>?
@@ -36,19 +77,33 @@ final class GatewayClient: ObservableObject {
     }
 
     func migrateCredential(from endpoint: URL) throws {
-        guard credentialID != nil, GatewayTokenStore.load(for: credentialURL(endpoint)) == nil,
-              let token = GatewayTokenStore.load(for: endpoint) else { return }
-        try GatewayTokenStore.save(token, for: credentialURL(endpoint))
+        guard credentialID != nil, try credentials.loadToken(for: credentialURL(endpoint)) == nil,
+              let token = try credentials.loadToken(for: endpoint) else { return }
+        try credentials.saveToken(token, for: credentialURL(endpoint))
     }
 
     private var conversationClient: GatewayClient?
     private var onTransportFailure: ((String, Bool) -> Void)?
+    private let credentials: any GatewayCredentialStoring
+    private let heartbeatInterval: Duration
+    private let probeTimeout: Duration
 
-    init(channel: String = "control") {
+    init(
+        channel: String = "control",
+        credentials: (any GatewayCredentialStoring)? = nil,
+        heartbeatInterval: Duration = .seconds(30),
+        probeTimeout: Duration = .seconds(5)
+    ) {
         self.channel = channel
+        self.credentials = credentials ?? SystemGatewayCredentialStore()
+        self.heartbeatInterval = heartbeatInterval
+        self.probeTimeout = probeTimeout
     }
 #if DEBUG
     private var testRequestTransport: ((String) -> Void)?
+    var recoveryStateForTesting: (wantsConnection: Bool, reconnectAttempt: Int, isManualPairing: Bool) {
+        (wantsConnection, reconnectAttempt, isManualPairingAttempt)
+    }
 
     /// 测试使用明确的已连接传输，避免仅投递 hello 却仍处于断线状态的伪在线 fixture。
     func installConnectedTransportForTesting(_ send: @escaping (String) -> Void = { _ in }) {
@@ -73,6 +128,10 @@ final class GatewayClient: ObservableObject {
     var onCommandFrame: ((String) -> Void)?
     var onSpeechFrame: ((String) -> Void)?
     var onConnectionFailure: ((String) -> Void)?
+    /// 传输生命周期与错误弹窗分离；静默恢复也必须废弃旧请求。
+    var onConnectionInvalidated: (() -> Void)?
+    var onConnectionCheckStarted: (() -> Void)?
+    var onConnectionReady: (() -> Void)?
     private var socket: URLSessionWebSocketTask?
     private var receiveTask: Task<Void, Never>?
     private var reconnectTask: Task<Void, Never>?
@@ -146,6 +205,7 @@ final class GatewayClient: ObservableObject {
     private var isRecoveringFromBackground = false
 
     deinit {
+        networkPathMonitor?.cancel()
         outboundTask?.cancel()
         receiveTask?.cancel()
         reconnectTask?.cancel()
@@ -170,7 +230,7 @@ final class GatewayClient: ObservableObject {
               ["ws", "wss"].contains(url.scheme?.lowercased() ?? "") else {
             return false
         }
-        return GatewayTokenStore.load(for: credentialURL(url))?.isEmpty == false
+        return (try? credentials.loadToken(for: credentialURL(url)))?.isEmpty == false
     }
 
     func connectForPairing(_ payload: GatewayPairingPayload) {
@@ -182,6 +242,7 @@ final class GatewayClient: ObservableObject {
     /// 只记录场景状态。连接的生命周期由用户的连接意图与真实传输故障决定；
     /// 进入后台本身不再主动关闭 WebSocket。
     func applicationDidEnterBackground() {
+        networkRecovery.cancel()
         foregroundProbeTask?.cancel()
         foregroundProbeTask = nil
         foregroundProbeSequence += 1
@@ -198,9 +259,10 @@ final class GatewayClient: ObservableObject {
         traceLifecycle("become-active")
         backgroundEnteredAt = nil
         isApplicationInBackground = false
-        conversationClient?.applicationDidBecomeActive()
-        guard wantsConnection else { return }
+        guard wantsConnection, !isManualPairingAttempt, !probeOnly else { return }
+        reconnectAttempt = 0
         if state.isConnected {
+            conversationClient?.applicationDidBecomeActive()
             probeForegroundConnection()
             return
         }
@@ -229,20 +291,30 @@ final class GatewayClient: ObservableObject {
         endpoint = url
         self.pairingCode = pairingCode
         isManualPairingAttempt = pairingCode != nil
+        startMonitoringNetworkChanges()
         if resetReportedFailure { lastReportedFailure = nil }
         state = .connecting
         var request = URLRequest(url: url)
         request.setValue(channel, forHTTPHeaderField: "X-DSH-Channel")
         request.setValue(Data(UIDevice.current.name.utf8).base64EncodedString(), forHTTPHeaderField: "X-DSH-Device-Name")
         do {
-            request.setValue(try GatewayDeviceIdentityStore.loadOrCreate(), forHTTPHeaderField: "X-DSH-Device-ID")
+            request.setValue(try credentials.loadOrCreateDeviceID(), forHTTPHeaderField: "X-DSH-Device-ID")
         } catch {
-            fail(String(localized: "gateway.device-id.unavailable", defaultValue: "无法读取或创建设备唯一标识：\(error.localizedDescription)"), shouldReconnect: false)
+            fail(String(localized: "gateway.device-id.unavailable", defaultValue: "无法读取或创建设备唯一标识：\(error.localizedDescription)"),
+                 shouldReconnect: canRetryCredentialAccess(error))
+            return
+        }
+        let token: String?
+        do {
+            token = pairingCode == nil ? try credentials.loadToken(for: credentialURL(url)) : nil
+        } catch {
+            // 临时读取失败不是 token 缺失，不能发起匿名握手并误删仍然有效的凭据。
+            fail(error.localizedDescription, shouldReconnect: canRetryCredentialAccess(error))
             return
         }
         if let pairingCode {
             request.setValue("dsh-mobile-v1, dsh-pair.\(pairingCode)", forHTTPHeaderField: "Sec-WebSocket-Protocol")
-        } else if let token = GatewayTokenStore.load(for: credentialURL(url)) {
+        } else if let token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             request.setValue("dsh-mobile-v1", forHTTPHeaderField: "Sec-WebSocket-Protocol")
         } else {
@@ -260,6 +332,9 @@ final class GatewayClient: ObservableObject {
     }
 
     func disconnect(reconnect: Bool = false) {
+        onConnectionInvalidated?()
+        networkRecovery.cancel()
+        resetSubscriptionRequests()
         traceLifecycle("explicit-disconnect reconnect=\(reconnect)")
         outboundTask?.cancel()
         outboundTask = nil
@@ -446,6 +521,19 @@ final class GatewayClient: ObservableObject {
     }
 
     func subscribe(sessionId: String?) {
+        desiredSubscriptionID = sessionId
+        if subscriptionPending { subscriptionDirty = true; return }
+        subscriptionPending = true
+        pendingSubscriptionID = sessionId
+        subscriptionTimeout?.cancel()
+        subscriptionTimeout = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(15)) } catch { return }
+            guard let self, self.subscriptionPending else { return }
+            let target = self.pendingSubscriptionID
+            self.resetSubscriptionRequests()
+            self.onFrame?(GatewayFrame(kind: "error", sessionId: target, code: "subscription-timeout",
+                message: "成员会话订阅超时，请重试或返回 Lead", requestType: "subscribe"))
+        }
         gatewayApprovalTrace("transport subscribe hasSession=\(sessionId?.isEmpty == false)")
         if let sessionId, !sessionId.isEmpty {
             send(["type": "subscribe", "sessionId": sessionId, "assistantStream": true])
@@ -469,20 +557,17 @@ final class GatewayClient: ObservableObject {
     func sendMessage(
         text: String,
         images: [GatewayOutgoingImage] = [],
+        receipts: [String] = [],
         sessionId: String?,
         workspaceId: String? = nil,
-        mode: String = "queue"
+        mode: String = "queue",
+        requestId: String? = nil
     ) {
-        if let conversationClient {
-            conversationClient.sendMessage(text: text, images: images, sessionId: sessionId, workspaceId: workspaceId, mode: mode)
-            return
-        }
-        guard let socket else {
-            state = .failed(String(localized: "state.websocket.not-connected", defaultValue: "WebSocket 尚未连接"))
-            return
-        }
+        let address = sessionId.flatMap { conversationTarget?($0) }
         let request = GatewayMessageRequest(
             sessionId: sessionId?.isEmpty == false ? sessionId : nil,
+            parentSessionId: address?.parentSessionId,
+            subagentMode: address?.subagentMode,
             text: text,
             images: images.map {
                 GatewayMessageRequest.Image(
@@ -491,18 +576,24 @@ final class GatewayClient: ObservableObject {
                     name: $0.name
                 )
             },
+            files: receipts.isEmpty ? nil : receipts.map { GatewayMessageRequest.File(receiptId: $0) },
             workspaceId: sessionId == nil && workspaceId?.isEmpty == false ? workspaceId : nil,
             clientTimeZone: TimeZone.current.identifier,
-            mode: mode
+            mode: mode,
+            requestId: requestId
         )
         Task { [weak self] in
             do {
                 let payload = try await Task.detached(priority: .userInitiated) {
                     try JSONEncoder().encode(request)
                 }.value
-                try await socket.send(.string(String(decoding: payload, as: UTF8.self)))
+                if let self {
+                    // 图片 Base64 已在后台编码；直接使用固定地址，不在主线程重新解析整条消息。
+                    let client = self.conversationClient ?? self
+                    client.sendRequestPayload(String(decoding: payload, as: UTF8.self), decorate: false)
+                }
             } catch {
-                self?.handleFailure(error, socket: socket)
+                self?.handleFailure(error)
             }
         }
     }
@@ -577,15 +668,32 @@ final class GatewayClient: ObservableObject {
     }
 
     /// KMP 文件状态机已经生成并校验过的协议请求。平台 transport 只负责发送。
-    func sendRequestPayload(_ payload: String) {
+    func sendRequestPayload(_ originalPayload: String, decorate: Bool = true) {
+        let payload: String
+        if decorate, let requestDecorator {
+            guard let decorated = requestDecorator(originalPayload) else {
+                // 文件预览不能静默丢弃，否则状态机会一直停在 0%。
+                if let object = try? JSONSerialization.jsonObject(with: Data(originalPayload.utf8)) as? [String: Any],
+                   let type = object["type"] as? String, type.hasPrefix("file-") {
+                    onFrame?(GatewayFrame(kind: "error", sessionId: object["sessionId"] as? String,
+                        code: "file-workspace-unavailable", message: "无法确定文件所属工作区，请重新打开会话后重试。",
+                        requestType: type, requestId: object["requestId"] as? String,
+                        transferId: object["transferId"] as? String))
+                }
+                return
+            }
+            payload = decorated
+        } else { payload = originalPayload }
+
 #if DEBUG
         if let testRequestTransport {
             if state.isConnected { testRequestTransport(payload) }
             return
         }
 #endif
-        if let type = try? JSONDecoder().decode(RequestEnvelope.self, from: Data(payload.utf8)).type,
-           Self.usesConversationChannel(type), let conversationClient {
+        if let conversationClient,
+           let type = try? JSONDecoder().decode(RequestEnvelope.self, from: Data(payload.utf8)).type,
+           Self.usesConversationChannel(type) {
             conversationClient.sendRequestPayload(payload)
             return
         }
@@ -598,32 +706,8 @@ final class GatewayClient: ObservableObject {
     }
 
     private func send(_ object: [String: Any]) {
-#if DEBUG
-        if let testRequestTransport {
-            if state.isConnected, let data = try? JSONSerialization.data(withJSONObject: object) {
-                testRequestTransport(String(decoding: data, as: UTF8.self))
-            }
-            return
-        }
-#endif
-        if let type = object["type"] as? String,
-           Self.usesConversationChannel(type),
-           let conversationClient {
-            conversationClient.send(object)
-            return
-        }
-        guard let socket else {
-            state = .failed(String(localized: "state.websocket.not-connected", defaultValue: "WebSocket 尚未连接"))
-            return
-        }
-        do {
-            let data = try JSONSerialization.data(withJSONObject: object)
-            let text = String(decoding: data, as: UTF8.self)
-            if deferUntilConversationHello(text) { return }
-            write(text, to: socket, logsPresets: object["type"] as? String == "agent-presets")
-        } catch {
-            state = .failed(error.localizedDescription)
-        }
+        guard let data = try? JSONSerialization.data(withJSONObject: object) else { return }
+        sendRequestPayload(String(decoding: data, as: UTF8.self))
     }
 
     /// 每条通道按提交顺序发送；hello 前的缓冲不会被后来的写操作插队。
@@ -724,8 +808,11 @@ final class GatewayClient: ObservableObject {
                             return
                         }
                         do {
-                            try GatewayTokenStore.save(token, for: credentialURL(endpoint))
+                            try credentials.saveToken(token, for: credentialURL(endpoint))
                             pairingCode = nil
+                            // 一次性配对已完成；hello 前断线也应使用长期 token 自动恢复。
+                            isManualPairingAttempt = false
+                            startMonitoringNetworkChanges()
                         } catch {
                             fail(String(localized: "pairing.token.keychain-failed", defaultValue: "配对成功，但无法将设备 token 写入 Keychain：\(error.localizedDescription)"), shouldReconnect: false)
                             return
@@ -739,8 +826,10 @@ final class GatewayClient: ObservableObject {
                         connectionTimeoutTask?.cancel()
                         connectionTimeoutTask = nil
                         isManualPairingAttempt = false
+                        startMonitoringNetworkChanges()
                         reconnectAttempt = 0
                         state = .connected
+                        onConnectionReady?()
                         traceLifecycle("hello-connected")
                         startHeartbeat(for: socket)
                         lastReportedFailure = nil
@@ -767,7 +856,8 @@ final class GatewayClient: ObservableObject {
 
     private func openConversationChannel() {
         guard conversationClient == nil, let endpoint else { return }
-        let client = GatewayClient(channel: "conversation")
+        let client = GatewayClient(channel: "conversation", credentials: credentials,
+                                   heartbeatInterval: heartbeatInterval, probeTimeout: probeTimeout)
         client.credentialID = credentialID
         client.expectedGatewayID = expectedGatewayID
         client.trustedEndpoints = trustedEndpoints
@@ -827,7 +917,10 @@ final class GatewayClient: ObservableObject {
         let shouldReportFailure: Bool
         switch (statusCode, closeCode) {
         case (401, _):
-            if pairingCode == nil, let endpoint { GatewayTokenStore.delete(for: credentialURL(endpoint)) }
+            if pairingCode == nil, let endpoint,
+               socket?.originalRequest?.value(forHTTPHeaderField: "Authorization") != nil {
+                credentials.deleteToken(for: credentialURL(endpoint))
+            }
             detail = String(localized: "auth.failed.401", defaultValue: "鉴权失败（HTTP 401）：设备 token 无效、已被吊销，或配对码已过期/使用过，请重新扫码配对。")
             shouldReconnect = false
             shouldReportFailure = true
@@ -860,6 +953,11 @@ final class GatewayClient: ObservableObject {
         )
     }
 
+    private func canRetryCredentialAccess(_ error: Error) -> Bool {
+        (error as? GatewayKeychainError)?.isTemporarilyUnavailable == true &&
+            !isManualPairingAttempt && !probeOnly
+    }
+
     static func certificateTrustAdvice(for error: NSError) -> String? {
         guard error.domain == NSURLErrorDomain else { return nil }
         switch error.code {
@@ -878,6 +976,7 @@ final class GatewayClient: ObservableObject {
 
     private func fail(_ detail: String, shouldReconnect: Bool, reportFailure: Bool = true) {
         traceLifecycle("failure-cleanup reconnect=\(shouldReconnect) report=\(reportFailure)")
+        onConnectionInvalidated?()
         outboundTask?.cancel()
         outboundTask = nil
         heartbeatTask?.cancel()
@@ -925,15 +1024,42 @@ final class GatewayClient: ObservableObject {
         }
     }
 
-    /// URLSession 可能尚未报告后台断线；前台以 ping 验证连接，超时则自动恢复。
+    private func startMonitoringNetworkChanges() {
+        // 对话通道由控制通道统一恢复；临时探测和一次性配对不订阅网络变化。
+        guard channel == "control", !probeOnly, !isManualPairingAttempt,
+              networkPathMonitor == nil else { return }
+        let monitor = NWPathMonitor()
+        networkPathMonitor = monitor
+        monitor.pathUpdateHandler = { [weak self] path in
+            let snapshot = GatewayNetworkRecovery.Path(path)
+            Task { @MainActor [weak self] in self?.networkRecovery.update(snapshot) }
+        }
+        monitor.start(queue: DispatchQueue(label: "ai.dsh.mobile.gateway-network"))
+    }
+
+    private func recoverNetworkConnection() {
+        traceLifecycle("network-path-recovery")
+        reconnectAttempt = 0
+        if state.isConnected {
+            // 两条 socket 都可能停留在旧网络，即使控制通道的 ping 已成功。
+            probeForegroundConnection()
+            conversationClient?.probeForegroundConnection()
+        } else if let endpoint {
+            reconnectTask?.cancel()
+            reconnectTask = nil
+            beginConnection(to: endpoint.absoluteString, pairingCode: nil, resetReportedFailure: false)
+        }
+    }
+
+    /// URLSession 可能尚未报告后台或网络切换断线；以 ping 验证连接，超时则自动恢复。
     private func probeForegroundConnection() {
-        guard let socket, state.isConnected else { return }
-        foregroundProbeTask?.cancel()
+        guard let socket, state.isConnected, foregroundProbeTask == nil else { return }
+        onConnectionCheckStarted?()
         foregroundProbeSequence += 1
         let sequence = foregroundProbeSequence
         traceLifecycle("foreground-probe-ping")
         foregroundProbeTask = Task { [weak self, weak socket] in
-            do { try await Task.sleep(for: .seconds(5)) } catch { return }
+            do { try await Task.sleep(for: self?.probeTimeout ?? .seconds(5)) } catch { return }
             guard let self, let socket, self.socket === socket,
                   !self.isApplicationInBackground, self.foregroundProbeSequence == sequence else { return }
             self.traceLifecycle("foreground-probe-timeout")
@@ -949,6 +1075,7 @@ final class GatewayClient: ObservableObject {
                     self.handleFailure(error, socket: socket)
                 } else {
                     self.traceLifecycle("foreground-probe-pong")
+                    self.onConnectionReady?()
                 }
             }
         }
@@ -960,9 +1087,14 @@ final class GatewayClient: ObservableObject {
         heartbeatTask?.cancel()
         heartbeatTask = Task { [weak self, weak socket] in
             while !Task.isCancelled {
-                do { try await Task.sleep(for: .seconds(30)) } catch { return }
+                do { try await Task.sleep(for: self?.heartbeatInterval ?? .seconds(30)) } catch { return }
                 guard let self, let socket, self.socket === socket, self.state.isConnected else { return }
                 self.traceLifecycle("heartbeat-ping")
+                if !self.isApplicationInBackground {
+                    // 普通前台心跳也必须有截止时间，防止 TCP 黑洞一直显示在线。
+                    self.probeForegroundConnection()
+                    continue
+                }
                 socket.sendPing { [weak self, weak socket] error in
                     guard let error else { return }
                     Task { @MainActor [weak self, weak socket] in
@@ -1002,6 +1134,64 @@ final class GatewayClient: ObservableObject {
     }
 }
 
+/// 合并系统网络通知；初次通知只建立基线，断网会取消尚未执行的恢复。
+@MainActor
+final class GatewayNetworkRecovery {
+    struct Path: Equatable, Sendable {
+        let isSatisfied: Bool
+        private let systemPath: NWPath?
+        private let interfaces: [String]
+
+        init(_ path: NWPath) {
+            isSatisfied = path.status == .satisfied
+            // 使用系统的路径等价判断，涵盖接口不变但路由变化的情况。
+            systemPath = path
+            interfaces = []
+        }
+
+#if DEBUG
+        init(isSatisfied: Bool, interfaces: [String] = []) {
+            self.isSatisfied = isSatisfied
+            systemPath = nil
+            self.interfaces = interfaces
+        }
+#endif
+    }
+
+    private let debounce: Duration
+    private let canRecover: () -> Bool
+    private let recover: () -> Void
+    private var previousPath: Path?
+    private var pendingTask: Task<Void, Never>?
+
+    init(debounce: Duration = .seconds(1), canRecover: @escaping () -> Bool, recover: @escaping () -> Void) {
+        self.debounce = debounce
+        self.canRecover = canRecover
+        self.recover = recover
+    }
+
+    deinit { pendingTask?.cancel() }
+
+    func cancel() {
+        pendingTask?.cancel()
+        pendingTask = nil
+    }
+
+    func update(_ path: Path) {
+        let previous = previousPath
+        previousPath = path
+        guard previous != path else { return }
+        cancel()
+        guard previous != nil, path.isSatisfied, canRecover() else { return }
+        pendingTask = Task { [weak self, debounce] in
+            do { try await Task.sleep(for: debounce) } catch { return }
+            guard let self, !Task.isCancelled, self.canRecover() else { return }
+            self.pendingTask = nil
+            self.recover()
+        }
+    }
+}
+
 private struct GatewayMessageRequest: Encodable, Sendable {
     struct Image: Encodable, Sendable {
         var mediaType: String
@@ -1011,13 +1201,18 @@ private struct GatewayMessageRequest: Encodable, Sendable {
         var name: String?
     }
 
+    struct File: Encodable, Sendable { let receiptId: String }
     let type = "message"
     var sessionId: String?
+    var parentSessionId: String?
+    var subagentMode: String?
     var text: String
     var images: [Image]
+    var files: [File]?
     var workspaceId: String?
     var clientTimeZone: String
     var mode: String
+    var requestId: String?
 }
 
 private struct GatewayCommandExecuteRequest: Encodable, Sendable {
@@ -1025,6 +1220,34 @@ private struct GatewayCommandExecuteRequest: Encodable, Sendable {
     var sessionId: String
     var line: String
     var images: [GatewayMessageRequest.Image]
+}
+
+@MainActor
+protocol GatewayCredentialStoring {
+    func loadToken(for endpoint: URL) throws -> String?
+    func saveToken(_ token: String, for endpoint: URL) throws
+    func deleteToken(for endpoint: URL)
+    func loadOrCreateDeviceID() throws -> String
+}
+
+private struct SystemGatewayCredentialStore: GatewayCredentialStoring {
+    func loadToken(for endpoint: URL) throws -> String? { try GatewayTokenStore.load(for: endpoint) }
+    func saveToken(_ token: String, for endpoint: URL) throws { try GatewayTokenStore.save(token, for: endpoint) }
+    func deleteToken(for endpoint: URL) { GatewayTokenStore.delete(for: endpoint) }
+    func loadOrCreateDeviceID() throws -> String { try GatewayDeviceIdentityStore.loadOrCreate() }
+}
+
+struct GatewayKeychainError: LocalizedError {
+    let status: OSStatus
+
+    var isTemporarilyUnavailable: Bool {
+        status == errSecInteractionNotAllowed || status == errSecNotAvailable
+    }
+
+    var errorDescription: String? {
+        (SecCopyErrorMessageString(status, nil) as String?) ??
+            String(localized: "keychain.error.status", defaultValue: "Keychain 错误 \(status)")
+    }
 }
 
 private enum GatewayDeviceIdentityStore {
@@ -1047,7 +1270,7 @@ private enum GatewayDeviceIdentityStore {
            !stored.isEmpty {
             return stored
         }
-        guard status == errSecItemNotFound else { throw KeychainError(status: status) }
+        guard status == errSecItemNotFound else { throw GatewayKeychainError(status: status) }
 
         let value = UUID().uuidString.lowercased()
         var insertion = query
@@ -1057,22 +1280,15 @@ private enum GatewayDeviceIdentityStore {
         insertion[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         let addStatus = SecItemAdd(insertion as CFDictionary, nil)
         if addStatus == errSecDuplicateItem { return try loadOrCreate() }
-        guard addStatus == errSecSuccess else { throw KeychainError(status: addStatus) }
+        guard addStatus == errSecSuccess else { throw GatewayKeychainError(status: addStatus) }
         return value
-    }
-
-    private struct KeychainError: LocalizedError {
-        let status: OSStatus
-        var errorDescription: String? {
-            (SecCopyErrorMessageString(status, nil) as String?) ?? String(localized: "keychain.error.status", defaultValue: "Keychain 错误 \(status)")
-        }
     }
 }
 
 private enum GatewayTokenStore {
     private static let service = "ai.dsh.mobile.ios.gateway-token"
 
-    static func load(for endpoint: URL) -> String? {
+    static func load(for endpoint: URL) throws -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -1081,9 +1297,12 @@ private enum GatewayTokenStore {
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
         var result: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let data = result as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess else { throw GatewayKeychainError(status: status) }
+        guard let data = result as? Data, let token = String(data: data, encoding: .utf8),
+              !token.isEmpty else { throw GatewayKeychainError(status: errSecDecode) }
+        return token
     }
 
     static func save(_ token: String, for endpoint: URL) throws {
@@ -1102,9 +1321,9 @@ private enum GatewayTokenStore {
             var insertion = base
             attributes.forEach { insertion[$0.key] = $0.value }
             let status = SecItemAdd(insertion as CFDictionary, nil)
-            guard status == errSecSuccess else { throw KeychainError(status: status) }
+            guard status == errSecSuccess else { throw GatewayKeychainError(status: status) }
         } else if updateStatus != errSecSuccess {
-            throw KeychainError(status: updateStatus)
+            throw GatewayKeychainError(status: updateStatus)
         }
     }
 
@@ -1121,12 +1340,6 @@ private enum GatewayTokenStore {
         endpoint.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     }
 
-    private struct KeychainError: LocalizedError {
-        let status: OSStatus
-        var errorDescription: String? {
-            (SecCopyErrorMessageString(status, nil) as String?) ?? String(localized: "keychain.error.status", defaultValue: "Keychain 错误 \(status)")
-        }
-    }
 }
 
 /// 拒绝 WebSocket 握手重定向，避免向其他来源转发主机凭据。

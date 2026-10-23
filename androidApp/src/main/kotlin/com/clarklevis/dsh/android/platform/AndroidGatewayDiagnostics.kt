@@ -124,7 +124,11 @@ internal class AndroidGatewayDiagnostics private constructor(
                         else -> runtimeChunkCount.get()
                     }
                     message = "runtime frame kind=${safeProtocolValue(event.frame.kind)} " +
-                        "correlated=${event.correlatedSessionId != null} chunks=$chunks"
+                        "correlated=${event.correlatedSessionId != null} chunks=$chunks" +
+                        if (event.frame.kind == "error") {
+                            " requestType=${safeProtocolValue(event.frame.requestType)} " +
+                                "code=${safeProtocolValue(event.frame.code)} backgroundHistory=${event.isBackgroundHistory}"
+                        } else ""
                 }
             }
             is GatewayRuntimeEvent.AttachmentCached -> {

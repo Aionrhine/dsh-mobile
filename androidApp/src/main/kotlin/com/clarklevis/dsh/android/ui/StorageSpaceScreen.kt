@@ -23,8 +23,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -302,12 +300,12 @@ private fun StorageSortMenu(sortsBySize: Boolean, onChange: (Boolean) -> Unit) {
             Text(appText(if (sortsBySize) "大小" else "名称"), fontSize = 16.sp)
             Icon(painterResource(R.drawable.ic_chevrons_up_down), null, Modifier.padding(start = 5.dp).size(14.dp))
         }
-        DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
-            DropdownMenuItem(text = { Text(appText("大小")) }, onClick = {
+        DshMenu(expanded, onDismissRequest = { expanded = false }) {
+            DshMenuItem(text = { Text(appText("大小")) }, onClick = {
                 onChange(true)
                 expanded = false
             })
-            DropdownMenuItem(text = { Text(appText("名称")) }, onClick = {
+            DshMenuItem(text = { Text(appText("名称")) }, onClick = {
                 onChange(false)
                 expanded = false
             })
