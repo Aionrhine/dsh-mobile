@@ -21,10 +21,7 @@ enum GenuiArtifact {
     /// Returns `nil` when the fence body is not a JSON object, which lets the
     /// message keep rendering as a plain code block instead of an empty box.
     static func plan(fromFence source: String, isDark: Bool) -> GenuiRenderPlan? {
-        guard let data = source.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data),
-              object is [String: Any]
-        else { return nil }
+        guard let object = GenuiJSONRepair.decodeObject(source) else { return nil }
 
         let locale = Locale.preferredLanguages.first?.hasPrefix("zh") == true ? "zh" : "en"
         let artifact: [String: Any] = [
@@ -127,6 +124,152 @@ final class GenuiMountBudget: ObservableObject {
 
     func isActive(_ id: UUID) -> Bool {
         active.contains(id)
+    }
+}
+
+/// Models routinely emit a fence whose only defect is punctuation: a missing
+/// closing brace, a trailing comma, or a full-width quote inside a string. The
+/// desktop renderer tolerates those, so a fence that looks fine on the computer
+/// would fall back to raw source on the phone. This decoder keeps the strict
+/// parse as the first attempt and only then applies deterministic repairs; if
+/// the repaired text still does not parse, the caller keeps the code block.
+enum GenuiJSONRepair {
+    static func decodeObject(_ source: String) -> [String: Any]? {
+        let trimmed = source.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let object = parse(trimmed) { return object }
+
+        for candidate in repairs(of: trimmed) {
+            if let object = parse(candidate) { return object }
+        }
+        return nil
+    }
+
+    private static func parse(_ text: String) -> [String: Any]? {
+        guard let data = text.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let dictionary = object as? [String: Any]
+        else { return nil }
+        return dictionary
+    }
+
+    /// Ordered cheapest-first. Every candidate is derived from the original
+    /// text, never from an earlier candidate, so one bad repair cannot cascade.
+    private static func repairs(of text: String) -> [String] {
+        var candidates: [String] = []
+        let balance = scan(text)
+        if balance.netOpen > 0 {
+            candidates.append(text + balance.closers)
+        }
+        let withoutTrailingCommas = removeTrailingCommas(text)
+        if withoutTrailingCommas != text { candidates.append(withoutTrailingCommas) }
+        if balance.netOpen > 0, withoutTrailingCommas != text {
+            candidates.append(withoutTrailingCommas + balance.closers)
+        }
+        let straightQuotes = normalizeQuotes(text)
+        if straightQuotes != text { candidates.append(straightQuotes) }
+        if straightQuotes != text {
+            let combined = removeTrailingCommas(straightQuotes)
+            if combined != text { candidates.append(combined) }
+        }
+        return candidates
+    }
+
+    private struct Balance {
+        var netOpen = 0
+        /// The exact closing characters the text is missing, in order.
+        var closers = ""
+    }
+
+    /// Walks the text outside string literals and remembers which delimiters are
+    /// still open, so the repair appends exactly the closing characters the
+    /// model forgot (in reverse order).
+    private static func scan(_ text: String) -> Balance {
+        var stack: [Character] = []
+        var inString = false
+        var escaped = false
+        for character in text {
+            if escaped { escaped = false; continue }
+            if character == "\\" && inString { escaped = true; continue }
+            if character == "\"" { inString.toggle(); continue }
+            if inString { continue }
+            switch character {
+            case "{", "[":
+                stack.append(character)
+            case "}":
+                if stack.last == "{" { stack.removeLast() }
+            case "]":
+                if stack.last == "[" { stack.removeLast() }
+            default:
+                break
+            }
+        }
+        var closers = ""
+        for opener in stack.reversed() {
+            closers.append(opener == "{" ? "}" : "]")
+        }
+        return Balance(netOpen: stack.count, closers: closers)
+    }
+
+    private static func removeTrailingCommas(_ text: String) -> String {
+        var output = ""
+        var inString = false
+        var escaped = false
+        var pendingCommaIndex: String.Index?
+        for index in text.indices {
+            let character = text[index]
+            if escaped {
+                escaped = false
+                pendingCommaIndex = nil
+                output.append(character)
+                continue
+            }
+            if character == "\\" && inString {
+                escaped = true
+                pendingCommaIndex = nil
+                output.append(character)
+                continue
+            }
+            if character == "\"" {
+                inString.toggle()
+                pendingCommaIndex = nil
+                output.append(character)
+                continue
+            }
+            if inString {
+                output.append(character)
+                continue
+            }
+            if character == "," {
+                pendingCommaIndex = output.endIndex
+                output.append(character)
+                continue
+            }
+            if character == "}" || character == "]" {
+                if let commaIndex = pendingCommaIndex {
+                    // A trailing comma may be followed by whitespace or a newline;
+                    // everything from the comma to the closing delimiter goes.
+                    let tail = output[output.index(after: commaIndex)...]
+                    if tail.allSatisfy({ $0.isWhitespace }) {
+                        output.removeSubrange(commaIndex...)
+                    }
+                }
+                pendingCommaIndex = nil
+                output.append(character)
+                continue
+            }
+            if !character.isWhitespace { pendingCommaIndex = nil }
+            output.append(character)
+        }
+        return output
+    }
+
+    /// Only the characters a Chinese IME substitutes inside an otherwise ASCII
+    /// document; a spec that legitimately needs them is already valid JSON and
+    /// never reaches this repair.
+    private static func normalizeQuotes(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "\u{201C}", with: "\"")
+            .replacingOccurrences(of: "\u{201D}", with: "\"")
     }
 }
 
