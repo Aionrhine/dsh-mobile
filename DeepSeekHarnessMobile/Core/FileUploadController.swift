@@ -122,7 +122,10 @@ final class FileUploadController {
     }
 
     func importFiles(_ urls: [URL]) async {
-        guard supported, connectionKey != nil, sessionID != nil, !preparing else { return }
+        guard supported, connectionKey != nil, sessionID != nil, !preparing else {
+            reportError?("无法导入所选文件：文件上传通道未就绪或连接已变化")
+            return
+        }
         let token = context
         preparing = true
         changed?()

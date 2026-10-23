@@ -1093,24 +1093,23 @@ struct ConversationView: View {
         .buttonStyle(.plain)
         .disabled(store.messageSubmissionPending)
         .accessibilityLabel("添加附件")
-        .photosPicker(isPresented: $showsPhotoPicker, selection: $selectedPhotoItems,
-            maxSelectionCount: max(1, 20 - pendingImages.count), matching: .images)
-        .fileImporter(isPresented: $showsFilePicker, allowedContentTypes: [.item], allowsMultipleSelection: true,
-            onCompletion: importPickedFiles)
-        .alert("请升级网关", isPresented: $showsFileUploadUpgradeAlert) {
-            Button("好", role: .cancel) {}
-        } message: {
-            Text("当前网关不支持文件上传，请升级到支持文件上传的 Mobile Gateway，并重新连接。")
-        }
     }
 
     private func importPickedFiles(_ result: Result<[URL], Error>) {
         store.voiceInput.setVoiceMode(false)
-        guard store.selectedSessionId == filePickerSessionID else { return }
+        guard store.selectedSessionId == filePickerSessionID else {
+            store.lastError = String(localized: "会话已切换，已取消导入所选文件")
+            return
+        }
         switch result {
         case .success(let urls):
             Task {
-                guard await store.ensureFileUploadSession() else { return }
+                guard await store.ensureFileUploadSession() else {
+                    if store.lastError == nil {
+                        store.lastError = String(localized: "无法准备文件上传会话，请稍后重试")
+                    }
+                    return
+                }
                 store.fileUploads.select(sessionID: store.selectedSessionId, allowed: !store.isViewingTeamMember)
                 await store.fileUploads.importFiles(urls)
             }
@@ -1169,6 +1168,18 @@ struct ConversationView: View {
             pendingImages = []
             selectedPhotoItems = []
             composerIsFocused = false
+        }
+        // 附件选择器呈现在稳定祖先上：挂在 attachmentMenu 的 Menu 链上时，
+        // 菜单收起与选择器呈现竞争会丢失回调（选中文件后点「打开」无响应）。
+        // 三个修饰符参数与原 Menu 链上逐字一致，仅宿主从 Menu 改为 composerCard。
+        .photosPicker(isPresented: $showsPhotoPicker, selection: $selectedPhotoItems,
+            maxSelectionCount: max(1, 20 - pendingImages.count), matching: .images)
+        .fileImporter(isPresented: $showsFilePicker, allowedContentTypes: [.item], allowsMultipleSelection: true,
+            onCompletion: importPickedFiles)
+        .alert("请升级网关", isPresented: $showsFileUploadUpgradeAlert) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text("当前网关不支持文件上传，请升级到支持文件上传的 Mobile Gateway，并重新连接。")
         }
     }
     /// Padding, glass, border and shadow around the composer. Erased by the
