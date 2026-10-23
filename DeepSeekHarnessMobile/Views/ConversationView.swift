@@ -4802,6 +4802,41 @@ struct MarkdownContent: View {
 }
 
 
+/// Reuses only render products; callbacks, font sizes and themes stay on the
+/// current view. File order owns the synthetic URL indices and belongs in the key.
+enum PreparedMarkdownCache {
+    private struct Key: Hashable {
+        let source: String
+        let filePaths: [String]
+    }
+
+    private static let cache = MarkdownRenderProductCache<Key, MarkdownUI.MarkdownContent>(
+        countLimit: 128, costLimit: 8 * 1_024 * 1_024
+    )
+
+    static func document(for source: String, filePaths: [String]) -> MarkdownUI.MarkdownContent {
+        let key = Key(source: source, filePaths: filePaths)
+        return cache.value(for: key) {
+            // File references keep the original inline-code text for AST linking.
+            let padded = filePaths.isEmpty ? InlineCodePadding.apply(to: source) : source
+            var destinations: [String: String] = [:]
+            for (index, path) in filePaths.enumerated() {
+                let destination = "dsh-file-reference:///(index)"
+                destinations[path] = destination
+                let name = path.replacingOccurrences(of: "\\", with: "/")
+                    .split(separator: "/").last.map(String.init) ?? path
+                if ConversationFileReferences.shared.knownPath(code: name, paths: filePaths) != nil {
+                    destinations[name] = destination
+                }
+            }
+            let document = ParsedMarkdownCache.document(for: padded).linkingInlineCode(destinations)
+            let bytes = source.utf16.count * 2 + filePaths.reduce(0) { $0 + $1.utf16.count * 2 }
+            // Account for the retained key/source and parsed/re-written tree.
+            return (document, bytes * 4)
+        }
+    }
+}
+
 /// A small, bounded LRU for immutable rendering products. Oversized entries are
 /// rendered normally without displacing the whole conversation's cached work.
 final class MarkdownRenderProductCache<Key: Hashable, Value>: @unchecked Sendable {
