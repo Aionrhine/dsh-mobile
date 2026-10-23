@@ -1117,6 +1117,44 @@ struct ConversationView: View {
         }
     }
 
+    // 自签环境实测：SwiftUI fileImporter 的 open-in-place 授权链在重签 App 上静默失败
+    // （点「打开」无反应且选择器不关闭；同代码官方 TestFlight 签名正常）。
+    // 改用 UIKit 拷贝模式：系统把所选文件复制进沙盒再交付 URL，绕开原位授权环节。
+    private struct DocumentImportPicker: UIViewControllerRepresentable {
+        let onPick: ([URL]) -> Void
+
+        func makeCoordinator() -> Coordinator {
+            Coordinator(onPick: onPick)
+        }
+
+        func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+            let controller = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
+            controller.allowsMultipleSelection = true
+            controller.delegate = context.coordinator
+            return controller
+        }
+
+        func updateUIViewController(_ controller: UIDocumentPickerViewController, context: Context) {}
+
+        final class Coordinator: NSObject, UIDocumentPickerDelegate {
+            let onPick: ([URL]) -> Void
+
+            init(onPick: @escaping ([URL]) -> Void) {
+                self.onPick = onPick
+            }
+
+            func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {}
+
+            func documentPicker(
+                _ controller: UIDocumentPickerViewController,
+                didPickDocumentsAt urls: [URL]
+            ) {
+                guard !urls.isEmpty else { return }
+                onPick(urls)
+            }
+        }
+    }
+
     private var composerCard: some View {
         // Erased before the change handlers attach. The chrome chain below is
         // deep enough that instantiating this type overflows the main thread
@@ -1174,8 +1212,9 @@ struct ConversationView: View {
         // 三个修饰符参数与原 Menu 链上逐字一致，仅宿主从 Menu 改为 composerCard。
         .photosPicker(isPresented: $showsPhotoPicker, selection: $selectedPhotoItems,
             maxSelectionCount: max(1, 20 - pendingImages.count), matching: .images)
-        .fileImporter(isPresented: $showsFilePicker, allowedContentTypes: [.item], allowsMultipleSelection: true,
-            onCompletion: importPickedFiles)
+        .sheet(isPresented: $showsFilePicker) {
+            DocumentImportPicker(onPick: { urls in importPickedFiles(.success(urls)) })
+        }
         .alert("请升级网关", isPresented: $showsFileUploadUpgradeAlert) {
             Button("好", role: .cancel) {}
         } message: {
