@@ -2079,7 +2079,7 @@ struct ConversationView: View {
                     id: entry.id,
                     revision: revision,
                     userMessage: .init(item: item, imageData: { store.imageData(for: $0) },
-                        showsCopyButton: entry.showsCopyButton)
+                        showsCopyButton: entry.showsCopyButton, onOpenFile: uploadedFileOpener())
                 )]
             }
             switch entry.content {
@@ -2091,7 +2091,8 @@ struct ConversationView: View {
                         item: item,
                         showsCopyButton: entry.showsCopyButton,
                         imageData: { store.imageData(for: $0) },
-                        onOpenFile: conversationFileOpener()
+                        onOpenFile: conversationFileOpener(),
+                        onOpenUploadedFile: uploadedFileOpener()
                     )),
                     // Completed responses are immutable for this revision.
                     // The viewport measures their SwiftUI root directly before
@@ -2204,6 +2205,15 @@ struct ConversationView: View {
             )
         case .toolDetail(let tool):
             ConversationProcessToolDetailRow(tool: tool)
+        }
+    }
+
+    private func uploadedFileOpener() -> (PresentedFile) -> Void {
+        let gatewayID = store.gatewayLocalID
+        let sessionID = store.selectedSessionId
+        return { file in
+            guard let sessionID else { return }
+            store.openUploadedFile(gatewayID: gatewayID, sessionID: sessionID, file: file)
         }
     }
 
@@ -4284,6 +4294,7 @@ struct ConversationRow: View {
     let showsCopyButton: Bool
     let imageData: (String) -> Data?
     var onOpenFile: ((String) -> Void)? = nil
+    var onOpenUploadedFile: ((PresentedFile) -> Void)? = nil
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -4295,7 +4306,7 @@ struct ConversationRow: View {
                         AttachmentImageGrid(attachments: item.images, imageData: imageData)
                     }
                     ForEach(item.files.filter { $0.attachmentId != nil }, id: \.attachmentId) { file in
-                        UploadedFileCard(file: file)
+                        UploadedFileCard(file: file) { onOpenUploadedFile?(file) }
                     }
                     if !item.text.isEmpty {
                         Text(item.text).appFont(.body)

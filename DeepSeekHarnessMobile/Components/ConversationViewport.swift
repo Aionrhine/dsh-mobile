@@ -43,19 +43,21 @@ struct ConversationViewportEntry: Identifiable {
         let text: String
         let images: [Image]
         let files: [PresentedFile]
+        var onOpenFile: ((PresentedFile) -> Void)?
         let showsCopyButton: Bool
 
-        init(text: String, images: [Image], files: [PresentedFile] = [], showsCopyButton: Bool) {
+        init(text: String, images: [Image], files: [PresentedFile] = [], showsCopyButton: Bool, onOpenFile: ((PresentedFile) -> Void)? = nil) {
             self.text = text
             self.images = images
             self.files = files
+            self.onOpenFile = onOpenFile
             self.showsCopyButton = showsCopyButton
         }
 
-        init(item: ConversationItem, imageData: (String) -> Data?, showsCopyButton: Bool) {
+        init(item: ConversationItem, imageData: (String) -> Data?, showsCopyButton: Bool, onOpenFile: ((PresentedFile) -> Void)? = nil) {
             self.init(text: item.text, images: item.images.map {
                 Image(id: $0.id, data: imageData($0.id), width: $0.width, height: $0.height, name: $0.name)
-            }, files: item.files, showsCopyButton: showsCopyButton)
+            }, files: item.files, showsCopyButton: showsCopyButton, onOpenFile: onOpenFile)
         }
     }
 
@@ -3007,12 +3009,13 @@ private final class UserMessageCell: StableSelfSizingCollectionViewCell {
         }
     }
 
-    /// 使用与交付文件相同的类型图标和背景；原生附件只展示元数据。
-    private final class FileAttachmentCard: UIView {
+    /// 文件卡片复用原有预览入口；回调由当前 cell payload 提供，避免复用时携带旧会话。
+    private final class FileAttachmentCard: UIControl {
         private let icon = UIImageView()
         private let nameLabel = UILabel()
         private let sizeLabel = UILabel()
         private let file: PresentedFile
+        private let action: () -> Void
 
         private static var nameFont: UIFont {
             UIFont.appPreferredFont(forTextStyle: .subheadline).withWeight(.medium)
@@ -3031,8 +3034,9 @@ private final class UserMessageCell: StableSelfSizingCollectionViewCell {
             return ceil(24 + max(48, nameHeight + detailsHeight))
         }
 
-        init(file: PresentedFile, width: CGFloat) {
+        init(file: PresentedFile, width: CGFloat, action: @escaping () -> Void) {
             self.file = file
+            self.action = action
             super.init(frame: .zero)
             let name = file.name ?? String(localized: "文件")
             let kind = FileIconCatalog.shared.resolve(name: name, mediaType: nil)
@@ -3054,6 +3058,8 @@ private final class UserMessageCell: StableSelfSizingCollectionViewCell {
             addSubview(nameLabel)
             addSubview(sizeLabel)
             isAccessibilityElement = true
+            accessibilityTraits = .button
+            addTarget(self, action: #selector(openFile), for: .touchUpInside)
             accessibilityIdentifier = "user-file-card"
             accessibilityLabel = [name, sizeLabel.text].compactMap { $0 }.joined(separator: ", ")
             translatesAutoresizingMaskIntoConstraints = false
@@ -3064,6 +3070,9 @@ private final class UserMessageCell: StableSelfSizingCollectionViewCell {
         }
 
         required init?(coder: NSCoder) { nil }
+
+        @objc private func openFile() { action() }
+        override func accessibilityActivate() -> Bool { action(); return true }
 
         override func layoutSubviews() {
             super.layoutSubviews()
@@ -3098,6 +3107,7 @@ private final class UserMessageCell: StableSelfSizingCollectionViewCell {
     private var imageViewsByID: [String: UIImageView] = [:]
     private var renderedImageAvailability: [String: Bool] = [:]
     var onOpenImagePreview: (([ConversationImagePreviewItem], Int) -> Void)?
+    private var onOpenFile: ((PresentedFile) -> Void)?
 
     static func estimatedHeight(for payload: ConversationViewportEntry.UserMessage, width: CGFloat) -> CGFloat {
         let horizontalBubbleInset: CGFloat = 34
@@ -3209,6 +3219,7 @@ private final class UserMessageCell: StableSelfSizingCollectionViewCell {
         copyResetWorkItem = nil
         messageLabel.text = nil
         onOpenImagePreview = nil
+        onOpenFile = nil
         // Keep an already-built attachment grid until the next payload is
         // known. UICollectionView commonly dequeues the same cell for the
         // same row when it re-enters the viewport; retaining the hierarchy
@@ -3223,6 +3234,7 @@ private final class UserMessageCell: StableSelfSizingCollectionViewCell {
     }
 
     func apply(_ payload: ConversationViewportEntry.UserMessage, containerWidth: CGFloat) {
+        onOpenFile = payload.onOpenFile
         messageLabel.font = .appPreferredFont(forTextStyle: .body)
         if messageLabel.text != payload.text {
             messageLabel.text = payload.text
@@ -3245,7 +3257,11 @@ private final class UserMessageCell: StableSelfSizingCollectionViewCell {
         renderedFiles = files
         renderedFileWidth = width
         renderedFileFontSize = fontSize
-        for file in files { fileCards.addArrangedSubview(FileAttachmentCard(file: file, width: width)) }
+        for file in files {
+            fileCards.addArrangedSubview(FileAttachmentCard(file: file, width: width) { [weak self] in
+                self?.onOpenFile?(file)
+            })
+        }
     }
 
     private func applyImages(

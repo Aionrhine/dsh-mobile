@@ -49,12 +49,14 @@ final class MultiGatewayTests: XCTestCase {
     }
 
     @MainActor
-    func testLegacyMigrationIsIdempotentAndPreservesWorkspace() throws {
+    func testLegacyMigrationIsIdempotentAndPreservesWorkspace() async throws {
         let defaults = UserDefaults(suiteName: "multi-migrate-\(UUID())")!
         defaults.set("wss://legacy.example/ws/mobile", forKey: "gateway.endpoint")
         defaults.set("workspace-a", forKey: "gateway.selectedWorkspaceId")
         let first = MultiGatewayStore(defaults: defaults, credentials: MigrationTestCredentials())
+        await first.waitUntilReady()
         let second = MultiGatewayStore(defaults: defaults, credentials: MigrationTestCredentials())
+        await second.waitUntilReady()
         XCTAssertEqual(first.profiles.count, 1)
         XCTAssertEqual(first.profiles, second.profiles)
         XCTAssertEqual(first.activeStore.selectedWorkspaceId, "workspace-a")
@@ -62,13 +64,14 @@ final class MultiGatewayTests: XCTestCase {
     }
 
     @MainActor
-    func testSelectingDisconnectedCurrentGatewayKeepsBusinessContainerAndHomeState() throws {
+    func testSelectingDisconnectedCurrentGatewayKeepsBusinessContainerAndHomeState() async throws {
         let suite = "same-gateway-\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let profile = GatewayProfile(gatewayName: "离线电脑", endpoints: ["wss://a.example/ws/mobile"])
         defaults.set(try JSONEncoder().encode([profile]), forKey: "gateway.profiles.v1")
         let hosts = MultiGatewayStore(defaults: defaults)
+        await hosts.waitUntilReady()
         let current = hosts.activeStore
         current.selectedWorkspaceId = "workspace-kept"
         hosts.select(profile, connect: false)
@@ -81,12 +84,13 @@ final class MultiGatewayTests: XCTestCase {
     }
 
     @MainActor
-    func testSwitchReplacesBusinessContainerAndRejectsOldCallbacks() throws {
+    func testSwitchReplacesBusinessContainerAndRejectsOldCallbacks() async throws {
         let defaults = UserDefaults(suiteName: "multi-switch-\(UUID())")!
         let first = GatewayProfile(gatewayName: "同名电脑", endpoints: ["wss://a.example/ws/mobile"])
         let second = GatewayProfile(gatewayName: "同名电脑", endpoints: ["wss://b.example/ws/mobile"])
         defaults.set(try JSONEncoder().encode([first, second]), forKey: "gateway.profiles.v1")
         let hosts = MultiGatewayStore(defaults: defaults)
+        await hosts.waitUntilReady()
         let old = hosts.activeStore
         let delayed = old.gateway.onFrame
         old.selectedWorkspaceId = "same-id"
@@ -104,10 +108,11 @@ final class MultiGatewayTests: XCTestCase {
     }
 
     @MainActor
-    func testRemovingCurrentHostClearsStateAndDoesNotRemigrateLegacy() throws {
+    func testRemovingCurrentHostClearsStateAndDoesNotRemigrateLegacy() async throws {
         let defaults = UserDefaults(suiteName: "multi-remove-\(UUID())")!
         defaults.set("wss://legacy.example/ws/mobile", forKey: "gateway.endpoint")
         let hosts = MultiGatewayStore(defaults: defaults, credentials: MigrationTestCredentials())
+        await hosts.waitUntilReady()
         let profile = try XCTUnwrap(hosts.activeProfile)
         let old = hosts.activeStore
         old.selectedWorkspaceId = "old-workspace"
@@ -118,6 +123,7 @@ final class MultiGatewayTests: XCTestCase {
         XCTAssertNil(hosts.activeStore.selectedWorkspaceId)
         XCTAssertNil(old.gateway.onFrame)
         let restored = MultiGatewayStore(defaults: defaults)
+        await restored.waitUntilReady()
         XCTAssertTrue(restored.profiles.isEmpty)
         XCTAssertNil(restored.activeStore.selectedWorkspaceId)
         hosts.select(profile, connect: false)
@@ -125,7 +131,7 @@ final class MultiGatewayTests: XCTestCase {
     }
 
     @MainActor
-    func testBatchRemovingHostsAlsoClearsActiveContainer() throws {
+    func testBatchRemovingHostsAlsoClearsActiveContainer() async throws {
         let defaults = UserDefaults(suiteName: "multi-batch-remove-\(UUID())")!
         let first = GatewayProfile(gatewayName: "A", endpoints: ["wss://a.example/ws/mobile"])
         let second = GatewayProfile(gatewayName: "B", endpoints: ["wss://b.example/ws/mobile"])
@@ -133,6 +139,7 @@ final class MultiGatewayTests: XCTestCase {
         defaults.set(try JSONEncoder().encode([first, second, retained]), forKey: "gateway.profiles.v1")
         defaults.set(first.id, forKey: "gateway.activeID")
         let hosts = MultiGatewayStore(defaults: defaults)
+        await hosts.waitUntilReady()
         hosts.activeStore.selectedWorkspaceId = "workspace-a"
 
         hosts.remove(ids: Set([first.id, second.id]))

@@ -87,7 +87,7 @@ private struct RootNavigationHost: View, Equatable {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task {
             if case .disconnected = store.gateway.state {
-                store.connectOnColdLaunchIfPaired()
+                await store.connectOnColdLaunchIfPaired()
             }
         }
         .onChange(of: navigationPath) { _, path in
@@ -1216,8 +1216,11 @@ struct WorkspaceFilePreviewLoadingSheet: View {
                                 .appFont(.caption.monospacedDigit())
                                 .accessibilityIdentifier("workspace-preview-progress")
                         } else {
-                            Text(store.lastError ?? String(localized: "文件加载失败"))
+                            Text(store.workspaceFilePreviewError ?? String(localized: "文件加载失败"))
                                 .multilineTextAlignment(.center)
+                            Button(String(localized: "重试")) { store.retryWorkspaceFilePreview() }
+                                .buttonStyle(.borderedProminent)
+                                .accessibilityIdentifier("workspace-preview-retry")
                         }
                     }
                     .foregroundStyle(.secondary)

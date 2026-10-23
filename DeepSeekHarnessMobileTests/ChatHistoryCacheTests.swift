@@ -209,7 +209,7 @@ final class ChatHistoryCacheTests: XCTestCase {
         cache = ChatHistoryCache(url: directory.appendingPathComponent("catalog.db"))
         defaults.removePersistentDomain(forName: suite)
         let reopened = AppStore(preferences: UserDefaultsAppPreferences(userDefaults: defaults), gatewayLocalID: "catalog-g", chatHistoryCache: cache)
-        reopened.connectOnColdLaunchIfPaired()
+        await reopened.connectOnColdLaunchIfPaired()
         await reopened.awaitOfflineCatalogForTesting()
         XCTAssertNil(reopened.lastError, "凭据丢失时仍应允许离线阅读，不弹配对警告")
         XCTAssertFalse(reopened.gateway.state.isConnected)

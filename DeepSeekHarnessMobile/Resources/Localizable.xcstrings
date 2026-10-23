@@ -5850,6 +5850,23 @@
         }
       }
     },
+    "当前设备没有此文件的本地副本，当前网关尚不支持下载已发送附件。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This device has no local copy of this file. The current gateway does not support downloading sent attachments."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前设备没有此文件的本地副本，当前网关尚不支持下载已发送附件。"
+          }
+        }
+      }
+    },
     "待回答问题已恢复" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -6591,6 +6608,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "文件加载失败"
+          }
+        }
+      }
+    },
+    "文件加载超时，请检查网络后重试。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "File loading timed out. Check your network connection and try again."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件加载超时，请检查网络后重试。"
           }
         }
       }
@@ -8908,6 +8942,23 @@
         }
       }
     },
+    "请先连接支持文件下载的 Mobile Gateway。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connect to a Mobile Gateway that supports file downloads first."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先连接支持文件下载的 Mobile Gateway。"
+          }
+        }
+      }
+    },
     "请先连接网关，再使用语音输入。" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -9339,6 +9390,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Connection failed"
+          }
+        }
+      }
+    },
+    "连接已中断，请恢复网络后重试。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connection interrupted. Restore your network connection and try again."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接已中断，请恢复网络后重试。"
           }
         }
       }

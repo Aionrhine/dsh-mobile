@@ -6,6 +6,77 @@ import DeepSeekHarnessShared
 @MainActor
 final class FileUploadController {
     private let shared = SharedFileUploadStore()
+    private let gatewayID: String
+    private let previewCacheRoot: URL?
+    private var previewCache: WorkspacePreviewCache {
+        WorkspacePreviewCache(gatewayID: gatewayID, root: previewCacheRoot,
+                              namespace: "uploaded-attachment")
+    }
+    private var preservedDraftIDs: Set<String> = []
+    private var previewWrites: [String: Task<Void, Never>] = [:]
+
+    init(gatewayID: String = "legacy", previewCacheRoot: URL? = nil) {
+        self.gatewayID = gatewayID
+        self.previewCacheRoot = previewCacheRoot
+    }
+
+    /// 上传附件只从本机私有副本预览，绝不把 attachmentId 当作远端工作区路径。
+    func previewURL(for file: PresentedFile, sessionID: String) async -> URL? {
+        guard let entry = Self.previewEntry(file, sessionID: sessionID) else { return nil }
+        await previewWrites[Self.previewKey(entry)]?.value
+        let cache = previewCache
+        return await Task.detached(priority: .userInitiated) { cache.find(entry) }.value
+    }
+
+    private static func previewEntry(_ file: PresentedFile, sessionID: String,
+                                     sha256: String? = nil) -> WorkspacePreviewCacheEntry? {
+        guard let id = file.attachmentId, !id.isEmpty,
+              let name = file.name, !name.isEmpty, let size = file.bytes, size >= 0 else { return nil }
+        return WorkspacePreviewCacheEntry(sessionID: sessionID, path: "\(id.utf8.count):\(id)\(name)", name: name,
+                                          size: size, modifiedAt: 0, sha256: sha256)
+    }
+
+    private static func previewKey(_ entry: WorkspacePreviewCacheEntry) -> String {
+        "\(entry.sessionID.utf8.count):\(entry.sessionID)\(entry.path)"
+    }
+
+    private func preserveReadyFiles() {
+        guard let sessionID else { return }
+        for draft in drafts where draft.status == "ready" && !preservedDraftIDs.contains(draft.id) {
+            guard let file = draft.file, let source = localFiles[draft.id],
+                  let entry = Self.previewEntry(PresentedFile(attachmentId: file.attachmentId,
+                        name: file.name, bytes: file.bytes?.int64Value), sessionID: sessionID,
+                        sha256: draft.sha256) else { continue }
+            let key = Self.previewKey(entry)
+            guard previewWrites[key] == nil else { continue }
+            preservedDraftIDs.insert(draft.id)
+            let cache = previewCache
+            WorkspaceFileLifetime.shared.retain(source)
+            previewWrites[key] = Task {
+                await Task.detached(priority: .utility) {
+                    defer { WorkspaceFileLifetime.shared.release(source) }
+                    if let existing = cache.find(entry) {
+                        WorkspaceFileLifetime.shared.release(existing)
+                    } else if let saved = cache.store(source, entry: entry) {
+                        WorkspaceFileLifetime.shared.release(saved)
+                    }
+                }.value
+                previewWrites[key] = nil
+            }
+        }
+    }
+
+    private func discardLocalFile(_ url: URL) {
+        Task.detached(priority: .utility) {
+            WorkspaceFileLifetime.shared.synchronized {
+                if WorkspaceFileLifetime.shared.isLeased(url) {
+                    WorkspaceFileLifetime.shared.removeAfterLastLease(url)
+                } else {
+                    try? FileManager.default.removeItem(at: url)
+                }
+            }
+        }
+    }
     private var localFiles: [String: URL] = [:]
     private var timeouts: [String: Task<Void, Never>] = [:]
     private var connectionKey: String?
@@ -83,8 +154,9 @@ final class FileUploadController {
 
     func retry(_ id: String) { apply(shared.retry(id: id)) }
     func remove(_ id: String) {
+        preservedDraftIDs.remove(id)
         apply(shared.remove(id: id))
-        if let url = localFiles.removeValue(forKey: id) { try? FileManager.default.removeItem(at: url) }
+        if let url = localFiles.removeValue(forKey: id) { discardLocalFile(url) }
     }
     func accepted(_ ids: [String]) { ids.forEach(remove) }
     func invalidReceipts() { apply(shared.invalidateReceipts()) }
@@ -96,12 +168,14 @@ final class FileUploadController {
         preparing = false
         timeouts.values.forEach { $0.cancel() }; timeouts.removeAll()
         apply(shared.clear())
-        localFiles.values.forEach { try? FileManager.default.removeItem(at: $0) }
+        localFiles.values.forEach(discardLocalFile)
         localFiles.removeAll()
+        preservedDraftIDs.removeAll()
     }
 
     private func apply(_ transition: SharedUploadTransition) {
         drafts = transition.drafts
+        preserveReadyFiles()
         changed?()
         for request in transition.requests {
             if request.requestType != "file-upload-cancel", let id = request.correlationId { watch(request, id: id) }

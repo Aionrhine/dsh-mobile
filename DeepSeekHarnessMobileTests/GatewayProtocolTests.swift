@@ -7959,7 +7959,125 @@ final class GatewayControlRecoveryTests: XCTestCase {
     }
 }
 
+/// 用真实的同步阻塞模拟 Keychain IPC；阻塞期间主线程必须仍能执行断开/切换操作。
+private actor BlockingGatewayCredentials: GatewayCredentialStoring {
+    let readDeviceID: @Sendable () throws -> String
+    let readToken: @Sendable () throws -> String?
+
+    init(readDeviceID: @escaping @Sendable () throws -> String = { "test-device" },
+         readToken: @escaping @Sendable () throws -> String? = { "test-token" }) {
+        self.readDeviceID = readDeviceID
+        self.readToken = readToken
+    }
+
+    func loadOrCreateDeviceID() throws -> String { try readDeviceID() }
+    func loadToken(for endpoint: URL) throws -> String? { try readToken() }
+    func saveToken(_ token: String, for endpoint: URL) {}
+    func deleteToken(for endpoint: URL) {}
+}
+
+private actor SuspendedFirstGatewayCredentials: GatewayCredentialStoring {
+    let started: XCTestExpectation
+    let release: DispatchSemaphore
+    private var first = true
+
+    init(started: XCTestExpectation, release: DispatchSemaphore) {
+        self.started = started
+        self.release = release
+    }
+
+    func loadOrCreateDeviceID() throws -> String {
+        if first {
+            first = false
+            started.fulfill()
+            XCTAssertEqual(release.wait(timeout: .now() + 3), .success)
+            throw GatewayKeychainError(status: errSecDecode)
+        }
+        return "replacement-device"
+    }
+    func loadToken(for endpoint: URL) -> String? { "test-token" }
+    func saveToken(_ token: String, for endpoint: URL) {}
+    func deleteToken(for endpoint: URL) {}
+}
+
 final class GatewayForegroundRecoveryTests: XCTestCase {
+    @MainActor
+    func testSlowCredentialReadDoesNotBlockMainActorOrReconnectAfterDisconnect() async throws {
+        let server = try LocalRecoveryGateway(repliesToPing: { _ in true })
+        let endpoint = try await server.start()
+        defer { server.stop() }
+        let started = expectation(description: "后台开始同步读取凭证")
+        let release = DispatchSemaphore(value: 0)
+        let credentials = BlockingGatewayCredentials(readDeviceID: {
+            XCTAssertFalse(Thread.isMainThread)
+            started.fulfill()
+            XCTAssertEqual(release.wait(timeout: .now() + 3), .success)
+            return "slow-device"
+        })
+        let gateway = GatewayClient(credentials: credentials)
+        defer { release.signal(); gateway.disconnect() }
+        gateway.connect(to: endpoint)
+        await fulfillment(of: [started], timeout: 1)
+        // 此处可以在读取尚未完成时执行，证明 UI actor 没有被凭证读取占用。
+        XCTAssertEqual(gateway.state, .connecting)
+        gateway.disconnect()
+        release.signal()
+        // actor 屏障确保慢读取已经结束，再让连接 Task 消费取消结果。
+        _ = try await credentials.loadToken(for: URL(string: endpoint)!)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(gateway.state, .disconnected)
+        XCTAssertFalse(gateway.recoveryStateForTesting.wantsConnection)
+        XCTAssertTrue(server.receivedHeaders.isEmpty)
+    }
+
+    @MainActor
+    func testDelayedCredentialFailureCannotOverwriteReplacementConnection() async throws {
+        let server = try LocalRecoveryGateway(repliesToPing: { _ in true })
+        let endpoint = try await server.start()
+        defer { server.stop() }
+        let started = expectation(description: "旧连接等待凭证")
+        let release = DispatchSemaphore(value: 0)
+        // 首次读取挂起并失败，随后读取恢复正常。
+        let credentials = SuspendedFirstGatewayCredentials(started: started, release: release)
+        let gateway = GatewayClient(credentials: credentials)
+        defer { release.signal(); gateway.disconnect() }
+        gateway.connect(to: "ws://127.0.0.1:9/ws/mobile")
+        await fulfillment(of: [started], timeout: 1)
+        let connected = expectation(description: "新连接成功且不受旧失败影响")
+        let subscription = gateway.$state.sink { if $0.isConnected { connected.fulfill() } }
+        defer { subscription.cancel() }
+        gateway.connect(to: endpoint)
+        release.signal()
+        await fulfillment(of: [connected], timeout: 3)
+        XCTAssertEqual(gateway.connectedEndpoint, endpoint)
+        XCTAssertEqual(server.receivedHeaders.count, 1)
+        XCTAssertEqual(gateway.recoveryStateForTesting.reconnectAttempt, 0)
+    }
+
+    @MainActor
+    func testColdLaunchCredentialResultCannotUndoManualDisconnect() async throws {
+        let started = expectation(description: "冷启动在后台读取 token")
+        let release = DispatchSemaphore(value: 0)
+        let credentials = BlockingGatewayCredentials(readToken: {
+            XCTAssertFalse(Thread.isMainThread)
+            started.fulfill()
+            XCTAssertEqual(release.wait(timeout: .now() + 3), .success)
+            return "stored-token"
+        })
+        let gateway = GatewayClient(credentials: credentials)
+        let store = AppStore(preferences: AppPreferencesSpy(endpoint: "ws://127.0.0.1:9/ws/mobile",
+                                                            selectedWorkspaceID: nil, sessions: []),
+                             gatewayClient: gateway)
+        defer { release.signal(); store.deactivateGateway() }
+        let launch = Task { await store.connectOnColdLaunchIfPaired() }
+        await fulfillment(of: [started], timeout: 1)
+        store.disconnect()
+        release.signal()
+        await launch.value
+        XCTAssertEqual(gateway.state, .disconnected)
+        XCTAssertFalse(gateway.recoveryStateForTesting.wantsConnection)
+    }
+
     @MainActor
     func testForegroundResetsBackoffAfterTemporaryKeychainFailures() async {
         let retried = expectation(description: "临时读取失败仍会自动重试")
@@ -7974,22 +8092,30 @@ final class GatewayForegroundRecoveryTests: XCTestCase {
         XCTAssertTrue(gateway.recoveryStateForTesting.wantsConnection)
         await fulfillment(of: [retried], timeout: 4)
         XCTAssertEqual(gateway.recoveryStateForTesting.reconnectAttempt, 2)
+        let foregroundFailure = expectation(description: "前台重试完成")
+        let subscription = gateway.$state.sink { if case .failed = $0, reads == 3 { foregroundFailure.fulfill() } }
+        defer { subscription.cancel() }
         gateway.applicationDidEnterBackground()
         gateway.applicationDidBecomeActive()
+        await fulfillment(of: [foregroundFailure], timeout: 1)
         XCTAssertEqual(reads, 3)
         XCTAssertEqual(gateway.recoveryStateForTesting.reconnectAttempt, 1)
         XCTAssertTrue(gateway.recoveryStateForTesting.wantsConnection)
     }
 
     @MainActor
-    func testPermanentCredentialFailureAndManualDisconnectStayStopped() {
+    func testPermanentCredentialFailureAndManualDisconnectStayStopped() async {
         var reads = 0
         let gateway = GatewayClient(credentials: RecoveryTestCredentials(load: {
             reads += 1
             throw GatewayKeychainError(status: errSecDecode)
         }))
         defer { gateway.disconnect() }
+        let failed = expectation(description: "永久凭证错误终止连接")
+        let subscription = gateway.$state.sink { if case .failed = $0 { failed.fulfill() } }
+        defer { subscription.cancel() }
         gateway.connect(to: "ws://127.0.0.1:9/ws/mobile")
+        await fulfillment(of: [failed], timeout: 1)
         gateway.applicationDidBecomeActive()
         XCTAssertEqual(reads, 1)
         XCTAssertFalse(gateway.recoveryStateForTesting.wantsConnection)
@@ -8011,7 +8137,7 @@ final class GatewayForegroundRecoveryTests: XCTestCase {
         let store = AppStore(preferences: AppPreferencesSpy(endpoint: endpoint, selectedWorkspaceID: nil, sessions: []),
                              gatewayClient: gateway)
         defer { store.deactivateGateway() }
-        store.connectOnColdLaunchIfPaired()
+        await store.connectOnColdLaunchIfPaired()
         XCTAssertFalse(gateway.recoveryStateForTesting.wantsConnection)
         let connected = expectation(description: "解锁后回前台自动连接")
         let subscription = gateway.$state.sink { if $0.isConnected { connected.fulfill() } }
@@ -8316,7 +8442,7 @@ final class GatewayNetworkRecoveryTests: XCTestCase {
 
 final class ManualGatewayDisconnectTests: XCTestCase {
     @MainActor
-    func testManualDisconnectSuppressesColdLaunchConnection() {
+    func testManualDisconnectSuppressesColdLaunchConnection() async {
         let preferences = AppPreferencesSpy(
             endpoint: "ws://127.0.0.1:3080/ws/mobile", selectedWorkspaceID: nil, sessions: []
         )
@@ -8327,7 +8453,7 @@ final class ManualGatewayDisconnectTests: XCTestCase {
         XCTAssertFalse(preferences.automaticallyConnect)
         let restarted = AppStore(preferences: preferences)
         defer { restarted.deactivateGateway() }
-        restarted.connectOnColdLaunchIfPaired()
+        await restarted.connectOnColdLaunchIfPaired()
         restarted.handleScenePhase(.active)
         XCTAssertNil(restarted.lastError)
         XCTAssertFalse(restarted.gateway.state.isConnected)
@@ -8802,9 +8928,10 @@ final class InterfaceStylePresentationTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let hosts = MultiGatewayStore(defaults: defaults)
+        await hosts.waitUntilReady()
         let store = hosts.activeStore
         // 本测试仅验证外观，避免根视图首次显示时弹出未配对提示。
-        store.connectOnColdLaunchIfPaired()
+        await store.connectOnColdLaunchIfPaired()
         store.lastError = nil
         let controller = UIHostingController(rootView:
             RootView().environmentObject(store).environmentObject(hosts)
@@ -9229,6 +9356,82 @@ final class ConversationFileReferencesTests: XCTestCase {
 
 @MainActor
 final class WorkspaceFilePreviewPresentationTests: XCTestCase {
+    func testConversationFilePresentsBeforeAnyResolveResponse() async throws {
+        let store = await makeStore()
+        defer { store.deactivateGateway() }
+        try deliver(store, #"{"kind":"hello","protocol":3,"capabilities":["file-downloads","file-references-v1"]}"#)
+        store.openConversationFile(gatewayID: store.gatewayLocalID, sessionID: "preview-session", path: "a.txt")
+        let request = try XCTUnwrap(store.workspaceFilePreviewRequest)
+        XCTAssertTrue(store.conversationFilePreviewRequested)
+        XCTAssertTrue(store.conversationFileIsOpening)
+        XCTAssertNil(store.workspaceFilePreviewError)
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(store.workspaceFilePreviewRequest?.id, request.id)
+        XCTAssertTrue(store.conversationFileIsOpening, "未收到响应时在已打开的面板内等待")
+    }
+
+    func testOfflineFilePresentsErrorAndRetryCompletesInSameSheet() async throws {
+        let store = await makeStore()
+        defer { store.deactivateGateway() }
+        store.disconnect()
+        store.openConversationFile(gatewayID: store.gatewayLocalID, sessionID: "preview-session", path: "a.txt")
+        let sheet = try XCTUnwrap(store.workspaceFilePreviewRequest)
+        XCTAssertFalse(store.conversationFileIsOpening)
+        XCTAssertNotNil(store.workspaceFilePreviewError)
+        XCTAssertNil(store.lastError, "预览错误应留在面板内，不另弹全局警告")
+        var sent: [[String: Any]] = []
+        store.gateway.installConnectedTransportForTesting { payload in
+            sent.append((try? JSONSerialization.jsonObject(with: Data(payload.utf8))) as? [String: Any] ?? [:])
+        }
+        store.retryWorkspaceFilePreview()
+        XCTAssertEqual(store.workspaceFilePreviewRequest?.id, sheet.id)
+        XCTAssertTrue(store.conversationFileIsOpening)
+        XCTAssertNil(store.workspaceFilePreviewError)
+        let request = try XCTUnwrap(sent.last { $0["type"] as? String == "file-download-open" })
+        let requestID = try XCTUnwrap(request["requestId"] as? String)
+        XCTAssertNotEqual(requestID, sheet.id.uuidString)
+        try opened(store, requestID: requestID)
+        try deliver(store, """
+            {"kind":"file-download-chunk","transferId":"t1","offset":0,"data":"aGVsbG8=","eof":true,"sha256":"\(digest)"}
+            """)
+        try await waitForCompletion(store)
+        XCTAssertEqual(store.workspaceFilePreviewRequest?.id, sheet.id)
+        XCTAssertEqual(try String(contentsOf: XCTUnwrap(store.completedWorkspaceFile).url, encoding: .utf8), "hello")
+    }
+
+    func testStalledResolveShowsTimeoutAndRejectsLateResponse() async throws {
+        let store = await makeStore(timeout: .milliseconds(50))
+        defer { store.deactivateGateway() }
+        try deliver(store, #"{"kind":"hello","protocol":3,"capabilities":["file-downloads","file-references-v1"]}"#)
+        store.openConversationFile(gatewayID: store.gatewayLocalID, sessionID: "preview-session", path: "a.txt")
+        let sheet = try XCTUnwrap(store.workspaceFilePreviewRequest)
+        try await Task.sleep(for: .milliseconds(120))
+        XCTAssertEqual(store.workspaceFilePreviewRequest?.id, sheet.id)
+        XCTAssertFalse(store.conversationFileIsOpening)
+        XCTAssertNotNil(store.workspaceFilePreviewError)
+        XCTAssertNil(store.lastError)
+        try resolved(store, requestID: sheet.id.uuidString)
+        XCTAssertFalse(store.conversationFileIsOpening)
+        XCTAssertNil(store.completedWorkspaceFile)
+        XCTAssertNil(store.workspaceFileDownloadPath)
+        store.cancelWorkspaceFileDownload()
+        try await Task.sleep(for: .milliseconds(70))
+        XCTAssertNil(store.workspaceFilePreviewRequest)
+        XCTAssertNil(store.workspaceFilePreviewError)
+    }
+
+    func testDisconnectDuringResolveKeepsSheetWithInlineError() async throws {
+        let store = await makeStore()
+        defer { store.deactivateGateway() }
+        store.openConversationFile(gatewayID: store.gatewayLocalID, sessionID: "preview-session", path: "a.txt")
+        let sheet = try XCTUnwrap(store.workspaceFilePreviewRequest)
+        store.gateway.disconnect()
+        XCTAssertEqual(store.workspaceFilePreviewRequest?.id, sheet.id)
+        XCTAssertFalse(store.conversationFileIsOpening)
+        XCTAssertNotNil(store.workspaceFilePreviewError)
+        XCTAssertNil(store.lastError)
+    }
+
     func testRejectedFileRouteEndsLoadingInsteadOfStayingAtZero() async throws {
         let store = await makeStore()
         defer { store.deactivateGateway() }
@@ -9236,7 +9439,7 @@ final class WorkspaceFilePreviewPresentationTests: XCTestCase {
         store.openWorkspaceFile(item, purpose: "preview")
         XCTAssertNotNil(store.workspaceFilePreviewRequest)
         XCTAssertFalse(store.conversationFileIsOpening)
-        XCTAssertNotNil(store.lastError)
+        XCTAssertNotNil(store.workspaceFilePreviewError)
         XCTAssertNil(store.completedWorkspaceFile)
     }
 
@@ -9344,6 +9547,50 @@ final class WorkspaceFilePreviewPresentationTests: XCTestCase {
         XCTAssertEqual(store.workspaceFilePreviewRequest?.id, second.id)
     }
 
+    func testOfflineSheetActuallyPresentsAndRemainsPresentedDuringRetry() async throws {
+        let store = await makeStore()
+        store.disconnect()
+        let host = UIHostingController(rootView: WorkspacePreviewPresentationHarness(store: store))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer {
+            store.deactivateGateway()
+            window.isHidden = true
+            window.rootViewController = nil
+            previous?.makeKeyAndVisible()
+        }
+        host.view.layoutIfNeeded()
+        store.openConversationFile(gatewayID: store.gatewayLocalID, sessionID: "preview-session", path: "a.txt")
+        let request = try XCTUnwrap(store.workspaceFilePreviewRequest)
+        for _ in 0..<100 where host.presentedViewController == nil {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let sheet = try XCTUnwrap(host.presentedViewController)
+        try await Task.sleep(for: .milliseconds(350))
+        XCTAssertNotNil(store.workspaceFilePreviewError)
+        XCTAssertNil(store.lastError)
+        let screenshot = XCTAttachment(image: UIGraphicsImageRenderer(size: window.bounds.size).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        })
+        screenshot.name = "离线文件：立即显示底部面板和重试入口"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        store.gateway.installConnectedTransportForTesting()
+        store.retryWorkspaceFilePreview()
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(host.presentedViewController === sheet)
+        XCTAssertEqual(store.workspaceFilePreviewRequest?.id, request.id)
+        XCTAssertTrue(store.conversationFileIsOpening)
+        store.gateway.disconnect()
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(host.presentedViewController === sheet)
+        XCTAssertFalse(store.conversationFileIsOpening)
+        XCTAssertNotNil(store.workspaceFilePreviewError)
+    }
+
     func testLoadingSheetStaysPresentedWhenContentBecomesReady() async throws {
         let store = await makeStore()
         let host = UIHostingController(rootView: WorkspacePreviewPresentationHarness(store: store))
@@ -9410,7 +9657,7 @@ final class WorkspaceFilePreviewPresentationTests: XCTestCase {
             {"kind":"error","requestType":"file-download-open","requestId":"\(request.id.uuidString)","message":"missing-file"}
             """)
         XCTAssertFalse(store.conversationFileIsOpening)
-        XCTAssertNotNil(store.lastError)
+        XCTAssertNotNil(store.workspaceFilePreviewError)
         XCTAssertNotNil(store.workspaceFilePreviewRequest)
         XCTAssertNil(store.completedWorkspaceFile)
     }
@@ -9445,11 +9692,13 @@ final class WorkspaceFilePreviewPresentationTests: XCTestCase {
         return view.subviews.lazy.compactMap { self.logoPlayer(in: $0) }.first
     }
 
-    private func makeStore() async -> AppStore {
+    private func makeStore(timeout: Duration = .seconds(20)) async -> AppStore {
         let session = SessionSummary(id: "preview-session", title: "Preview", lastActivity: Date(),
                                      isRunning: false, hasUnread: false)
         let store = AppStore(preferences: AppPreferencesSpy(endpoint: "", selectedWorkspaceID: nil, sessions: [session]),
-                             gatewayLocalID: "preview-test-\(UUID().uuidString)")
+                             gatewayLocalID: "preview-test-\(UUID().uuidString)", filePreviewTimeout: timeout)
+        store.gateway.installConnectedTransportForTesting()
+        store.gateway.onFrame?(GatewayFrame(kind: "hello", protocol: 3, capabilities: ["file-downloads"]))
         _ = await store.prepareConversation(for: session)
         return store
     }
@@ -9475,7 +9724,7 @@ final class WorkspaceFilePreviewPresentationTests: XCTestCase {
             if store.completedWorkspaceFile != nil { return }
             try await Task.sleep(for: .milliseconds(20))
         }
-        XCTFail("文件应在原有弹窗中完成预览：\(store.lastError ?? "无错误")")
+        XCTFail("文件应在原有弹窗中完成预览：\(store.workspaceFilePreviewError ?? "无错误")")
     }
 }
 
@@ -11666,7 +11915,7 @@ final class TeamIntegrationTests: XCTestCase {
         XCTAssertEqual(store.workspaceFileEntries.first?.name, "s04.png")
         XCTAssertEqual(store.selectedSessionId, "scout")
         store.openConversationFile(gatewayID: store.gatewayLocalID, sessionID: "scout", path: "promo/analysis/stills")
-        XCTAssertNil(store.workspaceFilePreviewRequest, "类型识别期间不能展示文件加载弹层")
+        XCTAssertNotNil(store.workspaceFilePreviewRequest, "类型识别期间立即展示加载面板")
         let resolve = try XCTUnwrap(sent.last { $0["type"] as? String == "file-resolve" })
         let resolveID = try XCTUnwrap(resolve["requestId"] as? String)
         try deliver("""
@@ -11675,7 +11924,7 @@ final class TeamIntegrationTests: XCTestCase {
         XCTAssertEqual(store.conversationDirectoryPath, "promo/analysis/stills")
         XCTAssertNil(store.lastError)
         XCTAssertNil(store.workspaceFilePreviewRequest)
-        XCTAssertTrue(presentedPreviewPaths.isEmpty, "目录识别全过程不能闪现文件预览或失败页")
+        XCTAssertEqual(presentedPreviewPaths, ["promo/analysis/stills"], "未知类型先加载，识别为目录后转入目录浏览器")
         store.conversationDirectoryPath = nil
         store.openConversationFile(gatewayID: store.gatewayLocalID, sessionID: "scout", path: "cancelled.txt")
         let cancelled = try XCTUnwrap(sent.last { $0["type"] as? String == "file-resolve" })
@@ -11685,7 +11934,7 @@ final class TeamIntegrationTests: XCTestCase {
             {"kind":"file-resolved","requestId":"\(cancelledID)","sessionId":"lead","path":"cancelled.txt","name":"cancelled.txt","size":5}
             """)
         XCTAssertNil(store.workspaceFilePreviewRequest, "取消后的迟到识别结果不能弹出文件预览")
-        XCTAssertTrue(presentedPreviewPaths.isEmpty)
+        XCTAssertEqual(presentedPreviewPaths, ["promo/analysis/stills", "cancelled.txt"])
     }
 
     func testChildFilePreviewDownloadsFromLeadWorkspaceAndKeepsChildSelected() async throws {
@@ -11707,7 +11956,7 @@ final class TeamIntegrationTests: XCTestCase {
         try deliver(#"{"kind":"agent-team-updated","sessionId":"lead","asOfSeq":8,"agentTeam":{"members":[{"id":"lead","name":"lead","role":"lead","phase":"active"},{"id":"scout","name":"scout","role":"teammate","phase":"active"}],"tasks":[]}}"#)
         await store.selectTeamMember(try XCTUnwrap(store.teamSnapshot.members.last))
         store.openConversationFile(gatewayID: store.gatewayLocalID, sessionID: "scout", path: "a.txt")
-        XCTAssertNil(store.workspaceFilePreviewRequest)
+        XCTAssertNotNil(store.workspaceFilePreviewRequest)
         let resolve = try XCTUnwrap(sent.last { $0["type"] as? String == "file-resolve" })
         XCTAssertEqual(resolve["sessionId"] as? String, "lead")
         XCTAssertNil(resolve["parentSessionId"])
@@ -12258,6 +12507,100 @@ final class MarkdownCopyInteractionTests: XCTestCase {
 
 @MainActor
 final class NativeFileUploadIntegrationTests: XCTestCase {
+    private func finishUpload(_ controller: FileUploadController, sessionID: String) async throws -> (PresentedFile, Data) {
+        let bytes = Data("本机已发送附件预览".utf8)
+        let source = FileManager.default.temporaryDirectory.appendingPathComponent("preview-\(UUID()).txt")
+        try bytes.write(to: source)
+        defer { try? FileManager.default.removeItem(at: source) }
+        let file = PresentedFile(attachmentId: "opaque-preview", name: "报告.txt", bytes: Int64(bytes.count))
+        var digest = ""
+        controller.connected(sessionID: sessionID, supported: true)
+        controller.send = { payload in
+            let request = try! JSONSerialization.jsonObject(with: Data(payload.utf8)) as! [String: Any]
+            let id = request["requestId"] as! String
+            switch request["type"] as? String {
+            case "file-upload-open":
+                digest = request["sha256"] as! String
+                controller.accept(GatewayFrame(kind: "file-upload-opened", sessionId: sessionID,
+                    requestId: id, uploadId: "upload-preview", size: Int64(bytes.count), chunkBytes: 1024))
+            case "file-upload-chunk":
+                controller.accept(GatewayFrame(kind: "file-upload-chunk-accepted", sessionId: sessionID,
+                    requestId: id, uploadId: "upload-preview", nextOffset: Int64(bytes.count)))
+            case "file-upload-finish":
+                controller.accept(GatewayFrame(kind: "file-upload-completed", sessionId: sessionID,
+                    requestId: id, uploadId: "upload-preview", receiptId: "preview-receipt", file: file, sha256: digest))
+            default: break
+            }
+        }
+        await controller.importFiles([source])
+        for _ in 0..<100 where !controller.canSend { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertTrue(controller.canSend)
+        // 立即模拟 sent，覆盖后台缓存尚未完成时清理草稿的竞争。
+        controller.accepted(controller.drafts.map(\.id))
+        XCTAssertTrue(controller.drafts.isEmpty)
+        return (file, bytes)
+    }
+
+    func testSentFileSurvivesDraftCleanupAndControllerRecreationWithHostSessionIsolation() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("sent-cache-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let controller = FileUploadController(gatewayID: "host-a", previewCacheRoot: root)
+        let (file, bytes) = try await finishUpload(controller, sessionID: "s1")
+        let firstURL = await controller.previewURL(for: file, sessionID: "s1")
+        let first = try XCTUnwrap(firstURL)
+        XCTAssertEqual(try Data(contentsOf: first), bytes)
+        WorkspaceFileLifetime.shared.release(first)
+        controller.clear()
+        let reopened = FileUploadController(gatewayID: "host-a", previewCacheRoot: root)
+        let restoredURL = await reopened.previewURL(for: file, sessionID: "s1")
+        let restored = try XCTUnwrap(restoredURL)
+        XCTAssertEqual(restored.lastPathComponent, "报告.txt")
+        XCTAssertEqual(try Data(contentsOf: restored), bytes)
+        WorkspaceFileLifetime.shared.release(restored)
+        let otherSession = await reopened.previewURL(for: file, sessionID: "s2")
+        XCTAssertNil(otherSession)
+        let otherHost = FileUploadController(gatewayID: "host-b", previewCacheRoot: root)
+        let wrongHost = await otherHost.previewURL(for: file, sessionID: "s1")
+        XCTAssertNil(wrongHost)
+    }
+
+    func testSentFileOpensOfflineAndCancelledLookupDoesNotReopenSheet() async throws {
+        let session = SessionSummary(id: "preview-session", title: "本机附件", lastActivity: .now,
+                                     isRunning: false, hasUnread: false)
+        let gatewayID = "preview-host-\(UUID())"
+        let store = AppStore(preferences: AppPreferencesSpy(endpoint: "ws://127.0.0.1:9/ws/mobile",
+            selectedWorkspaceID: nil, sessions: [session]), gatewayLocalID: gatewayID, chatHistoryCache: nil)
+        defer { store.deactivateGateway() }
+        _ = await store.prepareConversation(for: session)
+        let (file, bytes) = try await finishUpload(store.fileUploads, sessionID: session.id)
+        XCTAssertFalse(store.gateway.state.isConnected)
+        store.openUploadedFile(gatewayID: gatewayID, sessionID: session.id, file: file)
+        XCTAssertEqual(store.workspaceFilePreviewRequest?.name, "报告.txt")
+        store.cancelWorkspaceFileDownload()
+        // 等待同一个缓存任务后，旧打开操作仍不能恢复弹层。
+        if let cached = await store.fileUploads.previewURL(for: file, sessionID: session.id) {
+            WorkspaceFileLifetime.shared.release(cached)
+        }
+        await Task.yield()
+        XCTAssertNil(store.workspaceFilePreviewRequest)
+        XCTAssertNil(store.completedWorkspaceFile)
+        store.openUploadedFile(gatewayID: "another-host", sessionID: session.id, file: file)
+        XCTAssertNil(store.workspaceFilePreviewRequest)
+        store.openUploadedFile(gatewayID: gatewayID, sessionID: session.id, file: file)
+        for _ in 0..<100 where store.conversationFileIsOpening { try await Task.sleep(for: .milliseconds(10)) }
+        let preview = try XCTUnwrap(store.completedWorkspaceFile)
+        XCTAssertEqual(try Data(contentsOf: preview.url), bytes)
+        XCTAssertEqual(preview.name, "报告.txt")
+        XCTAssertEqual(preview.mediaType, "text/plain")
+        XCTAssertNil(store.lastError)
+        store.cancelWorkspaceFileDownload()
+        let uncached = PresentedFile(attachmentId: "other-device-file", name: "missing.pdf", bytes: 1)
+        store.openUploadedFile(gatewayID: gatewayID, sessionID: session.id, file: uncached)
+        for _ in 0..<100 where store.conversationFileIsOpening { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNil(store.completedWorkspaceFile)
+        XCTAssertNotNil(store.workspaceFilePreviewError)
+    }
+
     func testFullHelloPreservesFileUploadCapabilityAndReconnectRestoresIt() async throws {
         let session = SessionSummary(id: "file-session", title: "附件握手", lastActivity: .now,
             isRunning: false, hasUnread: false)
@@ -12405,7 +12748,7 @@ final class SentFileCardViewportTests: XCTestCase {
         }
         XCTAssertTrue(condition(), file: file, line: line)
     }
-    private func fixture(_ item: ConversationItem) throws -> Fixture {
+    private func fixture(_ item: ConversationItem, onOpenFile: ((PresentedFile) -> Void)? = nil) throws -> Fixture {
         let controller = ConversationViewportController(onContentAvailabilityChanged: { _, _ in },
             onPinnedToBottomChanged: { _ in }, onBottomAlignmentCompleted: {}, onApproachingTop: {})
         controller.loadViewIfNeeded()
@@ -12424,11 +12767,32 @@ final class SentFileCardViewportTests: XCTestCase {
                 var hasher = Hasher()
                 hasher.combine(item.text); hasher.combine(item.files); hasher.combine(item.images)
                 return ConversationViewportEntry(id: item.id, revision: hasher.finalize(),
-                    userMessage: .init(item: item, imageData: { _ in nil }, showsCopyButton: true))
+                    userMessage: .init(item: item, imageData: { _ in nil }, showsCopyButton: true, onOpenFile: onOpenFile))
             }
         }, bottomInset: 0)
         let list = try XCTUnwrap(descendants(controller.view).compactMap { $0 as? UICollectionView }.first)
         return Fixture(controller: controller, timeline: timeline, list: list, window: window, previous: previous)
+    }
+
+    func testNativeFileCardTapAndAccessibilityOpenCurrentAttachmentAfterReuse() async throws {
+        let first = PresentedFile(attachmentId: "first-file", name: "第一份.pdf", bytes: 12)
+        let second = PresentedFile(attachmentId: "second-file", name: "第二份.txt", bytes: 20)
+        func item(_ file: PresentedFile) -> ConversationItem {
+            .init(id: "reused-user", kind: .user, title: "", text: "", isError: false,
+                  date: Date(timeIntervalSince1970: 1), files: [file])
+        }
+        var opened: [PresentedFile] = []
+        let fixture = try fixture(item(first), onOpenFile: { opened.append($0) })
+        defer { fixture.close() }
+        try await wait { self.cards(fixture).count == 1 && !fixture.list.isHidden }
+        let card = try XCTUnwrap(cards(fixture).first as? UIControl)
+        XCTAssertTrue(card.accessibilityTraits.contains(.button))
+        card.sendActions(for: .touchUpInside)
+        XCTAssertEqual(opened, [first])
+        fixture.timeline.publish([item(second)])
+        try await wait { self.texts(fixture).contains("第二份.txt") }
+        XCTAssertTrue(try XCTUnwrap(cards(fixture).first).accessibilityActivate())
+        XCTAssertEqual(opened, [first, second])
     }
 
     func testLiveAndHistoryPureFilesReachActualNativeCards() async throws {

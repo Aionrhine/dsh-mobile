@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import DeepSeekHarnessShared
 
 struct AgentLiveActivityProgress: Equatable {
@@ -459,7 +460,7 @@ final class AppStore: ObservableObject {
     @Published private(set) var questionRequestStatuses: [String: GatewayQuestionRequestStatus] = [:]
     @Published private(set) var pendingApprovalRequests: [GatewayPendingApprovalRequest] = []
     @Published private(set) var approvalRequestStatuses: [String: GatewayApprovalRequestStatus] = [:]
-    let fileUploads = FileUploadController()
+    let fileUploads: FileUploadController
     private var submittedUploadIDs: [String] = []
 
     @Published private(set) var supportsImages = false
@@ -490,6 +491,7 @@ final class AppStore: ObservableObject {
     @Published private(set) var workspaceFileDownloadPurpose: String?
     @Published private(set) var workspaceFilePreviewProgress: Double = 0
     @Published private(set) var workspaceFilePreviewRequest: WorkspaceFilePreviewRequest?
+    @Published private(set) var workspaceFilePreviewError: String?
     @Published var completedWorkspaceFile: WorkspaceLocalFile? {
         didSet {
             if let old = oldValue, old.url != completedWorkspaceFile?.url {
@@ -499,7 +501,9 @@ final class AppStore: ObservableObject {
         }
     }
     @Published private(set) var conversationFilePreviewRequested = false
-    @Published private(set) var conversationFileIsOpening = false
+    @Published private(set) var conversationFileIsOpening = false {
+        didSet { if !conversationFileIsOpening { workspaceFilePreviewTimeoutTask?.cancel() } }
+    }
     @Published var conversationDirectoryPath: String?
     private(set) var conversationDirectorySessionID: String?
 
@@ -719,7 +723,10 @@ final class AppStore: ObservableObject {
     private var pendingDirectoryCreationParentPath: String?
     private var workspaceFileHandle: FileHandle?
     private var workspaceFileOperationID = UUID()
-    private var pendingConversationFilePreviewRequest: WorkspaceFilePreviewRequest?
+    private var workspaceFilePreviewLoad: ((String) -> Void)?
+    private var workspaceFilePreviewNeedsConnection = false
+    private var workspaceFilePreviewTimeoutTask: Task<Void, Never>?
+    private let filePreviewTimeout: Duration
     private var workspaceFileTemporaryURL: URL?
     private var workspaceFileOperationCache: WorkspacePreviewCache?
     private var imageAttachmentRequestEpochs: [String: UInt64] = [:]
@@ -735,6 +742,7 @@ final class AppStore: ObservableObject {
     private var backgroundMonitoredSessionID: String?
     private var presentsNextConnectionFailureAsAlert = false
     private var hasHandledColdLaunchConnection = false
+    private var isCheckingColdLaunchCredential = false
     private let backgroundExecutionController: AgentBackgroundExecutionController
     private static let defaultConfigurationRequestKinds: Set<String> = [
         "agent-presets", "defaults", "default-model", "set-default", "save-default-model"
@@ -763,6 +771,7 @@ final class AppStore: ObservableObject {
         sessionControlEffectExecutor: (any GatewaySessionControlEffectExecuting)? = nil,
         backgroundExecutionController: AgentBackgroundExecutionController? = nil,
         historyRequestTimeout: Duration = .seconds(20),
+        filePreviewTimeout: Duration = .seconds(20),
         sessionControlRequestTimeout: Duration = .seconds(12),
         chatHistoryCache: ChatHistoryCache? = .shared,
         voiceInput: VoiceInputAdapter? = nil,
@@ -770,9 +779,11 @@ final class AppStore: ObservableObject {
     ) {
         gateway = gatewayClient ?? GatewayClient()
         self.voiceInput = voiceInput ?? VoiceInputAdapter()
+        self.filePreviewTimeout = filePreviewTimeout
         self.historyRequestTimeout = historyRequestTimeout
         self.sessionControlRequestTimeout = sessionControlRequestTimeout
         self.gatewayLocalID = gatewayLocalID
+        self.fileUploads = FileUploadController(gatewayID: gatewayLocalID)
         imageAttachmentCache = ImageAttachmentCache(directoryURL: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?.appendingPathComponent("GatewayAttachments/\(gatewayLocalID)", isDirectory: true))
         slashCommands = kmpSlashCommandStore.snapshot()
         self.preferences = preferences
@@ -907,6 +918,9 @@ final class AppStore: ObservableObject {
         }
         gateway.onConnectionInvalidated = { [weak self] in
             self?.pauseSessionControlRequests()
+            if let self, self.conversationFileIsOpening, self.workspaceFilePreviewNeedsConnection {
+                self.failWorkspaceFilePreview(String(localized: "连接已中断，请恢复网络后重试。"))
+            }
             self?.resetOutstandingRequests()
         }
         gateway.onConnectionCheckStarted = { [weak self] in self?.pauseSessionControlRequests() }
@@ -1266,11 +1280,19 @@ final class AppStore: ObservableObject {
 
     /// Restores a previously paired gateway without turning the initial,
     /// intentionally unpaired state into a transport error.
-    func connectOnColdLaunchIfPaired() {
-        guard !hasHandledColdLaunchConnection else { return }
+    func connectOnColdLaunchIfPaired() async {
+        guard offlineCatalogActive, !hasHandledColdLaunchConnection,
+              !isCheckingColdLaunchCredential else { return }
+        guard case .disconnected = gateway.state else { return }
         guard preferences.automaticallyConnect else { return }
         // 离线目录可能仍在异步恢复；缺少凭据只维持未连接状态，配对入口始终可见。
-        guard gateway.hasStoredCredential(for: endpoint) else { return }
+        isCheckingColdLaunchCredential = true
+        defer { isCheckingColdLaunchCredential = false }
+        let requestedEndpoint = endpoint
+        guard await gateway.hasStoredCredential(for: requestedEndpoint), !Task.isCancelled,
+              offlineCatalogActive, preferences.automaticallyConnect,
+              endpoint == requestedEndpoint else { return }
+        guard case .disconnected = gateway.state else { return }
         hasHandledColdLaunchConnection = true
         connect()
     }
@@ -1281,7 +1303,9 @@ final class AppStore: ObservableObject {
             backgroundExecutionController.applicationDidBecomeActive()
             gateway.applicationDidBecomeActive()
             // 首次读取 Keychain 失败时没有建立连接意图；解锁回前台后允许再次恢复。
-            if case .disconnected = gateway.state { connectOnColdLaunchIfPaired() }
+            if case .disconnected = gateway.state {
+                Task { [weak self] in await self?.connectOnColdLaunchIfPaired() }
+            }
             refreshTeam()
             // 健康连接恢复前台不会重新 hello；补查后台期间漏掉的会话终态。
             if gateway.state.isConnected { gateway.requestSessions() }
@@ -2202,15 +2226,14 @@ final class AppStore: ObservableObject {
         completedWorkspaceFile = nil
         workspaceFileOperationCache = WorkspacePreviewCache(gatewayID: gatewayLocalID)
         if purpose == "preview" {
-            lastError = nil
-            conversationFileIsOpening = true
             let request = WorkspaceFilePreviewRequest(sessionID: sessionID, path: item.path)
-            workspaceFilePreviewProgress = 0
-            workspaceFilePreviewRequest = request
-            beginWorkspaceFileTransition(kmpWorkspaceFileStore.resolve(
-                sessionId: sessionID, path: item.path, requestId: request.id.uuidString,
-                supportsResolve: supportsFileReferences, useCache: true
-            ))
+            startWorkspaceFilePreview(request, conversation: false, needsConnection: true) { [weak self] requestID in
+                guard let self else { return }
+                self.beginWorkspaceFileTransition(self.kmpWorkspaceFileStore.resolve(
+                    sessionId: sessionID, path: item.path, requestId: requestID,
+                    supportsResolve: self.supportsFileReferences, useCache: true
+                ))
+            }
             return
         }
         let transition = kmpWorkspaceFileStore.download(
@@ -2222,37 +2245,121 @@ final class AppStore: ObservableObject {
         beginWorkspaceFileTransition(transition)
     }
 
+    func openUploadedFile(gatewayID: String, sessionID: String, file: PresentedFile) {
+        guard gatewayID == gatewayLocalID, sessionID == selectedSessionId,
+              workspaceFilePreviewRequest == nil, !conversationFileIsOpening,
+              let attachmentID = file.attachmentId, !attachmentID.isEmpty else { return }
+        let name = file.name ?? String(localized: "文件")
+        let request = WorkspaceFilePreviewRequest(sessionID: sessionID, path: name)
+        startWorkspaceFilePreview(request, conversation: true, needsConnection: false) { [weak self] _ in
+            guard let self else { return }
+            let operationID = self.workspaceFileOperationID
+            Task {
+                let url = await self.fileUploads.previewURL(for: file, sessionID: sessionID)
+                guard operationID == self.workspaceFileOperationID, sessionID == self.selectedSessionId,
+                      self.offlineCatalogActive else {
+                    if let url { WorkspaceFileLifetime.shared.release(url) }
+                    return
+                }
+                self.conversationFileIsOpening = false
+                guard let url else {
+                    self.failWorkspaceFilePreview(String(localized: "当前设备没有此文件的本地副本，当前网关尚不支持下载已发送附件。"))
+                    return
+                }
+                self.workspaceFilePreviewProgress = 1
+                self.completedWorkspaceFile = WorkspaceLocalFile(url: url, sessionID: sessionID,
+                    remotePath: attachmentID, name: name,
+                    mediaType: UTType(filenameExtension: (name as NSString).pathExtension)?.preferredMIMEType
+                        ?? "application/octet-stream", purpose: "preview")
+            }
+        }
+    }
+
     func openConversationFile(gatewayID: String, sessionID: String, path: String) {
         guard gatewayID == gatewayLocalID, sessionID == selectedSessionId else { return }
-        // 后台准备预览时忽略重复点击，避免弹出非必要的 download-busy 提示。
         guard workspaceFilePreviewRequest == nil, !conversationFileIsOpening else { return }
-        guard gateway.state.isConnected, supportsFileDownloads else {
-            lastError = "请先连接支持文件下载的 Mobile Gateway。"
-            return
-        }
         kmpWorkspaceFileStore.setWorkspaceSession(
             sessionId: sessionID,
             workspaceSessionId: teamStore.workspaceSessionId(sessionId: sessionID)
         )
+        let load: (String) -> Void = { [weak self] requestID in
+            guard let self else { return }
+            let workspaceSessionID = self.teamStore.workspaceSessionId(sessionId: sessionID)
+            self.beginWorkspaceFileTransition(self.kmpWorkspaceFileStore.resolveReference(
+                sessionId: sessionID, path: path, requestId: requestID,
+                supportsResolve: self.supportsFileReferences,
+                workspaceRoot: self.workspaces.first { $0.sessionIds.contains(workspaceSessionID) }?.path
+            ))
+        }
+        // 明确的目录链接直接打开浏览器；其他目标立即呈现，类型识别也在面板中等待。
+        if path.hasSuffix("/") { load(UUID().uuidString); return }
+        startWorkspaceFilePreview(WorkspaceFilePreviewRequest(sessionID: sessionID, path: path),
+                                  conversation: true, needsConnection: true, load: load)
+    }
+
+    private func startWorkspaceFilePreview(_ request: WorkspaceFilePreviewRequest, conversation: Bool,
+                                          needsConnection: Bool, load: @escaping (String) -> Void) {
+        conversationFilePreviewRequested = conversation
+        workspaceFilePreviewNeedsConnection = needsConnection
+        workspaceFilePreviewLoad = load
+        workspaceFilePreviewRequest = request
+        loadWorkspaceFilePreview(requestID: request.id.uuidString)
+    }
+
+    private func loadWorkspaceFilePreview(requestID: String) {
+        guard let request = workspaceFilePreviewRequest, request.sessionID == selectedSessionId else { return }
         completedWorkspaceFile = nil
-        workspaceFileOperationCache = WorkspacePreviewCache(gatewayID: gatewayLocalID)
-        conversationFilePreviewRequested = true
-        conversationFileIsOpening = true
         lastError = nil
-        let request = WorkspaceFilePreviewRequest(sessionID: sessionID, path: path)
+        workspaceFilePreviewError = nil
         workspaceFilePreviewProgress = 0
-        // 链接可能指向目录；确认是文件后再创建预览弹层。
-        pendingConversationFilePreviewRequest = request
-        let workspaceSessionID = teamStore.workspaceSessionId(sessionId: sessionID)
-        beginWorkspaceFileTransition(kmpWorkspaceFileStore.resolveReference(
-            sessionId: sessionID, path: path, requestId: request.id.uuidString,
-            supportsResolve: supportsFileReferences,
-            workspaceRoot: workspaces.first { $0.sessionIds.contains(workspaceSessionID) }?.path
-        ))
+        workspaceFileOperationID = UUID()
+        workspaceFileOperationCache = WorkspacePreviewCache(gatewayID: gatewayLocalID)
+        conversationFileIsOpening = true
+        if workspaceFilePreviewNeedsConnection && (!gateway.state.isConnected || !supportsFileDownloads) {
+            failWorkspaceFilePreview(String(localized: "请先连接支持文件下载的 Mobile Gateway。"))
+            return
+        }
+        if workspaceFilePreviewNeedsConnection {
+            kmpWorkspaceFileStore.setWorkspaceSession(sessionId: request.sessionID,
+                workspaceSessionId: teamStore.workspaceSessionId(sessionId: request.sessionID))
+        }
+        watchWorkspaceFilePreview()
+        workspaceFilePreviewLoad?(requestID)
+    }
+
+    func retryWorkspaceFilePreview() {
+        guard !conversationFileIsOpening, workspaceFilePreviewLoad != nil,
+              workspaceFilePreviewRequest?.sessionID == selectedSessionId else { return }
+        applyWorkspaceFileTransition(kmpWorkspaceFileStore.cancel())
+        closeWorkspaceTemporaryFile(remove: true)
+        // Sheet 身份不变，协议请求使用新 ID，拒绝上一次尝试的迟到响应。
+        loadWorkspaceFilePreview(requestID: UUID().uuidString)
+    }
+
+    private func watchWorkspaceFilePreview() {
+        workspaceFilePreviewTimeoutTask?.cancel()
+        guard conversationFileIsOpening, let request = workspaceFilePreviewRequest else { return }
+        workspaceFilePreviewTimeoutTask = Task { [weak self, filePreviewTimeout] in
+            do { try await Task.sleep(for: filePreviewTimeout) } catch { return }
+            guard let self, !Task.isCancelled, self.workspaceFilePreviewRequest?.id == request.id,
+                  self.conversationFileIsOpening else { return }
+            self.failWorkspaceFilePreview(String(localized: "文件加载超时，请检查网络后重试。"))
+        }
+    }
+
+    private func failWorkspaceFilePreview(_ message: String) {
+        workspaceFileOperationID = UUID()
+        conversationFileIsOpening = false
+        if workspaceFilePreviewRequest != nil { workspaceFilePreviewError = message }
+        else { lastError = message }
+        applyWorkspaceFileTransition(kmpWorkspaceFileStore.cancel())
+        closeWorkspaceTemporaryFile(remove: true)
     }
 
     func cancelWorkspaceFileDownload() {
-        pendingConversationFilePreviewRequest = nil
+        workspaceFilePreviewLoad = nil
+        workspaceFilePreviewError = nil
+        workspaceFilePreviewNeedsConnection = false
         workspaceFileOperationID = UUID()
         conversationFileIsOpening = false
         workspaceFilePreviewRequest = nil
@@ -2914,11 +3021,6 @@ final class AppStore: ObservableObject {
                 let transition = kmpWorkspaceFileStore.acceptFrame(
                     json: String(decoding: data, as: UTF8.self)
                 )
-                if transition.directory == nil,
-                   transition.cacheLookup != nil || transition.snapshot.activeDownload != nil ||
-                   (frame.kind == "file-resolved" && transition.request?.requestType == "file-download-open") {
-                    presentResolvedConversationFilePreview()
-                }
                 applyWorkspaceFileTransition(transition)
             }
             // 文件错误由文件状态机处理；目录识别响应不能再弹成会话错误。
@@ -3010,9 +3112,10 @@ final class AppStore: ObservableObject {
             queueRevision &+= 1
             cancellingSessionIDs = []
             applySlashCommandTransition(kmpSlashCommandStore.reset(sessionId: selectedSessionId))
-            if pendingConversationFilePreviewRequest != nil { conversationFileIsOpening = false }
-            pendingConversationFilePreviewRequest = nil
-            workspaceFileOperationID = UUID()
+            if conversationFileIsOpening, workspaceFilePreviewNeedsConnection {
+                failWorkspaceFilePreview(String(localized: "连接已中断，请恢复网络后重试。"))
+            }
+            if workspaceFilePreviewNeedsConnection { workspaceFileOperationID = UUID() }
             applyWorkspaceFileTransition(kmpWorkspaceFileStore.reset(sessionId: selectedSessionId))
             attachmentLoader.reset()
             presentsNextConnectionFailureAsAlert = false
@@ -3082,13 +3185,6 @@ final class AppStore: ObservableObject {
         }
     }
 
-    private func presentResolvedConversationFilePreview() {
-        guard let request = pendingConversationFilePreviewRequest else { return }
-        pendingConversationFilePreviewRequest = nil
-        guard request.sessionID == selectedSessionId else { return }
-        workspaceFilePreviewRequest = request
-    }
-
     private func beginWorkspaceFileTransition(_ transition: DeepSeekHarnessShared.SharedWorkspaceFileTransition) {
         if transition.request != nil, transition.snapshot.lastError == nil {
             workspaceFileOperationID = UUID()
@@ -3101,10 +3197,11 @@ final class AppStore: ObservableObject {
         cachedURL: URL? = nil
     ) {
         if let directory = transition.directory {
-            pendingConversationFilePreviewRequest = nil
             guard directory.sessionId == selectedSessionId else { return }
             conversationFileIsOpening = false
             workspaceFilePreviewRequest = nil
+            workspaceFilePreviewLoad = nil
+            workspaceFilePreviewError = nil
             conversationFilePreviewRequested = false
             workspaceFilePreviewProgress = 0
             workspaceFilePath = directory.path
@@ -3114,7 +3211,10 @@ final class AppStore: ObservableObject {
             conversationDirectoryPath = directory.path
             return
         }
-        if transition.snapshot.lastError != nil { presentResolvedConversationFilePreview() }
+        if conversationFileIsOpening,
+           transition.request != nil || transition.appendBase64Data != nil || transition.cacheLookup != nil {
+            watchWorkspaceFilePreview()
+        }
         let cache = workspaceFileOperationCache ?? WorkspacePreviewCache(gatewayID: gatewayLocalID)
         if let lookup = transition.cacheLookup {
             let entry = WorkspacePreviewCacheEntry(lookup)
@@ -3153,17 +3253,13 @@ final class AppStore: ObservableObject {
                 try openWorkspaceTemporaryFile(name: snapshot.activeDownload?.name ?? "download")
             } catch {
                 conversationFileIsOpening = false
-                lastError = String(localized: "无法创建文件下载临时文件：\(error.localizedDescription)")
-                let cancelled = kmpWorkspaceFileStore.cancel()
-                closeWorkspaceTemporaryFile(remove: true)
-                if let request = cancelled.request { gateway.sendRequestPayload(request.payload) }
+                failWorkspaceFilePreview(String(localized: "无法创建文件下载临时文件：\(error.localizedDescription)"))
                 return
             }
         }
         if let base64 = transition.appendBase64Data {
             guard let bytes = Data(base64Encoded: base64), let workspaceFileHandle else {
-                lastError = String(localized: "文件分块无法写入临时文件")
-                cancelWorkspaceFileDownload()
+                failWorkspaceFilePreview(String(localized: "文件分块无法写入临时文件"))
                 return
             }
             do {
@@ -3174,8 +3270,7 @@ final class AppStore: ObservableObject {
                 try workspaceFileHandle.seekToEnd()
                 try workspaceFileHandle.write(contentsOf: bytes)
             } catch {
-                lastError = String(localized: "写入下载文件失败：\(error.localizedDescription)")
-                cancelWorkspaceFileDownload()
+                failWorkspaceFilePreview(String(localized: "写入下载文件失败：\(error.localizedDescription)"))
                 return
             }
         }
@@ -3201,7 +3296,8 @@ final class AppStore: ObservableObject {
         workspaceFileDownloadPurpose = snapshot.activeDownload?.purpose
         if let message = snapshot.lastError {
             conversationFileIsOpening = false
-            lastError = workspaceFileErrorMessage(message)
+            failWorkspaceFilePreview(workspaceFileErrorMessage(message))
+            return
         }
         if let completion = transition.completion,
            let url = workspaceFileTemporaryURL {
@@ -3212,7 +3308,7 @@ final class AppStore: ObservableObject {
                 WorkspaceFileLifetime.shared.release(url, deleteTemporary: true)
                 workspaceFileTemporaryURL = nil
                 conversationFileIsOpening = false
-                lastError = String(localized: "下载文件的本地大小校验失败")
+                failWorkspaceFilePreview(String(localized: "下载文件的本地大小校验失败"))
                 return
             }
             guard completion.sessionId == selectedSessionId else {
@@ -4402,9 +4498,9 @@ final class AppStore: ObservableObject {
     }
 
     private func handleConnectionFailure(_ detail: String) {
-        pendingConversationFilePreviewRequest = nil
-        conversationFileIsOpening = false
-        workspaceFileOperationID = UUID()
+        if conversationFileIsOpening, workspaceFilePreviewNeedsConnection {
+            failWorkspaceFilePreview(detail)
+        }
         applyWorkspaceFileTransition(kmpWorkspaceFileStore.reset(sessionId: selectedSessionId))
         if pluginToggleRequestID != nil {
             pluginNotice = pluginPendingName == "dsh-plugin-mobile-gateway"
