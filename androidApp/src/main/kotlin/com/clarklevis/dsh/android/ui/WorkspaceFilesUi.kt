@@ -16,11 +16,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
@@ -75,11 +82,15 @@ import java.util.Locale
 @Composable
 internal fun WorkspaceFilesBottomSheet(
     stateHolder: AndroidSharedStateHolder,
+    initialPath: String? = null,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    // 使用稳定的窗口高度，避免面板 offset 改变 Insets 后反复重算展开锚点。
-    val sheetHeight = adaptiveWindowSize().height * 0.94f
+    // 保持全高根布局供 Material 计算拖动锚点，只用固定留白限制可见面板。
+    // 顶部安全区不再参与随 offset 变化的内容高度计算。
+    val windowHeight = adaptiveWindowSize().height
+    val topGap = maxOf(windowHeight * 0.06f, WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 8.dp)
+    val sheetHeight = (windowHeight - topGap).coerceAtLeast(0.dp)
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val downloadRegistry = remember(context) { AndroidWorkspaceDownloadRegistry(context, stateHolder.gatewayLocalId) }
@@ -181,7 +192,7 @@ internal fun WorkspaceFilesBottomSheet(
     }
 
     LaunchedEffect(stateHolder.snapshot.selectedSessionId) {
-        stateHolder.browseWorkspaceFiles()
+        stateHolder.browseWorkspaceFiles(initialPath)
     }
 
     LaunchedEffect(sessionId, stateHolder.workspaceFileEntries) {
@@ -203,11 +214,12 @@ internal fun WorkspaceFilesBottomSheet(
     val closeWithAnimation = rememberWorkspaceSheetDismiss(sheetState, finishDismiss)
     val headerColor = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color(0xFF1C1C1E) else Color(0xFFF5F5F5)
     ModalBottomSheet(
-        modifier = Modifier.adaptiveSheetBounds(),
+        modifier = Modifier.adaptiveSheetBounds().fillMaxHeight().padding(top = topGap),
         sheetMaxWidth = adaptiveSheetWidth(),
         onDismissRequest = finishDismiss,
         sheetState = sheetState,
         sheetGesturesEnabled = true,
+        contentWindowInsets = { WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom) },
         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
         dragHandle = {
             Box(Modifier.padding(top = 6.dp, bottom = 2.dp).size(width = 36.dp, height = 4.dp)
@@ -216,64 +228,66 @@ internal fun WorkspaceFilesBottomSheet(
         containerColor = headerColor,
         contentColor = MaterialTheme.colorScheme.onSurface
     ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .height(sheetHeight)
-                .background(MaterialTheme.colorScheme.surface)
-                .padding(bottom = 12.dp)
-        ) {
-            WorkspaceFileSheetHeader(
-                path = stateHolder.workspaceFilePath,
-                onBack = { stateHolder.browseWorkspaceFiles(parentWorkspacePath(stateHolder.workspaceFilePath)) },
-                onDismiss = closeWithAnimation,
-                isLoading = stateHolder.workspaceFilesAreLoading
-            )
-            if (stateHolder.workspaceFilesAreLoading && stateHolder.workspaceFileEntries.isEmpty()) {
-                Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        CircularProgressIndicator()
-                        Text(appText("正在读取工作区文件…"), color = secondaryContentColor())
+        DshMenuColumnHost {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .height(sheetHeight)
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(bottom = 12.dp)
+            ) {
+                WorkspaceFileSheetHeader(
+                    path = stateHolder.workspaceFilePath,
+                    onBack = { stateHolder.browseWorkspaceFiles(parentWorkspacePath(stateHolder.workspaceFilePath)) },
+                    onDismiss = closeWithAnimation,
+                    isLoading = stateHolder.workspaceFilesAreLoading
+                )
+                if (stateHolder.workspaceFilesAreLoading && stateHolder.workspaceFileEntries.isEmpty()) {
+                    Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            CircularProgressIndicator()
+                            Text(appText("正在读取工作区文件…"), color = secondaryContentColor())
+                        }
+                    }
+                } else if (stateHolder.workspaceFileEntries.isEmpty()) {
+                    Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        Text(appText("此目录为空"), color = secondaryContentColor())
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        contentPadding = PaddingValues(bottom = 8.dp)
+                    ) {
+                        itemsIndexed(
+                            items = stateHolder.workspaceFileEntries,
+                            key = { _, item -> item.path }
+                        ) { _, item ->
+                            WorkspaceFileItemRow(
+                                stateHolder = stateHolder,
+                                item = item,
+                                isDownloaded = item.path in downloadedPaths
+                            )
+                            HorizontalDivider(
+                                modifier = Modifier.padding(start = 72.dp),
+                                color = separatorColor()
+                            )
+                        }
                     }
                 }
-            } else if (stateHolder.workspaceFileEntries.isEmpty()) {
-                Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                    Text(appText("此目录为空"), color = secondaryContentColor())
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    contentPadding = PaddingValues(bottom = 8.dp)
-                ) {
-                    itemsIndexed(
-                        items = stateHolder.workspaceFileEntries,
-                        key = { _, item -> item.path }
-                    ) { _, item ->
-                        WorkspaceFileItemRow(
-                            stateHolder = stateHolder,
-                            item = item,
-                            isDownloaded = item.path in downloadedPaths
-                        )
-                        HorizontalDivider(
-                            modifier = Modifier.padding(start = 72.dp),
-                            color = separatorColor()
-                        )
-                    }
-                }
-            }
-            stateHolder.workspaceFileDownloadProgress?.takeIf {
-                stateHolder.workspaceFileDownloadPurpose == "download"
-            }?.let { progress ->
-                Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)) {
-                    LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            appText("正在下载 · %1\$s%", (progress * 100).toInt()),
-                            color = secondaryContentColor(),
-                            fontSize = 12.sp
-                        )
-                        Spacer(Modifier.weight(1f))
-                        TextButton(onClick = stateHolder::cancelWorkspaceFileDownload) { Text(appText("取消")) }
+                stateHolder.workspaceFileDownloadProgress?.takeIf {
+                    stateHolder.workspaceFileDownloadPurpose == "download"
+                }?.let { progress ->
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)) {
+                        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                appText("正在下载 · %1\$s%", (progress * 100).toInt()),
+                                color = secondaryContentColor(),
+                                fontSize = 12.sp
+                            )
+                            Spacer(Modifier.weight(1f))
+                            TextButton(onClick = stateHolder::cancelWorkspaceFileDownload) { Text(appText("取消")) }
+                        }
                     }
                 }
             }

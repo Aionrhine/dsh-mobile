@@ -31,7 +31,10 @@ struct DeepSeekHarnessMobileApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
+            Group {
+                if hosts.isReady { RootView() }
+                else { ProgressView() }
+            }
                 .id(ObjectIdentifier(hosts.activeStore))
                 .environmentObject(hosts.activeStore)
                 .environmentObject(hosts)

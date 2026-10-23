@@ -1,4 +1,8 @@
 import XCTest
+import Network
+import CryptoKit
+import Security
+import Combine
 #if DEBUG
 @testable import MarkdownUI
 #else
@@ -7621,9 +7625,824 @@ private final class AppPreferencesSpy: AppPreferences {
     }
 }
 
+/// 使用本机真实 WebSocket 验证传输生命周期，不访问用户网关。
+private final class LocalRecoveryGateway: @unchecked Sendable {
+    enum Greeting { case hello, pairedOnly, silent, unauthorized, split }
+    private let listener: NWListener
+    private let queue = DispatchQueue(label: "test.gateway-recovery")
+    private var connections: [NWConnection] = []
+    private var headers: [[String: String]] = []
+    private var requestKinds: [String] = []
+    private var greeting: Greeting
+    private let repliesToPing: (String) -> Bool
+    private let handshakeReceived: (() -> Void)?
+    private let pongDelay: TimeInterval
+    private let respondsToStats: Bool
+    private let respondsToControls: Bool
+
+    init(greeting: Greeting = .hello, repliesToPing: @escaping (String) -> Bool = { _ in false },
+         handshakeReceived: (() -> Void)? = nil, pongDelay: TimeInterval = 0, respondsToStats: Bool = false,
+         respondsToControls: Bool = false) throws {
+        listener = try NWListener(using: .tcp, on: .any)
+        self.greeting = greeting
+        self.repliesToPing = repliesToPing
+        self.handshakeReceived = handshakeReceived
+        self.pongDelay = pongDelay
+        self.respondsToStats = respondsToStats
+        self.respondsToControls = respondsToControls
+    }
+
+    func start() async throws -> String {
+        try await withCheckedThrowingContinuation { continuation in
+            listener.stateUpdateHandler = { [weak self] state in
+                guard let self else { return }
+                switch state {
+                case .ready:
+                    self.listener.stateUpdateHandler = nil
+                    continuation.resume(returning: "ws://127.0.0.1:\(self.listener.port!.rawValue)/ws/mobile")
+                case .failed(let error):
+                    self.listener.stateUpdateHandler = nil
+                    continuation.resume(throwing: error)
+                default: break
+                }
+            }
+            listener.newConnectionHandler = { [weak self] connection in
+                guard let self else { connection.cancel(); return }
+                self.connections.append(connection)
+                connection.start(queue: self.queue)
+                self.readHandshake(connection)
+            }
+            listener.start(queue: queue)
+        }
+    }
+
+    var receivedHeaders: [[String: String]] { queue.sync { headers } }
+    var receivedRequestKinds: [String] { queue.sync { requestKinds } }
+
+    func dropConnections(nextGreeting: Greeting) {
+        queue.sync {
+            greeting = nextGreeting
+            connections.forEach { $0.cancel() }
+            connections.removeAll()
+        }
+    }
+
+    func stop() {
+        queue.sync {
+            listener.cancel()
+            connections.forEach { $0.cancel() }
+            connections.removeAll()
+        }
+    }
+
+    private func readHandshake(_ connection: NWConnection, buffered: Data = Data()) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] data, _, done, error in
+            guard let self, let data, error == nil else { return }
+            let buffer = buffered + data
+            guard buffer.range(of: Data("\r\n\r\n".utf8)) != nil else {
+                if !done { self.readHandshake(connection, buffered: buffer) }
+                return
+            }
+            var header: [String: String] = [:]
+            for line in String(decoding: buffer, as: UTF8.self).components(separatedBy: "\r\n").dropFirst() {
+                let parts = line.split(separator: ":", maxSplits: 1)
+                if parts.count == 2 {
+                    header[parts[0].lowercased()] = parts[1].trimmingCharacters(in: .whitespaces)
+                }
+            }
+            self.headers.append(header)
+            self.handshakeReceived?()
+            if self.greeting == .unauthorized {
+                connection.send(content: Data("HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\n\r\n".utf8),
+                                completion: .contentProcessed { _ in connection.cancel() })
+                return
+            }
+            guard let key = header["sec-websocket-key"] else { return }
+            let accept = Data(Insecure.SHA1.hash(data: Data((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").utf8)))
+                .base64EncodedString()
+            var response = Data(("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n" +
+                "Connection: Upgrade\r\nSec-WebSocket-Protocol: dsh-mobile-v1\r\n" +
+                "Sec-WebSocket-Accept: \(accept)\r\n\r\n").utf8)
+            switch self.greeting {
+            case .hello:
+                response += self.frame(Data(#"{"kind":"hello","protocol":3,"authenticated":true}"#.utf8))
+            case .pairedOnly:
+                response += self.frame(Data(#"{"kind":"paired","token":"recovery-test-token"}"#.utf8))
+            case .split:
+                response += self.frame(Data(#"{"kind":"hello","protocol":3,"authenticated":true,"capabilities":["split-channels"]}"#.utf8))
+            case .silent, .unauthorized: break
+            }
+            connection.send(content: response, completion: .contentProcessed { _ in })
+            self.readFrames(connection, channel: header["x-dsh-channel"] ?? "control")
+        }
+    }
+
+    private func frame(_ data: Data, opcode: UInt8 = 1) -> Data {
+        var result = Data([0x80 | opcode])
+        if data.count < 126 { result.append(UInt8(data.count)) }
+        else { result.append(contentsOf: [126, UInt8(data.count >> 8), UInt8(data.count & 255)]) }
+        result.append(data)
+        return result
+    }
+
+    private func readFrames(_ connection: NWConnection, channel: String, buffered: Data = Data()) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] data, _, done, error in
+            guard let self, let data, error == nil else { return }
+            var bytes = Array(buffered + data)
+            while bytes.count >= 2 {
+                let opcode = bytes[0] & 15
+                var length = Int(bytes[1] & 127)
+                var offset = 2
+                if length == 126 {
+                    guard bytes.count >= 4 else { break }
+                    length = Int(bytes[2]) * 256 + Int(bytes[3])
+                    offset = 4
+                } else if length == 127 { connection.cancel(); return }
+                let masked = bytes[1] & 128 != 0
+                let payloadOffset = offset + (masked ? 4 : 0)
+                guard bytes.count >= payloadOffset + length else { break }
+                let payload = (0..<length).map {
+                    bytes[payloadOffset + $0] ^ (masked ? bytes[offset + $0 % 4] : 0)
+                }
+                bytes.removeFirst(payloadOffset + length)
+                if opcode == 8 { connection.cancel(); return }
+                if opcode == 9, self.repliesToPing(channel) {
+                    self.queue.asyncAfter(deadline: .now() + self.pongDelay) {
+                        connection.send(content: self.frame(Data(payload), opcode: 10), completion: .contentProcessed { _ in })
+                    }
+                }
+                if opcode == 1,
+                   let request = try? JSONSerialization.jsonObject(with: Data(payload)) as? [String: Any],
+                   let type = request["type"] as? String {
+                    self.requestKinds.append(type)
+                    if (type == "session-stats" && self.respondsToStats) ||
+                        (self.respondsToControls && ["models", "permission-options", "context-usage"].contains(type)) {
+                        var reply: [String: Any] = ["kind": type, "sessionId": request["sessionId"] as? String ?? ""]
+                        if type == "models" { reply["groups"] = [] }
+                        if type == "permission-options" { reply["sessionPermissions"] = ["currentValue": "ask"] }
+                        let data = try! JSONSerialization.data(withJSONObject: reply)
+                        connection.send(content: self.frame(data), completion: .contentProcessed { _ in })
+                    }
+                }
+            }
+            if !done { self.readFrames(connection, channel: channel, buffered: Data(bytes)) }
+        }
+    }
+}
+
+@MainActor
+private final class RecoveryTestCredentials: GatewayCredentialStoring {
+    var token: String?
+    var deviceError: GatewayKeychainError?
+    private let load: (() throws -> String?)?
+
+    init(token: String? = nil, load: (() throws -> String?)? = nil) {
+        self.token = token
+        self.load = load
+    }
+
+    func loadToken(for endpoint: URL) throws -> String? {
+        if let load { return try load() }
+        return token
+    }
+    func saveToken(_ token: String, for endpoint: URL) { self.token = token }
+    func deleteToken(for endpoint: URL) { token = nil }
+    func loadOrCreateDeviceID() throws -> String {
+        if let deviceError { throw deviceError }
+        return "recovery-test-device"
+    }
+}
+
+final class GatewayControlRecoveryTests: XCTestCase {
+    @MainActor
+    private func fixture(pongDelay: TimeInterval = 0, respondsToStats: Bool = false) async throws ->
+        (LocalRecoveryGateway, GatewayClient, AppStore) {
+        let server = try LocalRecoveryGateway(repliesToPing: { _ in true }, pongDelay: pongDelay,
+                                             respondsToStats: respondsToStats, respondsToControls: true)
+        let endpoint = try await server.start()
+        let gateway = GatewayClient(credentials: RecoveryTestCredentials(), probeTimeout: .seconds(1))
+        let session = SessionSummary(id: "stats-session", title: "Stats", lastActivity: Date(), isRunning: false, hasUnread: false)
+        let store = AppStore(preferences: AppPreferencesSpy(endpoint: endpoint, selectedWorkspaceID: nil, sessions: [session]),
+                             gatewayClient: gateway,
+                             sessionControlRequestTimeout: .milliseconds(80), chatHistoryCache: nil)
+        // 只测试 stats，初始 hello 不自动触发无关的主页/默认配置刷新。
+        let receive = gateway.onFrame
+        gateway.onFrame = nil
+        let connected = expectation(description: "真实 WebSocket 已就绪")
+        let subscription = gateway.$state.sink { if $0.isConnected { connected.fulfill() } }
+        gateway.connect(to: endpoint)
+        await fulfillment(of: [connected], timeout: 3)
+        subscription.cancel()
+        gateway.onFrame = receive
+        _ = await store.prepareConversation(for: session)
+        return (server, gateway, store)
+    }
+
+    @MainActor
+    func testStatsWaitsForSlowForegroundProbeAndStartsTimeoutAfterSending() async throws {
+        let (server, _, store) = try await fixture(pongDelay: 0.3, respondsToStats: true)
+        defer { store.deactivateGateway(); server.stop() }
+        store.handleScenePhase(.background)
+        store.handleScenePhase(.active)
+        store.refreshSessionControls(for: "stats-session")
+        await store.awaitPendingKMPEventDeliveriesForTesting()
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertFalse(server.receivedRequestKinds.contains("session-stats"))
+        XCTAssertTrue(store.sessionControlLoadingKinds.contains("session-stats"))
+        XCTAssertNil(store.lastError, "300ms 探测不能消耗 80ms 的业务响应窗口")
+        let received = expectation(description: "探测通过后实际发送并接收 stats")
+        let subscription = store.$sessionStatsSnapshots.sink {
+            if $0["stats-session"] != nil { received.fulfill() }
+        }
+        defer { subscription.cancel() }
+        await fulfillment(of: [received], timeout: 3)
+        await store.awaitPendingKMPEventDeliveriesForTesting()
+        XCTAssertEqual(server.receivedRequestKinds.filter { $0 == "session-stats" }.count, 1)
+        XCTAssertFalse(store.sessionControlLoadingKinds.contains("session-stats"))
+        XCTAssertNil(store.lastError)
+    }
+
+    @MainActor
+    func testSilentBackgroundFailureDiscardsStatsTimeoutWithoutAlert() async throws {
+        let (server, gateway, store) = try await fixture()
+        defer { store.deactivateGateway(); server.stop() }
+        store.refreshSessionControls(for: "stats-session")
+        await store.awaitPendingKMPEventDeliveriesForTesting()
+        XCTAssertTrue(store.sessionControlLoadingKinds.contains("session-stats"))
+        store.handleScenePhase(.background)
+        let failed = expectation(description: "后台静默断线")
+        let subscription = gateway.$state.sink { if case .failed = $0 { failed.fulfill() } }
+        defer { subscription.cancel() }
+        var reports = 0
+        let report = gateway.onConnectionFailure
+        gateway.onConnectionFailure = { detail in reports += 1; report?(detail) }
+        server.dropConnections(nextGreeting: .hello)
+        await fulfillment(of: [failed], timeout: 3)
+        await store.awaitPendingKMPEventDeliveriesForTesting()
+        XCTAssertFalse(store.sessionControlLoadingKinds.contains("session-stats"))
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertEqual(reports, 0)
+        XCTAssertNil(store.lastError)
+        XCTAssertTrue(gateway.recoveryStateForTesting.wantsConnection)
+    }
+
+    @MainActor
+    func testDeferredStatsDoesNotLeakIntoReplacementConnection() async throws {
+        let (server, gateway, store) = try await fixture(pongDelay: 0.3)
+        defer { store.deactivateGateway(); server.stop() }
+        store.handleScenePhase(.background)
+        store.handleScenePhase(.active)
+        store.refreshSessionControls(for: "old-target")
+        await store.awaitPendingKMPEventDeliveriesForTesting()
+        let failed = expectation(description: "探测中的连接失效")
+        let failedSubscription = gateway.$state.sink { if case .failed = $0 { failed.fulfill() } }
+        server.dropConnections(nextGreeting: .hello)
+        await fulfillment(of: [failed], timeout: 3)
+        failedSubscription.cancel()
+        // 隔离这次重连的 hello 自动刷新，检查旧队列是否泄漏到新 socket。
+        gateway.onFrame = nil
+        let connected = expectation(description: "替换连接已就绪")
+        let subscription = gateway.$state.sink { if $0.isConnected { connected.fulfill() } }
+        defer { subscription.cancel() }
+        gateway.applicationDidBecomeActive()
+        await fulfillment(of: [connected], timeout: 3)
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertFalse(server.receivedRequestKinds.contains("session-stats"))
+        XCTAssertNil(store.lastError)
+    }
+
+    @MainActor
+    func testHealthyConnectionStillReportsGenuineStatsTimeout() async throws {
+        let (server, _, store) = try await fixture()
+        defer { store.deactivateGateway(); server.stop() }
+        let timeout = expectation(description: "健康连接上的真实超时仍正常报告")
+        let subscription = store.$lastError.sink {
+            if $0?.contains("session-stats") == true { timeout.fulfill() }
+        }
+        defer { subscription.cancel() }
+        store.refreshSessionControls(for: "stats-session")
+        await fulfillment(of: [timeout], timeout: 3)
+        XCTAssertTrue(server.receivedRequestKinds.contains("session-stats"))
+        XCTAssertFalse(store.sessionControlLoadingKinds.contains("session-stats"))
+    }
+
+    @MainActor
+    func testPausedTrackerDoesNotExpireAndResumesWithFreshBudget() async throws {
+        let tracker = RequestTracker()
+        var count = 0
+        tracker.begin("stats", timeout: .milliseconds(40)) { count += 1 }
+        tracker.pause()
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(count, 0)
+        XCTAssertEqual(tracker.activeKeys, ["stats"])
+        tracker.resume()
+        XCTAssertEqual(count, 0)
+        try await Task.sleep(for: .milliseconds(80))
+        XCTAssertEqual(count, 1)
+        XCTAssertTrue(tracker.activeKeys.isEmpty)
+    }
+
+    @MainActor
+    func testResponsesAndDisconnectWhilePausedDoNotResurrectTimeouts() async throws {
+        let tracker = RequestTracker()
+        var count = 0
+        tracker.pause()
+        tracker.begin("response", timeout: .milliseconds(20)) { count += 1 }
+        tracker.finish("response")
+        tracker.begin("disconnect", timeout: .milliseconds(20)) { count += 1 }
+        tracker.finishAll()
+        tracker.begin("latest", timeout: .milliseconds(20)) { count += 1 }
+        tracker.resume()
+        try await Task.sleep(for: .milliseconds(60))
+        XCTAssertEqual(count, 1)
+        XCTAssertTrue(tracker.activeKeys.isEmpty)
+    }
+}
+
+/// 用真实的同步阻塞模拟 Keychain IPC；阻塞期间主线程必须仍能执行断开/切换操作。
+private actor BlockingGatewayCredentials: GatewayCredentialStoring {
+    let readDeviceID: @Sendable () throws -> String
+    let readToken: @Sendable () throws -> String?
+
+    init(readDeviceID: @escaping @Sendable () throws -> String = { "test-device" },
+         readToken: @escaping @Sendable () throws -> String? = { "test-token" }) {
+        self.readDeviceID = readDeviceID
+        self.readToken = readToken
+    }
+
+    func loadOrCreateDeviceID() throws -> String { try readDeviceID() }
+    func loadToken(for endpoint: URL) throws -> String? { try readToken() }
+    func saveToken(_ token: String, for endpoint: URL) {}
+    func deleteToken(for endpoint: URL) {}
+}
+
+private actor SuspendedFirstGatewayCredentials: GatewayCredentialStoring {
+    let started: XCTestExpectation
+    let release: DispatchSemaphore
+    private var first = true
+
+    init(started: XCTestExpectation, release: DispatchSemaphore) {
+        self.started = started
+        self.release = release
+    }
+
+    func loadOrCreateDeviceID() throws -> String {
+        if first {
+            first = false
+            started.fulfill()
+            XCTAssertEqual(release.wait(timeout: .now() + 3), .success)
+            throw GatewayKeychainError(status: errSecDecode)
+        }
+        return "replacement-device"
+    }
+    func loadToken(for endpoint: URL) -> String? { "test-token" }
+    func saveToken(_ token: String, for endpoint: URL) {}
+    func deleteToken(for endpoint: URL) {}
+}
+
+final class GatewayForegroundRecoveryTests: XCTestCase {
+    @MainActor
+    func testSlowCredentialReadDoesNotBlockMainActorOrReconnectAfterDisconnect() async throws {
+        let server = try LocalRecoveryGateway(repliesToPing: { _ in true })
+        let endpoint = try await server.start()
+        defer { server.stop() }
+        let started = expectation(description: "后台开始同步读取凭证")
+        let release = DispatchSemaphore(value: 0)
+        let credentials = BlockingGatewayCredentials(readDeviceID: {
+            XCTAssertFalse(Thread.isMainThread)
+            started.fulfill()
+            XCTAssertEqual(release.wait(timeout: .now() + 3), .success)
+            return "slow-device"
+        })
+        let gateway = GatewayClient(credentials: credentials)
+        defer { release.signal(); gateway.disconnect() }
+        gateway.connect(to: endpoint)
+        await fulfillment(of: [started], timeout: 1)
+        // 此处可以在读取尚未完成时执行，证明 UI actor 没有被凭证读取占用。
+        XCTAssertEqual(gateway.state, .connecting)
+        gateway.disconnect()
+        release.signal()
+        // actor 屏障确保慢读取已经结束，再让连接 Task 消费取消结果。
+        _ = try await credentials.loadToken(for: URL(string: endpoint)!)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(gateway.state, .disconnected)
+        XCTAssertFalse(gateway.recoveryStateForTesting.wantsConnection)
+        XCTAssertTrue(server.receivedHeaders.isEmpty)
+    }
+
+    @MainActor
+    func testDelayedCredentialFailureCannotOverwriteReplacementConnection() async throws {
+        let server = try LocalRecoveryGateway(repliesToPing: { _ in true })
+        let endpoint = try await server.start()
+        defer { server.stop() }
+        let started = expectation(description: "旧连接等待凭证")
+        let release = DispatchSemaphore(value: 0)
+        // 首次读取挂起并失败，随后读取恢复正常。
+        let credentials = SuspendedFirstGatewayCredentials(started: started, release: release)
+        let gateway = GatewayClient(credentials: credentials)
+        defer { release.signal(); gateway.disconnect() }
+        gateway.connect(to: "ws://127.0.0.1:9/ws/mobile")
+        await fulfillment(of: [started], timeout: 1)
+        let connected = expectation(description: "新连接成功且不受旧失败影响")
+        let subscription = gateway.$state.sink { if $0.isConnected { connected.fulfill() } }
+        defer { subscription.cancel() }
+        gateway.connect(to: endpoint)
+        release.signal()
+        await fulfillment(of: [connected], timeout: 3)
+        XCTAssertEqual(gateway.connectedEndpoint, endpoint)
+        XCTAssertEqual(server.receivedHeaders.count, 1)
+        XCTAssertEqual(gateway.recoveryStateForTesting.reconnectAttempt, 0)
+    }
+
+    @MainActor
+    func testColdLaunchCredentialResultCannotUndoManualDisconnect() async throws {
+        let started = expectation(description: "冷启动在后台读取 token")
+        let release = DispatchSemaphore(value: 0)
+        let credentials = BlockingGatewayCredentials(readToken: {
+            XCTAssertFalse(Thread.isMainThread)
+            started.fulfill()
+            XCTAssertEqual(release.wait(timeout: .now() + 3), .success)
+            return "stored-token"
+        })
+        let gateway = GatewayClient(credentials: credentials)
+        let store = AppStore(preferences: AppPreferencesSpy(endpoint: "ws://127.0.0.1:9/ws/mobile",
+                                                            selectedWorkspaceID: nil, sessions: []),
+                             gatewayClient: gateway)
+        defer { release.signal(); store.deactivateGateway() }
+        let launch = Task { await store.connectOnColdLaunchIfPaired() }
+        await fulfillment(of: [started], timeout: 1)
+        store.disconnect()
+        release.signal()
+        await launch.value
+        XCTAssertEqual(gateway.state, .disconnected)
+        XCTAssertFalse(gateway.recoveryStateForTesting.wantsConnection)
+    }
+
+    @MainActor
+    func testForegroundResetsBackoffAfterTemporaryKeychainFailures() async {
+        let retried = expectation(description: "临时读取失败仍会自动重试")
+        var reads = 0
+        let gateway = GatewayClient(credentials: RecoveryTestCredentials(load: {
+            reads += 1
+            if reads == 2 { retried.fulfill() }
+            throw GatewayKeychainError(status: errSecInteractionNotAllowed)
+        }))
+        defer { gateway.disconnect() }
+        gateway.connect(to: "ws://127.0.0.1:9/ws/mobile")
+        XCTAssertTrue(gateway.recoveryStateForTesting.wantsConnection)
+        await fulfillment(of: [retried], timeout: 4)
+        XCTAssertEqual(gateway.recoveryStateForTesting.reconnectAttempt, 2)
+        let foregroundFailure = expectation(description: "前台重试完成")
+        let subscription = gateway.$state.sink { if case .failed = $0, reads == 3 { foregroundFailure.fulfill() } }
+        defer { subscription.cancel() }
+        gateway.applicationDidEnterBackground()
+        gateway.applicationDidBecomeActive()
+        await fulfillment(of: [foregroundFailure], timeout: 1)
+        XCTAssertEqual(reads, 3)
+        XCTAssertEqual(gateway.recoveryStateForTesting.reconnectAttempt, 1)
+        XCTAssertTrue(gateway.recoveryStateForTesting.wantsConnection)
+    }
+
+    @MainActor
+    func testPermanentCredentialFailureAndManualDisconnectStayStopped() async {
+        var reads = 0
+        let gateway = GatewayClient(credentials: RecoveryTestCredentials(load: {
+            reads += 1
+            throw GatewayKeychainError(status: errSecDecode)
+        }))
+        defer { gateway.disconnect() }
+        let failed = expectation(description: "永久凭证错误终止连接")
+        let subscription = gateway.$state.sink { if case .failed = $0 { failed.fulfill() } }
+        defer { subscription.cancel() }
+        gateway.connect(to: "ws://127.0.0.1:9/ws/mobile")
+        await fulfillment(of: [failed], timeout: 1)
+        gateway.applicationDidBecomeActive()
+        XCTAssertEqual(reads, 1)
+        XCTAssertFalse(gateway.recoveryStateForTesting.wantsConnection)
+        gateway.disconnect()
+        gateway.applicationDidBecomeActive()
+        XCTAssertEqual(reads, 1)
+    }
+
+    @MainActor
+    func testColdLaunchCredentialReadCanRecoverOnNextForeground() async throws {
+        let server = try LocalRecoveryGateway(repliesToPing: { _ in true })
+        let endpoint = try await server.start()
+        defer { server.stop() }
+        var unlocked = false
+        let gateway = GatewayClient(credentials: RecoveryTestCredentials(load: {
+            guard unlocked else { throw GatewayKeychainError(status: errSecNotAvailable) }
+            return "recovery-test-token"
+        }))
+        let store = AppStore(preferences: AppPreferencesSpy(endpoint: endpoint, selectedWorkspaceID: nil, sessions: []),
+                             gatewayClient: gateway)
+        defer { store.deactivateGateway() }
+        await store.connectOnColdLaunchIfPaired()
+        XCTAssertFalse(gateway.recoveryStateForTesting.wantsConnection)
+        let connected = expectation(description: "解锁后回前台自动连接")
+        let subscription = gateway.$state.sink { if $0.isConnected { connected.fulfill() } }
+        defer { subscription.cancel() }
+        unlocked = true
+        store.handleScenePhase(.active)
+        await fulfillment(of: [connected], timeout: 3)
+        XCTAssertEqual(server.receivedHeaders.first?["authorization"], "Bearer recovery-test-token")
+    }
+
+    @MainActor
+    func testHeartbeatWithoutPongStopsFalseOnlineState() async throws {
+        let server = try LocalRecoveryGateway()
+        let endpoint = try await server.start()
+        defer { server.stop() }
+        let gateway = GatewayClient(credentials: RecoveryTestCredentials(), heartbeatInterval: .milliseconds(40),
+                                    probeTimeout: .milliseconds(80))
+        defer { gateway.disconnect() }
+        let failed = expectation(description: "丢失 pong 后心跳有超时截止")
+        let subscription = gateway.$state.sink { if case .failed = $0 { failed.fulfill() } }
+        defer { subscription.cancel() }
+        gateway.connect(to: endpoint)
+        await fulfillment(of: [failed], timeout: 3)
+        XCTAssertTrue(gateway.recoveryStateForTesting.wantsConnection)
+        XCTAssertEqual(gateway.recoveryStateForTesting.reconnectAttempt, 1)
+    }
+
+    @MainActor
+    func testForegroundProbesStaleConnectionBeforeNextHeartbeat() async throws {
+        let server = try LocalRecoveryGateway()
+        let endpoint = try await server.start()
+        defer { server.stop() }
+        let gateway = GatewayClient(credentials: RecoveryTestCredentials(), probeTimeout: .milliseconds(80))
+        defer { gateway.disconnect() }
+        let connected = expectation(description: "建立连接")
+        let ready = gateway.$state.sink { if $0.isConnected { connected.fulfill() } }
+        gateway.connect(to: endpoint)
+        await fulfillment(of: [connected], timeout: 3)
+        ready.cancel()
+        let failed = expectation(description: "回前台立即探测，不等待 30 秒心跳")
+        let subscription = gateway.$state.sink { if case .failed = $0 { failed.fulfill() } }
+        defer { subscription.cancel() }
+        gateway.applicationDidEnterBackground()
+        gateway.applicationDidBecomeActive()
+        await fulfillment(of: [failed], timeout: 1)
+        XCTAssertTrue(gateway.recoveryStateForTesting.wantsConnection)
+    }
+
+    @MainActor
+    func testHealthyConnectionSurvivesRepeatedForegroundNotifications() async throws {
+        let server = try LocalRecoveryGateway(repliesToPing: { _ in true })
+        let endpoint = try await server.start()
+        defer { server.stop() }
+        let gateway = GatewayClient(credentials: RecoveryTestCredentials(), probeTimeout: .milliseconds(80))
+        defer { gateway.disconnect() }
+        let connected = expectation(description: "建立连接")
+        let ready = gateway.$state.sink { if $0.isConnected { connected.fulfill() } }
+        gateway.connect(to: endpoint)
+        await fulfillment(of: [connected], timeout: 3)
+        ready.cancel()
+        let failed = expectation(description: "健康连接不被前台通知打断")
+        failed.isInverted = true
+        gateway.onConnectionFailure = { _ in failed.fulfill() }
+        gateway.applicationDidEnterBackground()
+        for _ in 0..<20 { gateway.applicationDidBecomeActive() }
+        await fulfillment(of: [failed], timeout: 0.2)
+        XCTAssertTrue(gateway.state.isConnected)
+        XCTAssertEqual(server.receivedHeaders.count, 1)
+    }
+
+    @MainActor
+    func testDeviceIdentityReadRecoversAfterTemporaryKeychainFailure() async throws {
+        let server = try LocalRecoveryGateway(repliesToPing: { _ in true })
+        let endpoint = try await server.start()
+        defer { server.stop() }
+        let credentials = RecoveryTestCredentials()
+        credentials.deviceError = GatewayKeychainError(status: errSecInteractionNotAllowed)
+        let gateway = GatewayClient(credentials: credentials)
+        defer { gateway.disconnect() }
+        gateway.connect(to: endpoint)
+        XCTAssertTrue(gateway.recoveryStateForTesting.wantsConnection)
+        XCTAssertTrue(server.receivedHeaders.isEmpty)
+        let connected = expectation(description: "设备标识恢复可读后自动重连")
+        let subscription = gateway.$state.sink { if $0.isConnected { connected.fulfill() } }
+        defer { subscription.cancel() }
+        credentials.deviceError = nil
+        gateway.applicationDidBecomeActive()
+        await fulfillment(of: [connected], timeout: 3)
+    }
+
+    @MainActor
+    func testConversationHeartbeatFailureRecoversBothChannels() async throws {
+        let server = try LocalRecoveryGateway(greeting: .split, repliesToPing: { $0 == "control" })
+        let endpoint = try await server.start()
+        defer { server.stop() }
+        let gateway = GatewayClient(credentials: RecoveryTestCredentials(), heartbeatInterval: .milliseconds(40),
+                                    probeTimeout: .milliseconds(80))
+        defer { gateway.disconnect() }
+        let failed = expectation(description: "仅对话通道丢失 pong 也恢复整个连接")
+        let subscription = gateway.$state.sink { if case .failed = $0 { failed.fulfill() } }
+        defer { subscription.cancel() }
+        gateway.connect(to: endpoint)
+        await fulfillment(of: [failed], timeout: 3)
+        XCTAssertEqual(Set(server.receivedHeaders.compactMap { $0["x-dsh-channel"] }), ["control", "conversation"])
+        XCTAssertTrue(gateway.recoveryStateForTesting.wantsConnection)
+    }
+
+    @MainActor
+    func testPairedBeforeHelloUsesStoredCredentialAfterDisconnect() async throws {
+        let server = try LocalRecoveryGateway(greeting: .pairedOnly, repliesToPing: { _ in true })
+        let endpoint = try await server.start()
+        defer { server.stop() }
+        let gateway = GatewayClient(credentials: RecoveryTestCredentials())
+        let profileID = "recovery-test-\(UUID())"
+        gateway.credentialID = profileID
+        defer { gateway.disconnect() }
+        let paired = expectation(description: "已保存长期凭据")
+        gateway.onFrame = { if $0.kind == "paired" { paired.fulfill() } }
+        gateway.connectForPairing(GatewayPairingPayload(version: 2, publicUrl: endpoint,
+            pairingCode: "recovery-test-once", expiresAt: 4_102_444_800_000))
+        await fulfillment(of: [paired], timeout: 3)
+        XCTAssertFalse(gateway.recoveryStateForTesting.isManualPairing)
+        let failed = expectation(description: "hello 前断线仍保留恢复意图")
+        let failureSubscription = gateway.$state.sink { if case .failed = $0 { failed.fulfill() } }
+        server.dropConnections(nextGreeting: .hello)
+        await fulfillment(of: [failed], timeout: 3)
+        failureSubscription.cancel()
+        XCTAssertTrue(gateway.recoveryStateForTesting.wantsConnection)
+        let connected = expectation(description: "长期凭据自动恢复")
+        let subscription = gateway.$state.sink { if $0.isConnected { connected.fulfill() } }
+        defer { subscription.cancel() }
+        gateway.applicationDidBecomeActive()
+        await fulfillment(of: [connected], timeout: 3)
+        XCTAssertEqual(server.receivedHeaders.last?["authorization"], "Bearer recovery-test-token")
+        XCTAssertEqual(server.receivedHeaders.last?["sec-websocket-protocol"], "dsh-mobile-v1")
+    }
+
+    @MainActor
+    func testForegroundDoesNotReplayInProgressOneTimePairing() async throws {
+        let handshake = expectation(description: "一次性配对握手已发送")
+        handshake.assertForOverFulfill = true
+        let server = try LocalRecoveryGateway(greeting: .silent, handshakeReceived: { handshake.fulfill() })
+        let endpoint = try await server.start()
+        defer { server.stop() }
+        let gateway = GatewayClient(credentials: RecoveryTestCredentials())
+        defer { gateway.disconnect() }
+        gateway.connectForPairing(GatewayPairingPayload(version: 2, publicUrl: endpoint,
+            pairingCode: "recovery-test-once", expiresAt: 4_102_444_800_000))
+        await fulfillment(of: [handshake], timeout: 3)
+        gateway.applicationDidEnterBackground()
+        gateway.applicationDidBecomeActive()
+        XCTAssertTrue(gateway.recoveryStateForTesting.isManualPairing)
+        let quiet = expectation(description: "等待握手，不重复提交配对码")
+        quiet.isInverted = true
+        await fulfillment(of: [quiet], timeout: 0.15)
+        XCTAssertEqual(server.receivedHeaders.count, 1)
+    }
+
+    @MainActor
+    func testUnauthorizedAnonymousHandshakeDoesNotDeleteStoredCredential() async throws {
+        let server = try LocalRecoveryGateway(greeting: .unauthorized)
+        let endpoint = try await server.start()
+        defer { server.stop() }
+        let credentials = RecoveryTestCredentials(token: "preserved-test-token", load: { nil })
+        let gateway = GatewayClient(credentials: credentials)
+        defer { gateway.disconnect() }
+        let failed = expectation(description: "匿名请求收到 401")
+        let subscription = gateway.$state.sink { if case .failed = $0 { failed.fulfill() } }
+        defer { subscription.cancel() }
+        gateway.connect(to: endpoint)
+        await fulfillment(of: [failed], timeout: 3)
+        XCTAssertNil(server.receivedHeaders.first?["authorization"])
+        XCTAssertEqual(credentials.token, "preserved-test-token")
+        XCTAssertFalse(gateway.recoveryStateForTesting.wantsConnection)
+    }
+
+    @MainActor
+    func testUnauthorizedConnectionRemainsTerminalOnForeground() async throws {
+        let server = try LocalRecoveryGateway(greeting: .unauthorized)
+        let endpoint = try await server.start()
+        defer { server.stop() }
+        let credentials = RecoveryTestCredentials(token: "invalid-test-token")
+        let gateway = GatewayClient(credentials: credentials)
+        gateway.credentialID = "recovery-test-\(UUID())"
+        defer { gateway.disconnect() }
+        let failed = expectation(description: "401 停止自动恢复")
+        let subscription = gateway.$state.sink { if case .failed = $0 { failed.fulfill() } }
+        defer { subscription.cancel() }
+        gateway.connect(to: endpoint)
+        await fulfillment(of: [failed], timeout: 3)
+        XCTAssertFalse(gateway.recoveryStateForTesting.wantsConnection)
+        XCTAssertNil(credentials.token)
+        gateway.applicationDidBecomeActive()
+        XCTAssertEqual(server.receivedHeaders.count, 1)
+    }
+}
+
+final class GatewayNetworkRecoveryTests: XCTestCase {
+    private let wifi = GatewayNetworkRecovery.Path(isSatisfied: true, interfaces: ["en0"])
+    private let cellular = GatewayNetworkRecovery.Path(isSatisfied: true, interfaces: ["pdp_ip0"])
+    private let offline = GatewayNetworkRecovery.Path(isSatisfied: false)
+
+    @MainActor
+    func testInitialAndDuplicatePathsDoNotRestartHealthyConnection() async {
+        let recovery = expectation(description: "初始和重复路径不重连")
+        recovery.isInverted = true
+        let handler = GatewayNetworkRecovery(debounce: .milliseconds(10), canRecover: { true }) {
+            recovery.fulfill()
+        }
+        handler.update(wifi)
+        handler.update(wifi)
+        await fulfillment(of: [recovery], timeout: 0.1)
+    }
+
+    @MainActor
+    func testSatisfiedInterfaceSwitchRecoversWithoutOfflineNotification() async {
+        let recovery = expectation(description: "WiFi 直接切蜂窝后恢复")
+        let handler = GatewayNetworkRecovery(debounce: .milliseconds(10), canRecover: { true }) {
+            recovery.fulfill()
+        }
+        handler.update(wifi)
+        handler.update(cellular)
+        await fulfillment(of: [recovery], timeout: 1)
+    }
+
+    @MainActor
+    func testOfflineThenSameInterfaceRecovers() async {
+        let recovery = expectation(description: "同一 WiFi 恢复后重连")
+        let handler = GatewayNetworkRecovery(debounce: .milliseconds(10), canRecover: { true }) {
+            recovery.fulfill()
+        }
+        handler.update(wifi)
+        handler.update(offline)
+        handler.update(wifi)
+        await fulfillment(of: [recovery], timeout: 1)
+    }
+
+    @MainActor
+    func testRapidPathChangesAreCoalescedAndRepeatedRecoveryStillWorks() async {
+        var count = 0
+        let first = expectation(description: "连续变化只恢复一次")
+        let second = expectation(description: "后续网络切换仍可恢复")
+        let handler = GatewayNetworkRecovery(debounce: .milliseconds(10), canRecover: { true }) {
+            count += 1
+            if count == 1 { first.fulfill() } else { second.fulfill() }
+        }
+        handler.update(wifi)
+        handler.update(cellular)
+        handler.update(offline)
+        handler.update(wifi)
+        handler.update(cellular)
+        await fulfillment(of: [first], timeout: 1)
+        XCTAssertEqual(count, 1)
+        handler.update(wifi)
+        await fulfillment(of: [second], timeout: 1)
+        XCTAssertEqual(count, 2)
+    }
+
+    @MainActor
+    func testLosingNetworkCancelsPendingRecovery() async {
+        let recovery = expectation(description: "断网后不执行过期恢复")
+        recovery.isInverted = true
+        let handler = GatewayNetworkRecovery(debounce: .milliseconds(10), canRecover: { true }) {
+            recovery.fulfill()
+        }
+        handler.update(wifi)
+        handler.update(cellular)
+        handler.update(offline)
+        await fulfillment(of: [recovery], timeout: 0.1)
+    }
+
+    @MainActor
+    func testDisconnectOrBackgroundDuringDebouncePreventsRecovery() async {
+        var allowed = true
+        let recovery = expectation(description: "防抖期间停止连接后不得恢复")
+        recovery.isInverted = true
+        let handler = GatewayNetworkRecovery(debounce: .milliseconds(10), canRecover: { allowed }) {
+            recovery.fulfill()
+        }
+        handler.update(wifi)
+        handler.update(cellular)
+        allowed = false
+        await fulfillment(of: [recovery], timeout: 0.1)
+    }
+
+    @MainActor
+    func testTerminalConnectionStateAndExplicitCancellationPreventRecovery() async {
+        let recovery = expectation(description: "停止连接和显式取消均不重连")
+        recovery.isInverted = true
+        var allowed = false
+        let handler = GatewayNetworkRecovery(debounce: .milliseconds(10), canRecover: { allowed }) {
+            recovery.fulfill()
+        }
+        handler.update(wifi)
+        handler.update(cellular)
+        allowed = true
+        handler.update(wifi)
+        handler.cancel()
+        await fulfillment(of: [recovery], timeout: 0.1)
+    }
+}
+
 final class ManualGatewayDisconnectTests: XCTestCase {
     @MainActor
-    func testManualDisconnectSuppressesColdLaunchConnection() {
+    func testManualDisconnectSuppressesColdLaunchConnection() async {
         let preferences = AppPreferencesSpy(
             endpoint: "ws://127.0.0.1:3080/ws/mobile", selectedWorkspaceID: nil, sessions: []
         )
@@ -7634,7 +8453,7 @@ final class ManualGatewayDisconnectTests: XCTestCase {
         XCTAssertFalse(preferences.automaticallyConnect)
         let restarted = AppStore(preferences: preferences)
         defer { restarted.deactivateGateway() }
-        restarted.connectOnColdLaunchIfPaired()
+        await restarted.connectOnColdLaunchIfPaired()
         restarted.handleScenePhase(.active)
         XCTAssertNil(restarted.lastError)
         XCTAssertFalse(restarted.gateway.state.isConnected)
@@ -8109,9 +8928,10 @@ final class InterfaceStylePresentationTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let hosts = MultiGatewayStore(defaults: defaults)
+        await hosts.waitUntilReady()
         let store = hosts.activeStore
         // 本测试仅验证外观，避免根视图首次显示时弹出未配对提示。
-        store.connectOnColdLaunchIfPaired()
+        await store.connectOnColdLaunchIfPaired()
         store.lastError = nil
         let controller = UIHostingController(rootView:
             RootView().environmentObject(store).environmentObject(hosts)
@@ -8536,6 +9356,93 @@ final class ConversationFileReferencesTests: XCTestCase {
 
 @MainActor
 final class WorkspaceFilePreviewPresentationTests: XCTestCase {
+    func testConversationFilePresentsBeforeAnyResolveResponse() async throws {
+        let store = await makeStore()
+        defer { store.deactivateGateway() }
+        try deliver(store, #"{"kind":"hello","protocol":3,"capabilities":["file-downloads","file-references-v1"]}"#)
+        store.openConversationFile(gatewayID: store.gatewayLocalID, sessionID: "preview-session", path: "a.txt")
+        let request = try XCTUnwrap(store.workspaceFilePreviewRequest)
+        XCTAssertTrue(store.conversationFilePreviewRequested)
+        XCTAssertTrue(store.conversationFileIsOpening)
+        XCTAssertNil(store.workspaceFilePreviewError)
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(store.workspaceFilePreviewRequest?.id, request.id)
+        XCTAssertTrue(store.conversationFileIsOpening, "未收到响应时在已打开的面板内等待")
+    }
+
+    func testOfflineFilePresentsErrorAndRetryCompletesInSameSheet() async throws {
+        let store = await makeStore()
+        defer { store.deactivateGateway() }
+        store.disconnect()
+        store.openConversationFile(gatewayID: store.gatewayLocalID, sessionID: "preview-session", path: "a.txt")
+        let sheet = try XCTUnwrap(store.workspaceFilePreviewRequest)
+        XCTAssertFalse(store.conversationFileIsOpening)
+        XCTAssertNotNil(store.workspaceFilePreviewError)
+        XCTAssertNil(store.lastError, "预览错误应留在面板内，不另弹全局警告")
+        var sent: [[String: Any]] = []
+        store.gateway.installConnectedTransportForTesting { payload in
+            sent.append((try? JSONSerialization.jsonObject(with: Data(payload.utf8))) as? [String: Any] ?? [:])
+        }
+        store.retryWorkspaceFilePreview()
+        XCTAssertEqual(store.workspaceFilePreviewRequest?.id, sheet.id)
+        XCTAssertTrue(store.conversationFileIsOpening)
+        XCTAssertNil(store.workspaceFilePreviewError)
+        let request = try XCTUnwrap(sent.last { $0["type"] as? String == "file-download-open" })
+        let requestID = try XCTUnwrap(request["requestId"] as? String)
+        XCTAssertNotEqual(requestID, sheet.id.uuidString)
+        try opened(store, requestID: requestID)
+        try deliver(store, """
+            {"kind":"file-download-chunk","transferId":"t1","offset":0,"data":"aGVsbG8=","eof":true,"sha256":"\(digest)"}
+            """)
+        try await waitForCompletion(store)
+        XCTAssertEqual(store.workspaceFilePreviewRequest?.id, sheet.id)
+        XCTAssertEqual(try String(contentsOf: XCTUnwrap(store.completedWorkspaceFile).url, encoding: .utf8), "hello")
+    }
+
+    func testStalledResolveShowsTimeoutAndRejectsLateResponse() async throws {
+        let store = await makeStore(timeout: .milliseconds(50))
+        defer { store.deactivateGateway() }
+        try deliver(store, #"{"kind":"hello","protocol":3,"capabilities":["file-downloads","file-references-v1"]}"#)
+        store.openConversationFile(gatewayID: store.gatewayLocalID, sessionID: "preview-session", path: "a.txt")
+        let sheet = try XCTUnwrap(store.workspaceFilePreviewRequest)
+        try await Task.sleep(for: .milliseconds(120))
+        XCTAssertEqual(store.workspaceFilePreviewRequest?.id, sheet.id)
+        XCTAssertFalse(store.conversationFileIsOpening)
+        XCTAssertNotNil(store.workspaceFilePreviewError)
+        XCTAssertNil(store.lastError)
+        try resolved(store, requestID: sheet.id.uuidString)
+        XCTAssertFalse(store.conversationFileIsOpening)
+        XCTAssertNil(store.completedWorkspaceFile)
+        XCTAssertNil(store.workspaceFileDownloadPath)
+        store.cancelWorkspaceFileDownload()
+        try await Task.sleep(for: .milliseconds(70))
+        XCTAssertNil(store.workspaceFilePreviewRequest)
+        XCTAssertNil(store.workspaceFilePreviewError)
+    }
+
+    func testDisconnectDuringResolveKeepsSheetWithInlineError() async throws {
+        let store = await makeStore()
+        defer { store.deactivateGateway() }
+        store.openConversationFile(gatewayID: store.gatewayLocalID, sessionID: "preview-session", path: "a.txt")
+        let sheet = try XCTUnwrap(store.workspaceFilePreviewRequest)
+        store.gateway.disconnect()
+        XCTAssertEqual(store.workspaceFilePreviewRequest?.id, sheet.id)
+        XCTAssertFalse(store.conversationFileIsOpening)
+        XCTAssertNotNil(store.workspaceFilePreviewError)
+        XCTAssertNil(store.lastError)
+    }
+
+    func testRejectedFileRouteEndsLoadingInsteadOfStayingAtZero() async throws {
+        let store = await makeStore()
+        defer { store.deactivateGateway() }
+        store.gateway.requestDecorator = { _ in nil }
+        store.openWorkspaceFile(item, purpose: "preview")
+        XCTAssertNotNil(store.workspaceFilePreviewRequest)
+        XCTAssertFalse(store.conversationFileIsOpening)
+        XCTAssertNotNil(store.workspaceFilePreviewError)
+        XCTAssertNil(store.completedWorkspaceFile)
+    }
+
     private let digest = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
     private let item = GatewayDirectoryItem(name: "a.txt", path: "a.txt", kind: "file", bytes: 5)
 
@@ -8640,6 +9547,50 @@ final class WorkspaceFilePreviewPresentationTests: XCTestCase {
         XCTAssertEqual(store.workspaceFilePreviewRequest?.id, second.id)
     }
 
+    func testOfflineSheetActuallyPresentsAndRemainsPresentedDuringRetry() async throws {
+        let store = await makeStore()
+        store.disconnect()
+        let host = UIHostingController(rootView: WorkspacePreviewPresentationHarness(store: store))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer {
+            store.deactivateGateway()
+            window.isHidden = true
+            window.rootViewController = nil
+            previous?.makeKeyAndVisible()
+        }
+        host.view.layoutIfNeeded()
+        store.openConversationFile(gatewayID: store.gatewayLocalID, sessionID: "preview-session", path: "a.txt")
+        let request = try XCTUnwrap(store.workspaceFilePreviewRequest)
+        for _ in 0..<100 where host.presentedViewController == nil {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let sheet = try XCTUnwrap(host.presentedViewController)
+        try await Task.sleep(for: .milliseconds(350))
+        XCTAssertNotNil(store.workspaceFilePreviewError)
+        XCTAssertNil(store.lastError)
+        let screenshot = XCTAttachment(image: UIGraphicsImageRenderer(size: window.bounds.size).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        })
+        screenshot.name = "离线文件：立即显示底部面板和重试入口"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        store.gateway.installConnectedTransportForTesting()
+        store.retryWorkspaceFilePreview()
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(host.presentedViewController === sheet)
+        XCTAssertEqual(store.workspaceFilePreviewRequest?.id, request.id)
+        XCTAssertTrue(store.conversationFileIsOpening)
+        store.gateway.disconnect()
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(host.presentedViewController === sheet)
+        XCTAssertFalse(store.conversationFileIsOpening)
+        XCTAssertNotNil(store.workspaceFilePreviewError)
+    }
+
     func testLoadingSheetStaysPresentedWhenContentBecomesReady() async throws {
         let store = await makeStore()
         let host = UIHostingController(rootView: WorkspacePreviewPresentationHarness(store: store))
@@ -8706,7 +9657,7 @@ final class WorkspaceFilePreviewPresentationTests: XCTestCase {
             {"kind":"error","requestType":"file-download-open","requestId":"\(request.id.uuidString)","message":"missing-file"}
             """)
         XCTAssertFalse(store.conversationFileIsOpening)
-        XCTAssertNotNil(store.lastError)
+        XCTAssertNotNil(store.workspaceFilePreviewError)
         XCTAssertNotNil(store.workspaceFilePreviewRequest)
         XCTAssertNil(store.completedWorkspaceFile)
     }
@@ -8741,11 +9692,13 @@ final class WorkspaceFilePreviewPresentationTests: XCTestCase {
         return view.subviews.lazy.compactMap { self.logoPlayer(in: $0) }.first
     }
 
-    private func makeStore() async -> AppStore {
+    private func makeStore(timeout: Duration = .seconds(20)) async -> AppStore {
         let session = SessionSummary(id: "preview-session", title: "Preview", lastActivity: Date(),
                                      isRunning: false, hasUnread: false)
         let store = AppStore(preferences: AppPreferencesSpy(endpoint: "", selectedWorkspaceID: nil, sessions: [session]),
-                             gatewayLocalID: "preview-test-\(UUID().uuidString)")
+                             gatewayLocalID: "preview-test-\(UUID().uuidString)", filePreviewTimeout: timeout)
+        store.gateway.installConnectedTransportForTesting()
+        store.gateway.onFrame?(GatewayFrame(kind: "hello", protocol: 3, capabilities: ["file-downloads"]))
         _ = await store.prepareConversation(for: session)
         return store
     }
@@ -8771,7 +9724,7 @@ final class WorkspaceFilePreviewPresentationTests: XCTestCase {
             if store.completedWorkspaceFile != nil { return }
             try await Task.sleep(for: .milliseconds(20))
         }
-        XCTFail("文件应在原有弹窗中完成预览：\(store.lastError ?? "无错误")")
+        XCTFail("文件应在原有弹窗中完成预览：\(store.workspaceFilePreviewError ?? "无错误")")
     }
 }
 
@@ -10915,5 +11868,764 @@ final class HistoryReadingBatchTests: XCTestCase {
         XCTAssertEqual(batch.stopReason(window: .init(), earliestSequence: 99, hasMore: true, now: 0.1), "round-budget")
         batch.rounds = 1
         XCTAssertEqual(batch.stopReason(window: .init(characters: 1048576), earliestSequence: 99, hasMore: true, now: 0.1), "content-budget")
+    }
+}
+
+@MainActor
+final class TeamIntegrationTests: XCTestCase {
+    func testChildDirectoryLinksRequestBrowserAtTargetPathWithoutFilePreview() async throws {
+        let lead = SessionSummary(id: "lead", title: "团队目录", lastActivity: .now, isRunning: false, hasUnread: false)
+        let store = AppStore(preferences: AppPreferencesSpy(endpoint: "ws://127.0.0.1:3080/ws/mobile",
+            selectedWorkspaceID: nil, sessions: [lead]), chatHistoryCache: nil)
+        defer { store.deactivateGateway() }
+        var sent: [[String: Any]] = []
+        store.gateway.installConnectedTransportForTesting { payload in
+            sent.append((try? JSONSerialization.jsonObject(with: Data(payload.utf8))) as? [String: Any] ?? [:])
+        }
+        func deliver(_ json: String) throws {
+            store.gateway.onFrame?(try GatewayWireDecoder.decode(Data(json.utf8)))
+        }
+        try deliver(#"{"kind":"hello","protocol":3,"capabilities":["file-downloads","file-references-v1","agent-team-v1","subagent-conversations-v1"]}"#)
+        _ = await store.prepareConversation(for: lead)
+        await store.activatePreparedConversation(sessionID: "lead")
+        try deliver(#"{"kind":"agent-team-updated","sessionId":"lead","asOfSeq":8,"agentTeam":{"members":[{"id":"lead","name":"lead","role":"lead","phase":"active"},{"id":"scout","name":"scout","role":"teammate","phase":"active"}],"tasks":[]}}"#)
+        await store.selectTeamMember(try XCTUnwrap(store.teamSnapshot.members.last))
+        var presentedPreviewPaths: [String] = []
+        let previewObserver = store.$workspaceFilePreviewRequest.sink { request in
+            if let request { presentedPreviewPaths.append(request.path) }
+        }
+        defer { previewObserver.cancel() }
+        let fileRequestCount = sent.filter { ($0["type"] as? String)?.hasPrefix("file-") == true }.count
+        store.openConversationFile(gatewayID: store.gatewayLocalID, sessionID: "scout", path: "promo/analysis/stills/")
+        XCTAssertEqual(store.conversationDirectoryPath, "promo/analysis/stills")
+        XCTAssertEqual(store.workspaceFilePath, "promo/analysis/stills")
+        XCTAssertNil(store.workspaceFilePreviewRequest)
+        XCTAssertFalse(store.conversationFileIsOpening)
+        XCTAssertEqual(sent.filter { ($0["type"] as? String)?.hasPrefix("file-") == true }.count, fileRequestCount)
+        // bottomsheet 使用目标路径初始化，不先请求根目录。
+        store.browseWorkspaceFiles(path: store.conversationDirectoryPath)
+        store.conversationDirectoryPath = nil
+        let list = try XCTUnwrap(sent.last { $0["type"] as? String == "file-list" })
+        XCTAssertEqual(list["sessionId"] as? String, "lead")
+        XCTAssertEqual(list["path"] as? String, "promo/analysis/stills")
+        let listID = try XCTUnwrap(list["requestId"] as? String)
+        try deliver("""
+            {"kind":"file-list","requestId":"\(listID)","sessionId":"lead","path":"promo/analysis/stills","entries":[{"name":"s04.png","path":"promo/analysis/stills/s04.png","kind":"file","bytes":42}]}
+            """)
+        XCTAssertEqual(store.workspaceFileEntries.first?.name, "s04.png")
+        XCTAssertEqual(store.selectedSessionId, "scout")
+        store.openConversationFile(gatewayID: store.gatewayLocalID, sessionID: "scout", path: "promo/analysis/stills")
+        XCTAssertNotNil(store.workspaceFilePreviewRequest, "类型识别期间立即展示加载面板")
+        let resolve = try XCTUnwrap(sent.last { $0["type"] as? String == "file-resolve" })
+        let resolveID = try XCTUnwrap(resolve["requestId"] as? String)
+        try deliver("""
+            {"kind":"error","requestType":"file-resolve","requestId":"\(resolveID)","sessionId":"lead","code":"file-not-regular","message":"only regular files can be previewed"}
+            """)
+        XCTAssertEqual(store.conversationDirectoryPath, "promo/analysis/stills")
+        XCTAssertNil(store.lastError)
+        XCTAssertNil(store.workspaceFilePreviewRequest)
+        XCTAssertEqual(presentedPreviewPaths, ["promo/analysis/stills"], "未知类型先加载，识别为目录后转入目录浏览器")
+        store.conversationDirectoryPath = nil
+        store.openConversationFile(gatewayID: store.gatewayLocalID, sessionID: "scout", path: "cancelled.txt")
+        let cancelled = try XCTUnwrap(sent.last { $0["type"] as? String == "file-resolve" })
+        let cancelledID = try XCTUnwrap(cancelled["requestId"] as? String)
+        store.cancelWorkspaceFileDownload()
+        try deliver("""
+            {"kind":"file-resolved","requestId":"\(cancelledID)","sessionId":"lead","path":"cancelled.txt","name":"cancelled.txt","size":5}
+            """)
+        XCTAssertNil(store.workspaceFilePreviewRequest, "取消后的迟到识别结果不能弹出文件预览")
+        XCTAssertEqual(presentedPreviewPaths, ["promo/analysis/stills", "cancelled.txt"])
+    }
+
+    func testChildFilePreviewDownloadsFromLeadWorkspaceAndKeepsChildSelected() async throws {
+        let lead = SessionSummary(id: "lead", title: "团队文件", lastActivity: .now, isRunning: false, hasUnread: false)
+        let store = AppStore(preferences: AppPreferencesSpy(endpoint: "ws://127.0.0.1:3080/ws/mobile",
+            selectedWorkspaceID: nil, sessions: [lead]),
+            gatewayLocalID: "child-file-test-\(UUID().uuidString)", chatHistoryCache: nil)
+        defer { store.deactivateGateway() }
+        var sent: [[String: Any]] = []
+        store.gateway.installConnectedTransportForTesting { payload in
+            sent.append((try? JSONSerialization.jsonObject(with: Data(payload.utf8))) as? [String: Any] ?? [:])
+        }
+        func deliver(_ json: String) throws {
+            store.gateway.onFrame?(try GatewayWireDecoder.decode(Data(json.utf8)))
+        }
+        try deliver(#"{"kind":"hello","protocol":3,"capabilities":["file-downloads","file-references-v1","agent-team-v1","subagent-conversations-v1"]}"#)
+        _ = await store.prepareConversation(for: lead)
+        await store.activatePreparedConversation(sessionID: "lead")
+        try deliver(#"{"kind":"agent-team-updated","sessionId":"lead","asOfSeq":8,"agentTeam":{"members":[{"id":"lead","name":"lead","role":"lead","phase":"active"},{"id":"scout","name":"scout","role":"teammate","phase":"active"}],"tasks":[]}}"#)
+        await store.selectTeamMember(try XCTUnwrap(store.teamSnapshot.members.last))
+        store.openConversationFile(gatewayID: store.gatewayLocalID, sessionID: "scout", path: "a.txt")
+        XCTAssertNotNil(store.workspaceFilePreviewRequest)
+        let resolve = try XCTUnwrap(sent.last { $0["type"] as? String == "file-resolve" })
+        XCTAssertEqual(resolve["sessionId"] as? String, "lead")
+        XCTAssertNil(resolve["parentSessionId"])
+        let requestID = try XCTUnwrap(resolve["requestId"] as? String)
+        try deliver("""
+            {"kind":"file-resolved","requestId":"\(requestID)","sessionId":"lead","path":"a.txt","name":"a.txt","mediaType":"text/plain","size":5}
+            """)
+        XCTAssertEqual(store.workspaceFilePreviewRequest?.path, "a.txt", "确认是文件后应展示原有预览弹层")
+        let download = try XCTUnwrap(sent.last { $0["type"] as? String == "file-download-open" })
+        XCTAssertEqual(download["sessionId"] as? String, "lead")
+        let downloadID = try XCTUnwrap(download["requestId"] as? String)
+        try deliver("""
+            {"kind":"file-download-opened","requestId":"\(downloadID)","transferId":"child-transfer","sessionId":"lead","path":"a.txt","name":"a.txt","mediaType":"text/plain","size":5,"chunkBytes":100}
+            """)
+        try deliver(#"{"kind":"file-download-chunk","transferId":"child-transfer","offset":0,"data":"aGVsbG8=","eof":true,"sha256":"2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"}"#)
+        for _ in 0..<100 {
+            if store.completedWorkspaceFile != nil { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let file = try XCTUnwrap(store.completedWorkspaceFile)
+        XCTAssertEqual(file.sessionID, "scout")
+        XCTAssertEqual(store.selectedSessionId, "scout")
+        XCTAssertEqual(try String(contentsOf: file.url, encoding: .utf8), "hello")
+        XCTAssertFalse(store.conversationFileIsOpening)
+    }
+
+    func testAgentAvatarVectorAssetsKeepTheirOriginalColors() throws {
+        for index in 0..<144 {
+            let image = try XCTUnwrap(UIImage(named: String(format: "AgentAvatar%03d", index)))
+            XCTAssertEqual(image.size.width, image.size.height)
+            XCTAssertFalse(image.isSymbolImage)
+            XCTAssertNotEqual(image.renderingMode, .alwaysTemplate)
+        }
+    }
+
+    func testMemberModelsAndDescriptionsLoadBeforeSelectingAnyChild() async throws {
+        let lead = SessionSummary(id: "lead", title: "提前准备团队", lastActivity: .now, isRunning: false, hasUnread: false)
+        let store = AppStore(preferences: AppPreferencesSpy(endpoint: "ws://127.0.0.1:3080/ws/mobile",
+            selectedWorkspaceID: nil, sessions: [lead]), chatHistoryCache: nil)
+        defer { store.deactivateGateway() }
+        var sent: [[String: Any]] = []
+        store.gateway.installConnectedTransportForTesting { payload in
+            sent.append((try? JSONSerialization.jsonObject(with: Data(payload.utf8))) as? [String: Any] ?? [:])
+        }
+        func accept(_ json: String) throws { store.gateway.onFrame?(try GatewayWireDecoder.decode(Data(json.utf8))) }
+        try accept(#"{"kind":"hello","capabilities":["agent-team-v1","subagent-conversations-v1"]}"#)
+        _ = await store.prepareConversation(for: lead)
+        try accept(#"{"kind":"agent-team-updated","sessionId":"lead","asOfSeq":1,"agentTeam":{"members":[{"id":"lead","name":"lead","role":"lead","phase":"active"},{"id":"music","name":"music-producer","role":"teammate","phase":"active"},{"id":"graphics","name":"graphics-designer","role":"teammate","phase":"active"}],"tasks":[]}}"#)
+        let profiles = sent.filter { ($0["requestId"] as? String)?.hasPrefix("team-profile-") == true }
+        XCTAssertEqual(profiles.count, 2)
+        XCTAssertTrue(profiles.allSatisfy { $0["parentSessionId"] as? String == "lead" && $0["maxMessages"] as? Int == 1 })
+        for profile in profiles {
+            let id = try XCTUnwrap(profile["sessionId"] as? String)
+            let requestID = try XCTUnwrap(profile["requestId"] as? String)
+            try accept("""
+                {"kind":"history","sessionId":"\(id)","parentSessionId":"lead","requestId":"\(requestID)","cursor":500,"events":[],"projections":{"asOfSeq":5,"values":{"modelSelection":{"model":"deepseek-flash"},"subagent":{"mode":"continuable","label":"提前准备的成员任务说明"}}}}
+                """)
+            XCTAssertEqual(store.selectedSessionId, "lead")
+            XCTAssertNil(store.events[id], "后台元数据不能作为成员的正文历史安装")
+        }
+        XCTAssertTrue(store.teamSnapshot.members.filter { $0.role != "lead" }.allSatisfy {
+            $0.model == "deepseek-flash" && $0.detail == "提前准备的成员任务说明"
+        })
+        XCTAssertEqual(Set(store.teamSnapshot.members.compactMap(\.avatarIndex)).count, 3)
+        XCTAssertFalse(sent.contains { $0["type"] as? String == "subscribe" && $0["sessionId"] as? String != "lead" })
+        store.refreshTeam()
+        XCTAssertEqual(sent.filter { ($0["requestId"] as? String)?.hasPrefix("team-profile-") == true }.count, 2)
+    }
+
+    func testTeamMenuReadsLiveSessionCacheWithoutMountOrReentryQueries() async throws {
+        let lead = SessionSummary(id: "lead", title: "缓存团队", lastActivity: .now, isRunning: false, hasUnread: false)
+        let other = SessionSummary(id: "other", title: "另一会话", lastActivity: .now, isRunning: false, hasUnread: false)
+        let store = AppStore(preferences: AppPreferencesSpy(endpoint: "ws://127.0.0.1:3080/ws/mobile",
+            selectedWorkspaceID: nil, sessions: [lead, other]), chatHistoryCache: nil)
+        defer { store.deactivateGateway() }
+        var sent: [[String: Any]] = []
+        store.gateway.installConnectedTransportForTesting { payload in
+            sent.append((try? JSONSerialization.jsonObject(with: Data(payload.utf8))) as? [String: Any] ?? [:])
+        }
+        func accept(_ json: String) throws { store.gateway.onFrame?(try GatewayWireDecoder.decode(Data(json.utf8))) }
+        func teamQueryCount(_ id: String) -> Int {
+            sent.filter { $0["sessionId"] as? String == id && ["agent-team", "subagents"].contains($0["type"] as? String ?? "") }.count
+        }
+        try accept(#"{"kind":"hello","capabilities":["agent-team-v1","subagent-conversations-v1"]}"#)
+        _ = await store.prepareConversation(for: lead)
+        await store.activatePreparedConversation(sessionID: lead.id)
+        XCTAssertEqual(teamQueryCount("lead"), 2, "准备和激活共享正在进行的查询")
+        try accept(#"{"kind":"projection-baseline","projections":{"lead":{"asOfSeq":1,"values":{"agentTeam":{"members":[{"id":"lead","name":"lead","role":"lead","phase":"active"},{"id":"scout","name":"素材分析","role":"teammate","phase":"active"}],"tasks":[]},"subagentCatalog":[]}},"scout":{"asOfSeq":1,"values":{"modelSelection":{"model":"cached-model"}}}}}"#)
+        XCTAssertEqual(store.teamSnapshot.members.last?.model, "cached-model")
+        let host = UIHostingController(rootView: TeamNavigationEntry(store: store))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        host.view.frame = window.bounds
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(100))
+        host.view.layoutIfNeeded()
+        XCTAssertEqual(teamQueryCount("lead"), 2, "入口挂载不能触发网络刷新")
+        func teamButton(in view: UIView) -> UIButton? {
+            if let button = view as? UIButton, button.accessibilityIdentifier == "team-entry" { return button }
+            return view.subviews.lazy.compactMap { teamButton(in: $0) }.first
+        }
+        let button = try XCTUnwrap(teamButton(in: host.view))
+        let animationsEnabled = UIView.areAnimationsEnabled
+        UIView.setAnimationsEnabled(false)
+        defer { UIView.setAnimationsEnabled(animationsEnabled) }
+        button.sendActions(for: .touchUpInside)
+        let preparedContent = try XCTUnwrap(host.presentedViewController)
+        XCTAssertGreaterThan(preparedContent.preferredContentSize.height, 100)
+        XCTAssertTrue(preparedContent.popoverPresentationController?.sourceView === button)
+        XCTAssertEqual(button.layer.cornerRadius, 22)
+        XCTAssertEqual(teamQueryCount("lead"), 2, "点击直接呈现已准备好的内容，不请求数据")
+        host.dismiss(animated: false)
+        UIView.setAnimationsEnabled(animationsEnabled)
+        _ = await store.prepareConversation(for: other)
+        try accept(#"{"kind":"agent-team-updated","sessionId":"lead","asOfSeq":2,"agentTeam":{"members":[{"id":"lead","name":"lead","role":"lead","phase":"active"},{"id":"scout","name":"素材分析","role":"teammate","phase":"active"}],"tasks":[{"id":"task-1","subject":"已更新任务","status":"completed","ownerName":"素材分析"}]}}"#)
+        _ = await store.prepareConversation(for: lead)
+        XCTAssertEqual(teamQueryCount("lead"), 2, "重入已有缓存的会话直接展示，不重复查询")
+        XCTAssertEqual(store.teamSnapshot.tasks.first?.subject, "已更新任务")
+        XCTAssertEqual(store.teamSnapshot.members.last?.model, "cached-model")
+        host.rootView = TeamNavigationEntry(store: store)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(teamQueryCount("lead"), 2)
+        store.refreshTeam()
+        XCTAssertEqual(teamQueryCount("lead"), 4, "显式重试保留刷新能力")
+    }
+
+    func testEntryAppearsWhenLeadCreatesTeamDuringCurrentConversation() async throws {
+        let lead = SessionSummary(id: "lead", title: "动态团队", lastActivity: .now, isRunning: false, hasUnread: false)
+        let store = AppStore(preferences: AppPreferencesSpy(endpoint: "ws://127.0.0.1:3080/ws/mobile",
+            selectedWorkspaceID: nil, sessions: [lead]), chatHistoryCache: nil)
+        defer { store.deactivateGateway() }
+        store.gateway.installConnectedTransportForTesting()
+        func accept(_ json: String) throws { store.gateway.onFrame?(try GatewayWireDecoder.decode(Data(json.utf8))) }
+        try accept(#"{"kind":"hello","capabilities":["agent-team-v1","subagent-conversations-v1"]}"#)
+        _ = await store.prepareConversation(for: lead)
+        XCTAssertFalse(store.teamSnapshot.visible)
+        try accept(#"{"kind":"agent-team-updated","sessionId":"lead","asOfSeq":1,"agentTeam":{"members":[{"id":"lead","name":"lead","role":"lead","phase":"active"}],"tasks":[]}}"#)
+        XCTAssertFalse(store.teamSnapshot.visible)
+        try accept(#"{"kind":"agent-team-updated","sessionId":"other","asOfSeq":100,"agentTeam":{"members":[{"id":"other","name":"lead","role":"lead","phase":"active"},{"id":"other-child","name":"review","role":"teammate","phase":"active"}],"tasks":[]}}"#)
+        XCTAssertFalse(store.teamSnapshot.visible)
+        try accept(#"{"kind":"agent-team-updated","sessionId":"lead","asOfSeq":2,"agentTeam":{"members":[{"id":"lead","name":"lead","role":"lead","phase":"active"},{"id":"scout","name":"素材分析","role":"teammate","phase":"provisioning"}],"tasks":[]}}"#)
+        XCTAssertTrue(store.teamSnapshot.visible)
+        XCTAssertEqual(store.teamSnapshot.members.last?.phase, "provisioning")
+        try accept(#"{"kind":"agent-team-updated","sessionId":"lead","asOfSeq":3,"agentTeam":{"members":[{"id":"lead","name":"lead","role":"lead","phase":"active"}],"tasks":[]}}"#)
+        XCTAssertFalse(store.teamSnapshot.visible)
+    }
+
+    func testRootTitleDistinguishesOrdinarySubagentsFromOtherSessionsSharedBoard() async throws {
+        let marketing = SessionSummary(id: "marketing", title: "制作产品宣传片", lastActivity: .now, isRunning: false, hasUnread: false)
+        let remotion = SessionSummary(id: "remotion", title: "使用remotion skill", lastActivity: .now, isRunning: false, hasUnread: false)
+        let store = AppStore(preferences: AppPreferencesSpy(endpoint: "ws://127.0.0.1:3080/ws/mobile", selectedWorkspaceID: nil, sessions: [marketing, remotion]), chatHistoryCache: nil)
+        store.gateway.installConnectedTransportForTesting()
+        func accept(_ json: String) throws { store.gateway.onFrame?(try GatewayWireDecoder.decode(Data(json.utf8))) }
+        try accept(#"{"kind":"hello","capabilities":["agent-team-v1","subagent-conversations-v1"]}"#)
+        _ = await store.prepareConversation(for: marketing)
+        try accept(#"{"kind":"agent-team-updated","sessionId":"marketing","asOfSeq":50,"agentTeam":{"members":[{"id":"marketing","name":"lead","role":"lead","phase":"active"},{"id":"scout","name":"scout","role":"teammate","phase":"active"}],"tasks":[{"id":"task-1","revision":3,"subject":"宣传片素材","description":"完整说明","status":"completed","ownerName":"scout","blockedBy":[],"writeScopes":[],"ready":false,"writeScopeWarnings":[]}]}}"#)
+        XCTAssertEqual(store.teamSessionTitle, marketing.title)
+        XCTAssertTrue(store.teamSnapshot.isTeam)
+        XCTAssertEqual(store.teamSnapshot.tasks.count, 1)
+        _ = await store.prepareConversation(for: remotion)
+        try accept(#"{"kind":"agent-team-updated","sessionId":"remotion","asOfSeq":9000,"agentTeam":{"members":[{"id":"remotion","name":"lead","role":"lead","phase":"active"}],"tasks":[]}}"#)
+        try accept(#"{"kind":"subagents-updated","sessionId":"remotion","asOfSeq":9000,"subagentCatalog":[{"id":"qa","mode":"continuable","label":"独立终检宣传片"}]}"#)
+        XCTAssertEqual(store.teamSessionTitle, remotion.title)
+        XCTAssertFalse(store.teamSnapshot.isTeam)
+        XCTAssertTrue(store.teamSnapshot.tasks.isEmpty)
+        _ = await store.prepareConversation(for: marketing)
+        XCTAssertEqual(store.teamSessionTitle, marketing.title)
+        XCTAssertEqual(store.teamSnapshot.tasks.count, 1)
+        XCTAssertTrue(store.teamSnapshot.isTeam)
+        store.deactivateGateway()
+    }
+
+    func testMemberImageMessageKeepsCapturedAddressWhileEncoding() async throws {
+        let gateway = GatewayClient()
+        var frames: [[String: Any]] = []
+        gateway.installConnectedTransportForTesting { payload in
+            frames.append((try? JSONSerialization.jsonObject(with: Data(payload.utf8))) as? [String: Any] ?? [:])
+        }
+        gateway.conversationTarget = { id in
+            MobileConversationTarget(sessionId: id, parentSessionId: "lead-a", subagentMode: "continuable")
+        }
+        gateway.sendMessage(text: "请分析画面", images: [GatewayOutgoingImage(mediaType: "image/png", data: Data([1, 2, 3]))],
+            sessionId: "scout-a", mode: "steer", requestId: "send-a")
+        // 模拟开始编码后切换视图；已发起的请求必须继续使用原地址。
+        gateway.conversationTarget = { id in
+            MobileConversationTarget(sessionId: id, parentSessionId: "lead-b", subagentMode: "continuable")
+        }
+        for _ in 0..<100 where frames.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+        let message = try XCTUnwrap(frames.first)
+        XCTAssertEqual(message["sessionId"] as? String, "scout-a")
+        XCTAssertEqual(message["parentSessionId"] as? String, "lead-a")
+        XCTAssertEqual(message["subagentMode"] as? String, "continuable")
+        XCTAssertEqual(message["requestId"] as? String, "send-a")
+        XCTAssertEqual(message["mode"] as? String, "steer")
+        XCTAssertEqual((message["images"] as? [[String: Any]])?.first?["data"] as? String, "AQID")
+    }
+
+    func testTeamSheetScrollsWithinPhoneHeight() async throws {
+        let lead = SessionSummary(id: "lead", title: "宣传片制作", lastActivity: .now, isRunning: false, hasUnread: false)
+        let store = AppStore(preferences: AppPreferencesSpy(endpoint: "ws://127.0.0.1:3080/ws/mobile",
+            selectedWorkspaceID: nil, sessions: [lead]), chatHistoryCache: nil)
+        store.gateway.installConnectedTransportForTesting()
+        store.gateway.onFrame?(try GatewayWireDecoder.decode(Data(#"{"kind":"hello","capabilities":["agent-team-v1","subagent-conversations-v1"]}"#.utf8)))
+        _ = await store.prepareConversation(for: lead)
+        let members: [[String: Any]] = [
+            ["id": "lead", "name": "lead", "role": "lead", "phase": "active"],
+            ["id": "scout", "name": "footage-scout", "role": "teammate", "phase": "active"],
+            ["id": "music", "name": "music-producer", "role": "teammate", "phase": "active"],
+            ["id": "graphics", "name": "graphics-designer", "role": "teammate", "phase": "active"]
+        ]
+        var tasks: [[String: Any]] = []
+        for i in 1...12 {
+            let subject = i == 1 ? "素材勘察：11 段录屏逐帧分析 + 镜头切点" : "原创配乐与视觉资产 \(i)"
+            let status = i == 1 ? "completed" : (i == 2 ? "in_progress" : "pending")
+            let task: [String: Any] = [
+                "id": "task-\(i)", "revision": 3, "subject": subject,
+                "description": "读取制作要求，对宣传视频素材逐帧分析，输出可用于剪辑的切点清单。完整说明在展开后展示。",
+                "status": status, "ownerName": i == 1 ? "footage-scout" : "music-producer",
+                "blockedBy": [String](), "writeScopes": ["promo/analysis"],
+                "ready": i > 2, "writeScopeWarnings": [String]()
+            ]
+            tasks.append(task)
+        }
+        let data = try JSONSerialization.data(withJSONObject: ["kind": "agent-team-updated", "sessionId": "lead", "asOfSeq": 120,
+            "agentTeam": ["members": members, "tasks": tasks]])
+        store.gateway.onFrame?(try GatewayWireDecoder.decode(data))
+        let host = UIHostingController(rootView: TeamContentSheet(select: { _ in }).environmentObject(store))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        host.view.frame = window.bounds
+        host.view.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(250))
+        host.view.layoutIfNeeded()
+        func scrollViews(_ view: UIView) -> [UIScrollView] {
+            (view as? UIScrollView).map { [$0] } ?? view.subviews.flatMap(scrollViews)
+        }
+        XCTAssertTrue(scrollViews(host.view).contains { $0.contentSize.height > $0.bounds.height })
+        let image = UIGraphicsImageRenderer(bounds: host.view.bounds).image { _ in
+            host.view.drawHierarchy(in: host.view.bounds, afterScreenUpdates: true)
+        }
+        let attachment = XCTAttachment(image: image)
+        attachment.name = "team-sheet-phone"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        window.isHidden = true
+        store.deactivateGateway()
+    }
+
+    func testSingleFlightSubscriptionCoalescesRapidMemberSelection() throws {
+        let gateway = GatewayClient()
+        var sent: [[String: Any]] = []
+        gateway.installConnectedTransportForTesting { payload in
+            sent.append((try? JSONSerialization.jsonObject(with: Data(payload.utf8))) as? [String: Any] ?? [:])
+        }
+        gateway.subscribe(sessionId: "a")
+        gateway.subscribe(sessionId: "b")
+        gateway.subscribe(sessionId: "a")
+        XCTAssertEqual(sent.count, 1)
+        XCTAssertFalse(gateway.acceptSubscriptionAck(sessionID: "a"))
+        XCTAssertEqual(sent.count, 2)
+        XCTAssertEqual(sent.last?["sessionId"] as? String, "a")
+        XCTAssertTrue(gateway.acceptSubscriptionAck(sessionID: "a"))
+    }
+
+    func testTeamSnapshotAndMemberRequestsUseChildAddressAndReentryUsesLead() async throws {
+        let lead = SessionSummary(id: "lead", title: "团队任务", lastActivity: .now, isRunning: false, hasUnread: false)
+        let store = AppStore(preferences: AppPreferencesSpy(endpoint: "ws://127.0.0.1:3080/ws/mobile",
+            selectedWorkspaceID: nil, sessions: [lead]), chatHistoryCache: nil)
+        var sent: [[String: Any]] = []
+        store.gateway.installConnectedTransportForTesting { payload in
+            sent.append((try? JSONSerialization.jsonObject(with: Data(payload.utf8))) as? [String: Any] ?? [:])
+        }
+        func deliver(_ json: String) throws {
+            store.gateway.onFrame?(try GatewayWireDecoder.decode(Data(json.utf8)))
+        }
+        try deliver(#"{"kind":"hello","historyFormatVersion":4,"capabilities":["assistant-stream-v1","agent-team-v1","subagent-conversations-v1","session-cancel"]}"#)
+        _ = await store.prepareConversation(for: lead)
+        await store.activatePreparedConversation(sessionID: "lead")
+        try deliver(#"{"kind":"subscribed","sessionId":"lead","subscriptionId":"lead-sub","assistantStream":true}"#)
+        try deliver(#"{"kind":"agent-team-updated","sessionId":"lead","asOfSeq":8,"agentTeam":{"members":[{"id":"lead","name":"lead","role":"lead","phase":"active"},{"id":"scout","name":"素材分析","role":"teammate","phase":"active"}],"tasks":[{"id":"task-1","revision":2,"subject":"分析","description":"完整描述","status":"completed","ownerName":"素材分析","blockedBy":[],"writeScopes":["analysis"],"ready":false,"writeScopeWarnings":[]}]}}"#)
+        XCTAssertTrue(store.teamSnapshot.visible)
+        XCTAssertEqual(store.teamSnapshot.tasks.first?.status, "completed")
+        let member = try XCTUnwrap(store.teamSnapshot.members.last)
+        await store.selectTeamMember(member)
+        XCTAssertEqual(store.selectedSessionId, "scout")
+        XCTAssertEqual(store.teamLeadSessionID, "lead")
+        // 成员会话没有共享任务，也不能覆盖 Lead 看板；刷新始终查询同一个根会话。
+        try deliver(#"{"kind":"agent-team-updated","sessionId":"scout","asOfSeq":9000,"agentTeam":{"members":[],"tasks":[]}}"#)
+        XCTAssertEqual(store.teamSnapshot.tasks.map(\.id), ["task-1"])
+        store.refreshTeam()
+        let teamQuery = try XCTUnwrap(sent.last { $0["type"] as? String == "agent-team" })
+        XCTAssertEqual(teamQuery["sessionId"] as? String, "lead")
+        XCTAssertNil(teamQuery["parentSessionId"])
+        let subscribe = try XCTUnwrap(sent.last { $0["type"] as? String == "subscribe" })
+        XCTAssertEqual(subscribe["sessionId"] as? String, "scout")
+        XCTAssertEqual(subscribe["parentSessionId"] as? String, "lead")
+        XCTAssertEqual(subscribe["subagentMode"] as? String, "continuable")
+        store.gateway.requestHistory(sessionId: "scout", beforeSeq: 3, historyFormatVersion: 4)
+        let history = try XCTUnwrap(sent.last { $0["type"] as? String == "history" })
+        XCTAssertEqual(history["parentSessionId"] as? String, "lead")
+        XCTAssertEqual(history["beforeSeq"] as? Int, 3)
+        try deliver(#"{"kind":"subscribed","sessionId":"scout","subscriptionId":"scout-sub","assistantStream":true}"#)
+        _ = await store.prepareConversation(for: lead)
+        await store.activatePreparedConversation(sessionID: "lead")
+        XCTAssertEqual(store.selectedSessionId, "lead")
+        let back = try XCTUnwrap(sent.last { $0["type"] as? String == "subscribe" })
+        XCTAssertEqual(back["sessionId"] as? String, "lead")
+        XCTAssertNil(back["parentSessionId"])
+        store.disconnect()
+    }
+}
+
+@MainActor
+final class NativeFileUploadIntegrationTests: XCTestCase {
+    private func finishUpload(_ controller: FileUploadController, sessionID: String) async throws -> (PresentedFile, Data) {
+        let bytes = Data("本机已发送附件预览".utf8)
+        let source = FileManager.default.temporaryDirectory.appendingPathComponent("preview-\(UUID()).txt")
+        try bytes.write(to: source)
+        defer { try? FileManager.default.removeItem(at: source) }
+        let file = PresentedFile(attachmentId: "opaque-preview", name: "报告.txt", bytes: Int64(bytes.count))
+        var digest = ""
+        controller.connected(sessionID: sessionID, supported: true)
+        controller.send = { payload in
+            let request = try! JSONSerialization.jsonObject(with: Data(payload.utf8)) as! [String: Any]
+            let id = request["requestId"] as! String
+            switch request["type"] as? String {
+            case "file-upload-open":
+                digest = request["sha256"] as! String
+                controller.accept(GatewayFrame(kind: "file-upload-opened", sessionId: sessionID,
+                    requestId: id, uploadId: "upload-preview", size: Int64(bytes.count), chunkBytes: 1024))
+            case "file-upload-chunk":
+                controller.accept(GatewayFrame(kind: "file-upload-chunk-accepted", sessionId: sessionID,
+                    requestId: id, uploadId: "upload-preview", nextOffset: Int64(bytes.count)))
+            case "file-upload-finish":
+                controller.accept(GatewayFrame(kind: "file-upload-completed", sessionId: sessionID,
+                    requestId: id, uploadId: "upload-preview", receiptId: "preview-receipt", file: file, sha256: digest))
+            default: break
+            }
+        }
+        await controller.importFiles([source])
+        for _ in 0..<100 where !controller.canSend { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertTrue(controller.canSend)
+        // 立即模拟 sent，覆盖后台缓存尚未完成时清理草稿的竞争。
+        controller.accepted(controller.drafts.map(\.id))
+        XCTAssertTrue(controller.drafts.isEmpty)
+        return (file, bytes)
+    }
+
+    func testSentFileSurvivesDraftCleanupAndControllerRecreationWithHostSessionIsolation() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("sent-cache-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let controller = FileUploadController(gatewayID: "host-a", previewCacheRoot: root)
+        let (file, bytes) = try await finishUpload(controller, sessionID: "s1")
+        let firstURL = await controller.previewURL(for: file, sessionID: "s1")
+        let first = try XCTUnwrap(firstURL)
+        XCTAssertEqual(try Data(contentsOf: first), bytes)
+        WorkspaceFileLifetime.shared.release(first)
+        controller.clear()
+        let reopened = FileUploadController(gatewayID: "host-a", previewCacheRoot: root)
+        let restoredURL = await reopened.previewURL(for: file, sessionID: "s1")
+        let restored = try XCTUnwrap(restoredURL)
+        XCTAssertEqual(restored.lastPathComponent, "报告.txt")
+        XCTAssertEqual(try Data(contentsOf: restored), bytes)
+        WorkspaceFileLifetime.shared.release(restored)
+        let otherSession = await reopened.previewURL(for: file, sessionID: "s2")
+        XCTAssertNil(otherSession)
+        let otherHost = FileUploadController(gatewayID: "host-b", previewCacheRoot: root)
+        let wrongHost = await otherHost.previewURL(for: file, sessionID: "s1")
+        XCTAssertNil(wrongHost)
+    }
+
+    func testSentFileOpensOfflineAndCancelledLookupDoesNotReopenSheet() async throws {
+        let session = SessionSummary(id: "preview-session", title: "本机附件", lastActivity: .now,
+                                     isRunning: false, hasUnread: false)
+        let gatewayID = "preview-host-\(UUID())"
+        let store = AppStore(preferences: AppPreferencesSpy(endpoint: "ws://127.0.0.1:9/ws/mobile",
+            selectedWorkspaceID: nil, sessions: [session]), gatewayLocalID: gatewayID, chatHistoryCache: nil)
+        defer { store.deactivateGateway() }
+        _ = await store.prepareConversation(for: session)
+        let (file, bytes) = try await finishUpload(store.fileUploads, sessionID: session.id)
+        XCTAssertFalse(store.gateway.state.isConnected)
+        store.openUploadedFile(gatewayID: gatewayID, sessionID: session.id, file: file)
+        XCTAssertEqual(store.workspaceFilePreviewRequest?.name, "报告.txt")
+        store.cancelWorkspaceFileDownload()
+        // 等待同一个缓存任务后，旧打开操作仍不能恢复弹层。
+        if let cached = await store.fileUploads.previewURL(for: file, sessionID: session.id) {
+            WorkspaceFileLifetime.shared.release(cached)
+        }
+        await Task.yield()
+        XCTAssertNil(store.workspaceFilePreviewRequest)
+        XCTAssertNil(store.completedWorkspaceFile)
+        store.openUploadedFile(gatewayID: "another-host", sessionID: session.id, file: file)
+        XCTAssertNil(store.workspaceFilePreviewRequest)
+        store.openUploadedFile(gatewayID: gatewayID, sessionID: session.id, file: file)
+        for _ in 0..<100 where store.conversationFileIsOpening { try await Task.sleep(for: .milliseconds(10)) }
+        let preview = try XCTUnwrap(store.completedWorkspaceFile)
+        XCTAssertEqual(try Data(contentsOf: preview.url), bytes)
+        XCTAssertEqual(preview.name, "报告.txt")
+        XCTAssertEqual(preview.mediaType, "text/plain")
+        XCTAssertNil(store.lastError)
+        store.cancelWorkspaceFileDownload()
+        let uncached = PresentedFile(attachmentId: "other-device-file", name: "missing.pdf", bytes: 1)
+        store.openUploadedFile(gatewayID: gatewayID, sessionID: session.id, file: uncached)
+        for _ in 0..<100 where store.conversationFileIsOpening { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNil(store.completedWorkspaceFile)
+        XCTAssertNotNil(store.workspaceFilePreviewError)
+    }
+
+    func testFullHelloPreservesFileUploadCapabilityAndReconnectRestoresIt() async throws {
+        let session = SessionSummary(id: "file-session", title: "附件握手", lastActivity: .now,
+            isRunning: false, hasUnread: false)
+        let store = AppStore(preferences: AppPreferencesSpy(endpoint: "ws://127.0.0.1:3080/ws/mobile",
+            selectedWorkspaceID: nil, sessions: [session]), chatHistoryCache: nil)
+        defer { store.deactivateGateway() }
+        var requests: [[String: Any]] = []
+        func connectTransport() {
+            store.gateway.installConnectedTransportForTesting { payload in
+                requests.append((try? JSONSerialization.jsonObject(with: Data(payload.utf8))) as? [String: Any] ?? [:])
+            }
+        }
+        func hello(_ capabilities: [String]) {
+            store.gateway.onFrame?(GatewayFrame(kind: "hello", protocol: 3, capabilities: capabilities, authenticated: true))
+        }
+        connectTransport()
+        hello(["images", "file-upload-v1"])
+        XCTAssertTrue(store.fileUploads.supported, "完整 hello 清理完成后必须保留本代上传能力")
+        XCTAssertTrue(store.supportsImages)
+        let prepared = await store.prepareConversation(for: session)
+        XCTAssertTrue(prepared)
+        store.fileUploads.select(sessionID: session.id, allowed: true)
+        let source = FileManager.default.temporaryDirectory.appendingPathComponent("hello-upload-\(UUID().uuidString).txt")
+        try Data("附件握手回归".utf8).write(to: source)
+        defer { try? FileManager.default.removeItem(at: source) }
+        await store.fileUploads.importFiles([source])
+        XCTAssertTrue(requests.contains { $0["type"] as? String == "file-upload-open" }, "能力开启后应能真正发出上传请求")
+
+        store.disconnect()
+        XCTAssertFalse(store.fileUploads.supported)
+        connectTransport()
+        hello(["images", "file-upload-v1"])
+        XCTAssertTrue(store.fileUploads.supported, "重连后必须恢复网关声明的上传能力")
+        XCTAssertEqual(store.fileUploads.drafts.first?.status, "error", "旧传输必须保持失效，不能跨连接继续")
+
+        hello(["images"])
+        XCTAssertFalse(store.fileUploads.supported, "未公布上传能力的网关仍应禁用文件入口")
+    }
+
+    func testPrivateCopyChunkingChecksumAndReceipt() async throws {
+        let source = FileManager.default.temporaryDirectory.appendingPathComponent("upload-test-\(UUID().uuidString).bin")
+        let original = Data([0, 1, 0, 255, 42, 128, 7])
+        try original.write(to: source)
+        defer { try? FileManager.default.removeItem(at: source) }
+        let controller = FileUploadController()
+        defer { controller.clear() }
+        var received = Data()
+        var finishCount = 0
+        var openedDigest = ""
+        controller.connected(sessionID: "s1", supported: true)
+        controller.send = { payload in
+            let request = try! JSONSerialization.jsonObject(with: Data(payload.utf8)) as! [String: Any]
+            let type = request["type"] as! String
+            let requestID = request["requestId"] as! String
+            switch type {
+            case "file-upload-open":
+                XCTAssertEqual(request["size"] as? Int, original.count)
+                XCTAssertEqual(request["name"] as? String, source.lastPathComponent)
+                XCTAssertNil(request["path"])
+                openedDigest = request["sha256"] as! String
+                XCTAssertEqual(openedDigest, "1ad1e97107abf984332b35655971e9835b0ccd9f083b344808ac5695452c6aaf")
+                controller.accept(GatewayFrame(kind: "file-upload-opened", sessionId: "s1", requestId: requestID,
+                    uploadId: "u1", size: Int64(original.count), chunkBytes: 3))
+            case "file-upload-chunk":
+                XCTAssertEqual(request["offset"] as? Int, received.count)
+                let bytes = Data(base64Encoded: request["data"] as! String)!
+                XCTAssertLessThanOrEqual(bytes.count, 3)
+                received.append(bytes)
+                controller.accept(GatewayFrame(kind: "file-upload-chunk-accepted", sessionId: "s1", requestId: requestID,
+                    uploadId: "u1", nextOffset: Int64(received.count)))
+            case "file-upload-finish":
+                finishCount += 1
+                XCTAssertFalse(controller.canSend)
+                controller.accept(GatewayFrame(kind: "file-upload-completed", sessionId: "s1", requestId: requestID,
+                    uploadId: "u1", receiptId: "native-receipt", file: PresentedFile(attachmentId: "opaque", name: "binary.bin", bytes: Int64(original.count)), sha256: openedDigest))
+            default: break
+            }
+        }
+        await controller.importFiles([source])
+        for _ in 0..<100 where !controller.canSend { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(received, original)
+        XCTAssertEqual(finishCount, 1)
+        XCTAssertEqual(controller.receipts, ["native-receipt"])
+        XCTAssertEqual(controller.drafts.first?.file?.name, "binary.bin")
+        XCTAssertEqual(controller.drafts.first?.confirmedBytes, Int64(original.count))
+        controller.disconnected()
+        XCTAssertFalse(controller.canSend)
+        XCTAssertTrue(controller.receipts.isEmpty)
+    }
+
+    func testFileMessageUsesReceiptAndPreservesRequestID() async throws {
+        let gateway = GatewayClient()
+        var sent: [String: Any]?
+        gateway.installConnectedTransportForTesting { payload in
+            sent = try? JSONSerialization.jsonObject(with: Data(payload.utf8)) as? [String: Any]
+        }
+        gateway.sendMessage(text: "", receipts: ["receipt-1"], sessionId: "s1", requestId: "submission-1")
+        for _ in 0..<100 where sent == nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(sent?["requestId"] as? String, "submission-1")
+        XCTAssertEqual(sent?["text"] as? String, "")
+        XCTAssertEqual(sent?["files"] as? [[String: String]], [["receiptId": "receipt-1"]])
+        XCTAssertNil(sent?["attachmentId"])
+        XCTAssertNil(sent?["path"])
+    }
+
+    func testPureFileHistoryNormalizesWithoutWorkspacePath() throws {
+        let json = #"{"kind":"history","events":[{"type":"user/message","seq":1,"time":1000,"data":{"content":[{"type":"file","attachment":{"attachmentId":"opaque","name":"报告.pdf","bytes":7}}],"source":{"kind":"user"}}}]}"#
+        let frame = try GatewayWireDecoder.decode(Data(json.utf8))
+        let event = try XCTUnwrap(frame.events?.first).normalized(sessionId: "s1").event
+        XCTAssertEqual(event.files?.first?.name, "报告.pdf")
+        XCTAssertEqual(event.files?.first?.attachmentId, "opaque")
+        XCTAssertEqual(event.files?.first?.path, "")
+    }
+}
+
+@MainActor
+final class SentFileCardViewportTests: XCTestCase {
+    private struct Fixture {
+        let controller: ConversationViewportController
+        let timeline: ConversationTimeline
+        let list: UICollectionView
+        let window: UIWindow
+        let previous: UIWindow?
+        func close() {
+            controller.detachHistoryPresentationConsumer()
+            window.isHidden = true
+            window.rootViewController = nil
+            previous?.makeKey()
+        }
+    }
+
+    private func descendants(_ view: UIView) -> [UIView] {
+        [view] + view.subviews.flatMap(descendants)
+    }
+    private func cards(_ fixture: Fixture) -> [UIView] {
+        fixture.list.visibleCells.flatMap(descendants).filter { $0.accessibilityIdentifier == "user-file-card" }
+    }
+    private func texts(_ fixture: Fixture) -> [String] {
+        fixture.list.visibleCells.flatMap(descendants).compactMap { ($0 as? UILabel)?.text }
+    }
+    private func wait(_ condition: () -> Bool, file: StaticString = #filePath, line: UInt = #line) async throws {
+        for _ in 0..<200 {
+            if condition() { return }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertTrue(condition(), file: file, line: line)
+    }
+    private func fixture(_ item: ConversationItem, onOpenFile: ((PresentedFile) -> Void)? = nil) throws -> Fixture {
+        let controller = ConversationViewportController(onContentAvailabilityChanged: { _, _ in },
+            onPinnedToBottomChanged: { _ in }, onBottomAlignmentCompleted: {}, onApproachingTop: {})
+        controller.loadViewIfNeeded()
+        controller.overrideUserInterfaceStyle = .light
+        controller.view.backgroundColor = .systemBackground
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.windows.first { $0.isKeyWindow }
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        controller.view.layoutIfNeeded()
+        let timeline = ConversationTimeline()
+        timeline.publish([item])
+        controller.configure(sessionID: "file-cards", timeline: timeline, supplementalEntries: [], makeEntries: { items in
+            items.map { item in
+                var hasher = Hasher()
+                hasher.combine(item.text); hasher.combine(item.files); hasher.combine(item.images)
+                return ConversationViewportEntry(id: item.id, revision: hasher.finalize(),
+                    userMessage: .init(item: item, imageData: { _ in nil }, showsCopyButton: true, onOpenFile: onOpenFile))
+            }
+        }, bottomInset: 0)
+        let list = try XCTUnwrap(descendants(controller.view).compactMap { $0 as? UICollectionView }.first)
+        return Fixture(controller: controller, timeline: timeline, list: list, window: window, previous: previous)
+    }
+
+    func testNativeFileCardTapAndAccessibilityOpenCurrentAttachmentAfterReuse() async throws {
+        let first = PresentedFile(attachmentId: "first-file", name: "第一份.pdf", bytes: 12)
+        let second = PresentedFile(attachmentId: "second-file", name: "第二份.txt", bytes: 20)
+        func item(_ file: PresentedFile) -> ConversationItem {
+            .init(id: "reused-user", kind: .user, title: "", text: "", isError: false,
+                  date: Date(timeIntervalSince1970: 1), files: [file])
+        }
+        var opened: [PresentedFile] = []
+        let fixture = try fixture(item(first), onOpenFile: { opened.append($0) })
+        defer { fixture.close() }
+        try await wait { self.cards(fixture).count == 1 && !fixture.list.isHidden }
+        let card = try XCTUnwrap(cards(fixture).first as? UIControl)
+        XCTAssertTrue(card.accessibilityTraits.contains(.button))
+        card.sendActions(for: .touchUpInside)
+        XCTAssertEqual(opened, [first])
+        fixture.timeline.publish([item(second)])
+        try await wait { self.texts(fixture).contains("第二份.txt") }
+        XCTAssertTrue(try XCTUnwrap(cards(fixture).first).accessibilityActivate())
+        XCTAssertEqual(opened, [first, second])
+    }
+
+    func testLiveAndHistoryPureFilesReachActualNativeCards() async throws {
+        let historyJSON = #"{"kind":"history","events":[{"type":"user/message","seq":1,"time":1000,"data":{"content":[{"type":"file","attachment":{"attachmentId":"opaque-script","name":"解析代码.py","bytes":0}}],"source":{"kind":"user"}}}]}"#
+        let liveJSON = #"{"kind":"event","sessionId":"file-cards","seq":1,"time":1000,"event":{"type":"user/message","source":"user","files":[{"attachmentId":"opaque-script","name":"解析代码.py","bytes":0}]}}"#
+        for history in [true, false] {
+            let adapter = KMPConversationStoreAdapter()
+            let frame = try GatewayWireDecoder.decode(Data((history ? historyJSON : liveJSON).utf8))
+            if history {
+                try adapter.replace(sessionID: "file-cards", events: [try XCTUnwrap(frame.events?.first).normalized(sessionId: "file-cards")])
+            } else {
+                try adapter.receive(SessionEvent(sessionId: "file-cards", seq: 1, time: 1000, event: try XCTUnwrap(frame.event)))
+            }
+            let item = try XCTUnwrap(adapter.itemsBySessionID["file-cards"]?.first)
+            XCTAssertEqual(item.files.first?.attachmentId, "opaque-script")
+            let fixture = try fixture(item)
+            defer { fixture.close() }
+            try await wait { self.cards(fixture).count == 1 && !fixture.list.isHidden && fixture.list.layer.opacity == 1 }
+            fixture.controller.view.layoutIfNeeded()
+            XCTAssertTrue(texts(fixture).contains("解析代码.py"))
+            XCTAssertTrue(texts(fixture).contains(ByteCountFormatter.string(fromByteCount: 0, countStyle: .file)))
+            let card = try XCTUnwrap(cards(fixture).first)
+            XCTAssertGreaterThanOrEqual(card.bounds.height, 72)
+            XCTAssertLessThanOrEqual(card.bounds.width, 320)
+            XCTAssertTrue(descendants(card).contains { ($0 as? UIImageView)?.image != nil })
+        }
+    }
+
+    func testMixedFilesResizeAndReusedRowRemovesOldCards() async throws {
+        let first = PresentedFile(attachmentId: "script", name: "聚类算法与调色板提取.py", bytes: 2048)
+        let second = PresentedFile(attachmentId: "report", name: "分析报告.pdf", bytes: 1048576)
+        func item(_ files: [PresentedFile], text: String = "这个代码是做什么的") -> ConversationItem {
+            .init(id: "same-user-message", kind: .user, title: "", text: text, isError: false,
+                date: Date(timeIntervalSince1970: 1), files: files)
+        }
+        let fixture = try fixture(item([first]))
+        defer { fixture.close() }
+        try await wait { self.cards(fixture).count == 1 && !fixture.list.isHidden && fixture.list.layer.opacity == 1 }
+        let initialHeight = try XCTUnwrap(fixture.list.visibleCells.first).bounds.height
+        fixture.timeline.publish([item([first, second])])
+        try await wait { self.cards(fixture).count == 2 && (fixture.list.visibleCells.first?.bounds.height ?? 0) > initialHeight + 60 }
+        XCTAssertTrue(texts(fixture).contains("这个代码是做什么的"))
+        XCTAssertTrue(texts(fixture).contains("分析报告.pdf"))
+        for card in cards(fixture) {
+            let bounds = card.convert(card.bounds, to: fixture.list)
+            let cell = try XCTUnwrap(fixture.list.visibleCells.first)
+            XCTAssertGreaterThanOrEqual(bounds.minY, cell.frame.minY)
+            XCTAssertLessThanOrEqual(bounds.maxY, cell.frame.maxY)
+        }
+        try await wait { !fixture.list.isHidden && fixture.list.layer.opacity == 1 && fixture.list.layer.animation(forKey: "conversation-content-reveal") == nil }
+        fixture.controller.view.layoutIfNeeded()
+        let image = UIGraphicsImageRenderer(bounds: fixture.controller.view.bounds).image { context in
+            fixture.controller.view.drawHierarchy(in: fixture.controller.view.bounds, afterScreenUpdates: true)
+        }
+        let attachment = XCTAttachment(image: image)
+        attachment.name = "发送后的原生文件卡片与文字"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let preview = FileManager.default.temporaryDirectory.appendingPathComponent("sent-file-cards.png")
+        try image.pngData()?.write(to: preview)
+        print("SENT_FILE_CARDS_PREVIEW=\(preview.path)")
+        fixture.timeline.publish([item([], text: "仅文字的新消息")])
+        try await wait { self.cards(fixture).isEmpty && self.texts(fixture).contains("仅文字的新消息") }
+        XCTAssertFalse(texts(fixture).contains(first.name!))
+        XCTAssertFalse(texts(fixture).contains(second.name!))
+        XCTAssertLessThan(try XCTUnwrap(fixture.list.visibleCells.first).bounds.height, initialHeight)
     }
 }

@@ -37,6 +37,7 @@ data class AssistantStreamUpdate(
 class AssistantStreamState {
     private var selectedSessionId: String? = null
     private var subscriptionId: String? = null
+    private val retiredSubscriptions = mutableSetOf<String>()
     private var streamId: String? = null
     private var attempt: JsonObject? = null
     private var revision = -1L
@@ -54,6 +55,7 @@ class AssistantStreamState {
     }
 
     fun disconnect() {
+        subscriptionId?.let { retiredSubscriptions += it }
         subscriptionId = null
         streamId = null
         clearAttempt()
@@ -150,6 +152,7 @@ class AssistantStreamState {
         }
         helloFormat = frame.historyFormatVersion
         disconnect()
+        retiredSubscriptions.clear()
         return AssistantStreamUpdate(true, selectedSessionId, true, invalid)
     }
     private fun invalidateHistory(frame: GatewayFrame): AssistantStreamUpdate {
@@ -179,7 +182,8 @@ class AssistantStreamState {
     }
     private fun acceptSubscription(frame: GatewayFrame): AssistantStreamUpdate {
         val id = frame.sessionId
-        if (id != selectedSessionId) return AssistantStreamUpdate()
+        if (id != selectedSessionId || frame.subscriptionId in retiredSubscriptions) return AssistantStreamUpdate()
+        if (subscriptionId != frame.subscriptionId) subscriptionId?.let { retiredSubscriptions += it }
         subscriptionId = frame.subscriptionId
         streamId = null
         clearAttempt()

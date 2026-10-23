@@ -111,6 +111,7 @@ private const val ROUTE_SCHEDULED_TASKS = "scheduled-tasks"
 internal fun DshProductApp(
     stateHolder: AndroidSharedStateHolder,
     onPickImage: () -> Unit,
+    onPickFile: () -> Unit,
     notificationRoute: AndroidNotificationSessionRoute?,
     onNotificationRouteOpened: (AndroidNotificationSessionRoute) -> Unit
 ) {
@@ -180,7 +181,7 @@ internal fun DshProductApp(
             )
         }
         composable(ROUTE_CONVERSATION) {
-            ConversationScreen(stateHolder, onPickImage, navController::popBackStack)
+            ConversationScreen(stateHolder, onPickImage, navController::popBackStack, onPickFile)
         }
         composable(ROUTE_SETTINGS) {
             SettingsScreen(

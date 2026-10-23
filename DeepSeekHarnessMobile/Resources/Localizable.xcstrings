@@ -97,470 +97,6 @@
         }
       }
     },
-    "排序方式" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sort by"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "排序方式"
-          }
-        }
-      }
-    },
-    "大小" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Size"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "大小"
-          }
-        }
-      }
-    },
-    "名称" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Name"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "名称"
-          }
-        }
-      }
-    },
-    "占用空间" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Storage used"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "占用空间"
-          }
-        }
-      }
-    },
-    "清理本机缓存" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Clear local cache"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "清理本机缓存"
-          }
-        }
-      }
-    },
-    "存储空间" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Storage"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "存储空间"
-          }
-        }
-      }
-    },
-    "本地存储" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Local storage"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "本地存储"
-          }
-        }
-      }
-    },
-    "磁盘占用" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Disk usage"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "磁盘占用"
-          }
-        }
-      }
-    },
-    "本机缓存" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Local cache"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "本机缓存"
-          }
-        }
-      }
-    },
-    "设备可用空间" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Available on device"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "设备可用空间"
-          }
-        }
-      }
-    },
-    "按类别清理" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Clear by category"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "按类别清理"
-          }
-        }
-      }
-    },
-    "聊天记录" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Chat history"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "聊天记录"
-          }
-        }
-      }
-    },
-    "文件预览" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "File previews"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "文件预览"
-          }
-        }
-      }
-    },
-    "临时文件" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Temporary files"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "临时文件"
-          }
-        }
-      }
-    },
-    "安装包" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "App updates"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "安装包"
-          }
-        }
-      }
-    },
-    "已缓存的聊天内容与搜索索引" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cached conversations and search index"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已缓存的聊天内容与搜索索引"
-          }
-        }
-      }
-    },
-    "聊天中已下载的图片" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Images downloaded from conversations"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "聊天中已下载的图片"
-          }
-        }
-      }
-    },
-    "已打开的文档、音视频等附件" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Documents, audio, video, and other opened attachments"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已打开的文档、音视频等附件"
-          }
-        }
-      }
-    },
-    "预览、下载和分享产生的临时副本" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Temporary copies for previews, downloads, and sharing"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "预览、下载和分享产生的临时副本"
-          }
-        }
-      }
-    },
-    "已下载的应用更新文件" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Downloaded app update files"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已下载的应用更新文件"
-          }
-        }
-      }
-    },
-    "清理" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Clear"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "清理"
-          }
-        }
-      }
-    },
-    "刷新存储统计" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Refresh storage usage"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "刷新存储统计"
-          }
-        }
-      }
-    },
-    "正在统计…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Calculating…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在统计…"
-          }
-        }
-      }
-    },
-    "没有更多可回收内容，正在使用的文件会保留。" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No more unused files to clear. Files in use are kept."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "没有更多可回收内容，正在使用的文件会保留。"
-          }
-        }
-      }
-    },
-    "清理仅移除本机缓存，需要时可重新下载。不会删除主机上的聊天、用户保存的文件或待发内容。" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Only local cached copies are removed and can be downloaded again. Chats on your host, saved files, and unsent content are kept."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "清理仅移除本机缓存，需要时可重新下载。不会删除主机上的聊天、用户保存的文件或待发内容。"
-          }
-        }
-      }
-    },
-    "存储空间读取或清理失败，请稍后重试。" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Unable to read or clear storage. Please try again."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "存储空间读取或清理失败，请稍后重试。"
-          }
-        }
-      }
-    },
-    "storage.cleaned" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Freed %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已释放 %@"
-          }
-        }
-      }
-    },
-    "storage.in-use" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ is in use and can be freed after closing the files."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "其中 %@ 正在使用，关闭文件后可释放。"
-          }
-        }
-      }
-    },
-    "storage.clear.category" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Clear %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "清理%@"
-          }
-        }
-      }
-    },
     " 等工具" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -1684,6 +1220,9 @@
         }
       }
     },
+    "Deepseek Harness预览版" : {
+
+    },
     "defaults.effort.suffix" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1956,6 +1495,23 @@
         }
       }
     },
+    "GitHub 发布页" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub Releases"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 发布页"
+          }
+        }
+      }
+    },
     "history.autoloading.loaded" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2206,6 +1762,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Keychain 错误 %lld"
+          }
+        }
+      }
+    },
+    "Markdown" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Markdown"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Markdown"
           }
         }
       }
@@ -3605,6 +3178,57 @@
         }
       }
     },
+    "storage.cleaned" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Freed %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已释放 %@"
+          }
+        }
+      }
+    },
+    "storage.clear.category" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清理%@"
+          }
+        }
+      }
+    },
+    "storage.in-use" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ is in use and can be freed after closing the files."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其中 %@ 正在使用，关闭文件后可释放。"
+          }
+        }
+      }
+    },
     "Think" : {
       "localizations" : {
         "en" : {
@@ -4060,6 +3684,125 @@
         }
       }
     },
+    "上传中" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uploading"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上传中"
+          }
+        }
+      }
+    },
+    "上传响应不匹配" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The upload response did not match"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上传响应不匹配"
+          }
+        }
+      }
+    },
+    "上传响应无效" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Invalid upload response"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上传响应无效"
+          }
+        }
+      }
+    },
+    "上传失败" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Upload failed"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上传失败"
+          }
+        }
+      }
+    },
+    "上传校验失败，请重试" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Upload verification failed. Please retry"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上传校验失败，请重试"
+          }
+        }
+      }
+    },
+    "上传确认偏移无效，请重试" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Invalid acknowledged upload offset. Please retry"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上传确认偏移无效，请重试"
+          }
+        }
+      }
+    },
+    "上传确认超时，请重试" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Upload confirmation timed out. Please retry"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上传确认超时，请重试"
+          }
+        }
+      }
+    },
     "下一题" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4127,6 +3870,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Medium"
+          }
+        }
+      }
+    },
+    "临时文件" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Temporary files"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "临时文件"
           }
         }
       }
@@ -4218,6 +3978,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Remove the selected %@ host(s) and their connection credentials from the app. Sessions and workspaces on the gateways will remain. You will need to pair again to reconnect."
+          }
+        }
+      }
+    },
+    "代码" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Code"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "代码"
           }
         }
       }
@@ -4319,6 +4096,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你可以拖动滑块来调整字体大小。"
+          }
+        }
+      }
+    },
+    "使用系统预览" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open in system viewer"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用系统预览"
           }
         }
       }
@@ -4474,6 +4268,23 @@
         }
       }
     },
+    "全选" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select all"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全选"
+          }
+        }
+      }
+    },
     "全部" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4556,6 +4367,23 @@
         }
       }
     },
+    "关闭文件预览" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close file preview"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭文件预览"
+          }
+        }
+      }
+    },
     "最多 120 个字" : {
       "localizations" : {
         "en" : {
@@ -4586,6 +4414,9 @@
           }
         }
       }
+    },
+    "写入范围：%@" : {
+
     },
     "准备中" : {
       "extractionState" : "manual",
@@ -4795,6 +4626,22 @@
         }
       }
     },
+    "刷新存储统计" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Refresh storage usage"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刷新存储统计"
+          }
+        }
+      }
+    },
     "刷新插件" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4838,6 +4685,23 @@
         }
       }
     },
+    "占用空间" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Storage used"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "占用空间"
+          }
+        }
+      }
+    },
     "历史记录刷新超时" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4850,6 +4714,7 @@
       }
     },
     "历史记录加载失败" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4974,6 +4839,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Multiple selections allowed"
+          }
+        }
+      }
+    },
+    "可发送" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ready to send"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可发送"
+          }
+        }
+      }
+    },
+    "名称" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "名称"
           }
         }
       }
@@ -5130,6 +5028,56 @@
         }
       }
     },
+    "处理中…" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Processing…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "处理中…"
+          }
+        }
+      }
+    },
+    "复制" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制"
+          }
+        }
+      }
+    },
+    "复制代码" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy code"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制代码"
+          }
+        }
+      }
+    },
     "复制正文" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -5147,6 +5095,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Appearance"
+          }
+        }
+      }
+    },
+    "大小" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Size"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "大小"
           }
         }
       }
@@ -5187,12 +5151,62 @@
         }
       }
     },
+    "存储空间" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Storage"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "存储空间"
+          }
+        }
+      }
+    },
+    "存储空间读取或清理失败，请稍后重试。" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to read or clear storage. Please try again."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "存储空间读取或清理失败，请稍后重试。"
+          }
+        }
+      }
+    },
     "安装、启用和配置插件" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Install, enable, and configure plugins"
+          }
+        }
+      }
+    },
+    "安装包" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App updates"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安装包"
           }
         }
       }
@@ -5489,6 +5503,23 @@
         }
       }
     },
+    "已下载的应用更新文件" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Downloaded app update files"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已下载的应用更新文件"
+          }
+        }
+      }
+    },
     "已从断线前恢复" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -5566,6 +5597,23 @@
         }
       }
     },
+    "已打开的文档、音视频等附件" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Documents, audio, video, and other opened attachments"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已打开的文档、音视频等附件"
+          }
+        }
+      }
+    },
     "已提交" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -5599,6 +5647,23 @@
         }
       }
     },
+    "已缓存的聊天内容与搜索索引" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cached conversations and search index"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已缓存的聊天内容与搜索索引"
+          }
+        }
+      }
+    },
     "已跳过" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -5622,6 +5687,7 @@
       }
     },
     "已连接Deepseek Harness预览版" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5638,6 +5704,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Attached sessions"
+          }
+        }
+      }
+    },
+    "开始上传…" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Starting upload…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开始上传…"
           }
         }
       }
@@ -5697,6 +5780,12 @@
         }
       }
     },
+    "当前会话" : {
+
+    },
+    "当前会话使用普通子智能体" : {
+
+    },
     "当前使用" : {
       "localizations" : {
         "en" : {
@@ -5751,6 +5840,9 @@
         }
       }
     },
+    "当前成员" : {
+
+    },
     "当前目录" : {
       "localizations" : {
         "en" : {
@@ -5772,6 +5864,23 @@
         }
       }
     },
+    "当前网关不支持创建附件会话，请升级网关" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Update the gateway to create a session for attachments"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前网关不支持创建附件会话，请升级网关"
+          }
+        }
+      }
+    },
     "当前网关不支持图片" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -5779,6 +5888,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The current gateway doesn’t support images"
+          }
+        }
+      }
+    },
+    "当前网关不支持文件上传，请升级到支持文件上传的 Mobile Gateway，并重新连接。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This gateway does not support file uploads. Upgrade to a Mobile Gateway that supports file uploads, then reconnect."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前网关不支持文件上传，请升级到支持文件上传的 Mobile Gateway，并重新连接。"
           }
         }
       }
@@ -5817,6 +5942,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "This device does not support QR code detection."
+          }
+        }
+      }
+    },
+    "当前设备没有此文件的本地副本，当前网关尚不支持下载已发送附件。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This device has no local copy of this file. The current gateway does not support downloading sent attachments."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前设备没有此文件的本地副本，当前网关尚不支持下载已发送附件。"
           }
         }
       }
@@ -5891,6 +6033,9 @@
           }
         }
       }
+    },
+    "成员 %@" : {
+
     },
     "我的主机" : {
       "localizations" : {
@@ -6142,6 +6287,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Choose a time in your device’s current time zone (%@). The task will run once at that time after saving."
+          }
+        }
+      }
+    },
+    "按类别清理" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear by category"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按类别清理"
+          }
+        }
+      }
+    },
+    "排序方式" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sort by"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排序方式"
           }
         }
       }
@@ -6439,6 +6618,57 @@
         }
       }
     },
+    "文件" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "File"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件"
+          }
+        }
+      }
+    },
+    "文件不能超过 512 MiB" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Files must not exceed 512 MiB"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件不能超过 512 MiB"
+          }
+        }
+      }
+    },
+    "文件准备失败" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to prepare the file"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件准备失败"
+          }
+        }
+      }
+    },
     "文件分块无法写入临时文件" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6457,6 +6687,57 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "File chunks arrived out of order. Download canceled."
+          }
+        }
+      }
+    },
+    "文件加载失败" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to load file"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件加载失败"
+          }
+        }
+      }
+    },
+    "文件加载超时，请检查网络后重试。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "File loading timed out. Check your network connection and try again."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件加载超时，请检查网络后重试。"
+          }
+        }
+      }
+    },
+    "文件名无效" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Invalid file name"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件名无效"
           }
         }
       }
@@ -6501,6 +6782,91 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "File integrity check failed. Download again."
+          }
+        }
+      }
+    },
+    "文件菜单" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "File menu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件菜单"
+          }
+        }
+      }
+    },
+    "文件读取失败" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to read the file"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件读取失败"
+          }
+        }
+      }
+    },
+    "文件读取失败，请重新选择" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to read the file. Select it again"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件读取失败，请重新选择"
+          }
+        }
+      }
+    },
+    "文件预览" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "File previews"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件预览"
+          }
+        }
+      }
+    },
+    "斜杠命令不支持文件，请使用普通消息发送" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use a regular message to send files; slash commands do not support them"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "斜杠命令不支持文件，请使用普通消息发送"
           }
         }
       }
@@ -6656,6 +7022,23 @@
         }
       }
     },
+    "无法读取所选文件" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to read the selected file"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取所选文件"
+          }
+        }
+      }
+    },
     "暂无可用模型" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -6679,6 +7062,7 @@
       }
     },
     "暂无已知会话。连接服务后创建第一个任务。" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6818,6 +7202,9 @@
         }
       }
     },
+    "未分配" : {
+
+    },
     "未知网关响应" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -6907,6 +7294,59 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "None selected"
+          }
+        }
+      }
+    },
+    "本地存储" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local storage"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本地存储"
+          }
+        }
+      }
+    },
+    "本地缓存片段" : {
+
+    },
+    "本机缓存" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local cache"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本机缓存"
+          }
+        }
+      }
+    },
+    "本版本新功能" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "What's New in This Version"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本版本新功能"
           }
         }
       }
@@ -7010,6 +7450,9 @@
           }
         }
       }
+    },
+    "查看完整团队内容" : {
+
     },
     "查看完整统计" : {
       "localizations" : {
@@ -7153,6 +7596,23 @@
         }
       }
     },
+    "正在准备文件…" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparing files…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备文件…"
+          }
+        }
+      }
+    },
     "正在准备语音模型" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7176,23 +7636,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Creating folder…"
-          }
-        }
-      }
-    },
-    "文件加载失败" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Unable to load file"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "文件加载失败"
           }
         }
       }
@@ -7293,6 +7736,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Generating trajectory…"
+          }
+        }
+      }
+    },
+    "正在统计…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Calculating…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在统计…"
           }
         }
       }
@@ -7580,6 +8039,23 @@
         }
       }
     },
+    "没有更多可回收内容，正在使用的文件会保留。" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No more unused files to clear. Files in use are kept."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有更多可回收内容，正在使用的文件会保留。"
+          }
+        }
+      }
+    },
     "没有符合条件的定时任务" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7668,6 +8144,73 @@
         }
       }
     },
+    "添加附件" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add attachment"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加附件"
+          }
+        }
+      }
+    },
+    "清理" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清理"
+          }
+        }
+      }
+    },
+    "清理仅移除本机缓存，需要时可重新下载。不会删除主机上的聊天、用户保存的文件或待发内容。" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Only local cached copies are removed and can be downloaded again. Chats on your host, saved files, and unsent content are kept."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清理仅移除本机缓存，需要时可重新下载。不会删除主机上的聊天、用户保存的文件或待发内容。"
+          }
+        }
+      }
+    },
+    "清理本机缓存" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear local cache"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清理本机缓存"
+          }
+        }
+      }
+    },
     "源码" : {
       "localizations" : {
         "en" : {
@@ -7705,6 +8248,9 @@
           }
         }
       }
+    },
+    "版本：%@" : {
+
     },
     "状态" : {
       "extractionState" : "manual",
@@ -7782,6 +8328,23 @@
         }
       }
     },
+    "知道了" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Got It"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "知道了"
+          }
+        }
+      }
+    },
     "确认修改" : {
       "localizations" : {
         "en" : {
@@ -7799,6 +8362,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Approve and run"
+          }
+        }
+      }
+    },
+    "磁盘占用" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Disk usage"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "磁盘占用"
           }
         }
       }
@@ -7821,6 +8400,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Remove image"
+          }
+        }
+      }
+    },
+    "移除文件" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove file"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除文件"
           }
         }
       }
@@ -7849,6 +8445,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Waiting for the agent to continue."
+          }
+        }
+      }
+    },
+    "等待上传" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Waiting to upload"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待上传"
           }
         }
       }
@@ -8139,6 +8752,40 @@
         }
       }
     },
+    "聊天中已下载的图片" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Images downloaded from conversations"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "聊天中已下载的图片"
+          }
+        }
+      }
+    },
+    "聊天记录" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chat history"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "聊天记录"
+          }
+        }
+      }
+    },
     "草稿已更改，请确认插入识别文字" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8194,6 +8841,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Set default"
+          }
+        }
+      }
+    },
+    "设备可用空间" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Available on device"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设备可用空间"
           }
         }
       }
@@ -8374,6 +9038,23 @@
         }
       }
     },
+    "请先连接支持文件下载的 Mobile Gateway。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connect to a Mobile Gateway that supports file downloads first."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先连接支持文件下载的 Mobile Gateway。"
+          }
+        }
+      }
+    },
     "请先连接网关，再使用语音输入。" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -8387,6 +9068,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "请先连接网关，再使用语音输入。"
+          }
+        }
+      }
+    },
+    "请升级网关" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Upgrade the gateway"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请升级网关"
           }
         }
       }
@@ -8461,6 +9159,23 @@
         }
       }
     },
+    "请等待附件上传完成，失败的附件可重试或移除" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wait for attachments to finish uploading. Retry or remove failed attachments"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请等待附件上传完成，失败的附件可重试或移除"
+          }
+        }
+      }
+    },
     "请连接网关后重试。" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8528,6 +9243,9 @@
           }
         }
       }
+    },
+    "负责人：%@" : {
+
     },
     "跟随系统" : {
       "extractionState" : "stale",
@@ -8772,6 +9490,23 @@
         }
       }
     },
+    "连接已中断，请恢复网络后重试。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connection interrupted. Restore your network connection and try again."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接已中断，请恢复网络后重试。"
+          }
+        }
+      }
+    },
     "连接成功" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -8779,6 +9514,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Connected successfully"
+          }
+        }
+      }
+    },
+    "连接或会话已变化，请重新上传" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The connection or session has changed. Upload the file again"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接或会话已变化，请重新上传"
           }
         }
       }
@@ -8823,6 +9575,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Choose workspace directory"
+          }
+        }
+      }
+    },
+    "选择文字" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select text"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择文字"
           }
         }
       }
@@ -8942,6 +9710,23 @@
         }
       }
     },
+    "重试上传" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retry upload"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重试上传"
+          }
+        }
+      }
+    },
     "错误" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -8982,6 +9767,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Invalid question request"
+          }
+        }
+      }
+    },
+    "附件凭证已失效，请重新上传" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The attachment receipt has expired. Upload the file again"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "附件凭证已失效，请重新上传"
           }
         }
       }
@@ -9036,6 +9838,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Preview"
+          }
+        }
+      }
+    },
+    "预览、下载和分享产生的临时副本" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Temporary copies for previews, downloads, and sharing"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "预览、下载和分享产生的临时副本"
           }
         }
       }
@@ -9159,125 +9978,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Failed to update default settings"
-          }
-        }
-      }
-    },
-    "本版本新功能" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "What's New in This Version"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "本版本新功能"
-          }
-        }
-      }
-    },
-    "GitHub 发布页" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "GitHub Releases"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "GitHub 发布页"
-          }
-        }
-      }
-    },
-    "知道了" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Got It"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "知道了"
-          }
-        }
-      }
-    },
-    "关闭文件预览" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Close file preview"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "关闭文件预览"
-          }
-        }
-      }
-    },
-    "文件菜单" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "File menu"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "文件菜单"
-          }
-        }
-      }
-    },
-    "使用系统预览" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Open in system viewer"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用系统预览"
-          }
-        }
-      }
-    },
-    "Markdown" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Markdown"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Markdown"
           }
         }
       }
