@@ -81,11 +81,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -172,7 +171,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
@@ -204,10 +202,11 @@ import kotlinx.coroutines.withContext
 internal fun ConversationScreen(
     stateHolder: AndroidSharedStateHolder,
     onPickImage: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onPickFile: () -> Unit = {}
 ) {
     val session = stateHolder.snapshot.sessions.firstOrNull { it.id == stateHolder.snapshot.selectedSessionId }
-    val title = session?.title ?: if (stateHolder.snapshot.selectedSessionId != null) "已缓存会话" else appText("新建 DeepSeek Harness")
+    val title = stateHolder.teamSnapshot.members.firstOrNull { it.id == stateHolder.snapshot.selectedSessionId && it.role != "lead" }?.name ?: session?.title ?: if (stateHolder.snapshot.selectedSessionId != null) "已缓存会话" else appText("新建 DeepSeek Harness")
     val agentPresetId = stateHolder.sessionAgentPreset.agentPreset
         .takeIf { stateHolder.sessionAgentPreset.sessionId == stateHolder.snapshot.selectedSessionId }
         ?: session?.agentPreset ?: stateHolder.snapshot.agentPresetDefault
@@ -226,6 +225,17 @@ internal fun ConversationScreen(
     }
     var showStats by remember { mutableStateOf(false) }
     var showWorkspaceFiles by remember { mutableStateOf(false) }
+    var workspaceInitialPath by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(stateHolder.conversationDirectoryPath) {
+        val path = stateHolder.conversationDirectoryPath ?: return@LaunchedEffect
+        if (stateHolder.conversationDirectorySessionId != stateHolder.snapshot.selectedSessionId) {
+            stateHolder.consumeConversationDirectoryPath()
+            return@LaunchedEffect
+        }
+        workspaceInitialPath = path
+        stateHolder.consumeConversationDirectoryPath()
+        showWorkspaceFiles = true
+    }
     val pendingApproval = stateHolder.snapshot.pendingApprovals.firstOrNull {
         it.sessionId == stateHolder.snapshot.selectedSessionId
     }
@@ -248,7 +258,7 @@ internal fun ConversationScreen(
         }
     }
 
-    ComposerPopupGlassHost { backdropModifier ->
+    DshMenuBackdropHost { backdropModifier ->
         Scaffold(
             modifier = backdropModifier,
             // 背景与录音蒙层延伸到导航栏下面；底部安全区由 Composer 自己处理。
@@ -278,25 +288,36 @@ internal fun ConversationScreen(
                     },
                     actions = {
                         Row(
-                            modifier = Modifier.padding(start = 12.dp, end = 8.dp),
+                            modifier = Modifier.padding(start = 4.dp, end = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             SmallConnectionDot(stateHolder.gatewayState.connection)
                             Text(
                                 agentPresetDisplayName(agentPresetId, agentPresetName),
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                fontSize = 12.sp
-                            )
-                            ConversationMoreMenu(
-                                canBrowseFiles = stateHolder.snapshot.selectedSessionId != null &&
-                                    stateHolder.gatewayState.connection == GatewayConnectionState.CONNECTED &&
-                                    "file-downloads" in stateHolder.gatewayState.capabilities,
-                                onBrowseFiles = { showWorkspaceFiles = true }
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.widthIn(max = 96.dp)
                             )
                         }
+                        if (stateHolder.teamSnapshot.visible) {
+                            TeamEntryButton(stateHolder)
+                            Spacer(Modifier.width(16.dp))
+                        }
+                        ConversationMoreMenu(
+                            canBrowseFiles = stateHolder.snapshot.selectedSessionId != null &&
+                                stateHolder.gatewayState.connection == GatewayConnectionState.CONNECTED &&
+                                "file-downloads" in stateHolder.gatewayState.capabilities,
+                            onBrowseFiles = {
+                                workspaceInitialPath = null
+                                showWorkspaceFiles = true
+                            }
+                        )
+                        Spacer(Modifier.width(8.dp))
                     },
-                    expandedHeight = 80.dp,
+                    expandedHeight = 64.dp,
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
                 )
             }
@@ -320,6 +341,7 @@ internal fun ConversationScreen(
                         ConversationPage(
                             stateHolder = stateHolder,
                             onPickImage = onPickImage,
+                            onPickFile = onPickFile,
                             onShowFullStats = { showStats = true },
                             onDismissInput = dismissInput
                         )
@@ -349,7 +371,7 @@ internal fun ConversationScreen(
     WorkspaceFilePreviewHost(stateHolder)
 
     if (showWorkspaceFiles) {
-        WorkspaceFilesBottomSheet(stateHolder) { showWorkspaceFiles = false }
+        WorkspaceFilesBottomSheet(stateHolder, initialPath = workspaceInitialPath) { showWorkspaceFiles = false }
     }
 }
 
@@ -359,6 +381,23 @@ internal fun TopBarCircleButton(
     description: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
+) {
+    TopBarCircleButton(description = description, onClick = onClick, modifier = modifier) {
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            modifier = Modifier.size(22.dp),
+            tint = MaterialTheme.colorScheme.onSurface
+        )
+    }
+}
+
+@Composable
+internal fun TopBarCircleButton(
+    description: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
 ) {
     val isDark = isSystemInDarkTheme()
     val shadowColor = Color.Black.copy(alpha = if (isDark) 0.24f else 0.075f)
@@ -384,12 +423,7 @@ internal fun TopBarCircleButton(
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center
     ) {
-        Icon(
-            painter = painterResource(iconRes),
-            contentDescription = null,
-            modifier = Modifier.size(22.dp),
-            tint = MaterialTheme.colorScheme.onSurface
-        )
+        content()
     }
 }
 
@@ -405,19 +439,11 @@ internal fun ConversationMoreMenu(
             description = appText("更多"),
             onClick = { expanded = true }
         )
-        DropdownMenu(
+        DshMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
             modifier = Modifier.width(228.dp).testTag("conversation-more-menu"),
-            offset = DpOffset(x = (-220).dp, y = 8.dp),
-            shape = RoundedCornerShape(26.dp),
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
-            tonalElevation = 0.dp,
-            shadowElevation = 10.dp,
-            border = androidx.compose.foundation.BorderStroke(
-                0.7.dp,
-                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.055f)
-            )
+            offset = DpOffset(x = (-220).dp, y = 8.dp)
         ) {
             ConversationMoreMenuItem(
                 title = appText("工作区文件"),
@@ -438,7 +464,7 @@ private fun ConversationMoreMenuItem(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
-    DropdownMenuItem(
+    DshMenuItem(
         text = {
             Text(
                 title,
@@ -466,7 +492,8 @@ private fun SegmentedControl(selected: Int, onSelect: (Int) -> Unit) {
     val segmentShape = RoundedCornerShape(14.dp)
     val horizontalInset = if (adaptiveWindowSize().width >= 600.dp) 40.dp else 66.dp
     Row(
-        Modifier.adaptiveContentWidth(440.dp).testTag("conversation-tabs").padding(horizontal = horizontalInset, vertical = 6.dp)
+        Modifier.adaptiveContentWidth(440.dp).testTag("conversation-tabs")
+            .padding(start = horizontalInset, end = horizontalInset, top = 2.dp, bottom = 6.dp)
             .height(32.dp)
             .clip(trackShape)
             .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.075f))
@@ -507,11 +534,13 @@ private fun SegmentedControl(selected: Int, onSelect: (Int) -> Unit) {
 private fun ConversationPage(
     stateHolder: AndroidSharedStateHolder,
     onPickImage: () -> Unit,
+    onPickFile: () -> Unit,
     onShowFullStats: () -> Unit,
     onDismissInput: () -> Unit
 ) {
     val density = LocalDensity.current
     val sessionId = stateHolder.snapshot.selectedSessionId
+    LaunchedEffect(sessionId) { stateHolder.fileUploads.select(sessionId, !stateHolder.isViewingTeamMember) }
     var bottomContentHeight by remember { mutableStateOf(160.dp) }
     var imagePreview by remember(sessionId) { mutableStateOf<ConversationImagePreviewRequest?>(null) }
     var isPinnedToBottom by remember(sessionId) { mutableStateOf(true) }
@@ -643,7 +672,7 @@ private fun ConversationPage(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            SessionAgentPresetControl(
+                            if (!stateHolder.isViewingTeamMember) SessionAgentPresetControl(
                                 state = stateHolder.sessionAgentPreset,
                                 onSelect = stateHolder::selectSessionAgentPreset,
                                 onRetry = stateHolder::refreshSessionAgentPreset
@@ -665,7 +694,7 @@ private fun ConversationPage(
                             stateHolder = stateHolder,
                             modifier = Modifier.padding(horizontal = 14.dp)
                         )
-                        Composer(stateHolder, onPickImage, onDismissInput)
+                        Composer(stateHolder, onPickImage, onPickFile, onDismissInput)
                     }
                 }
             }
@@ -781,9 +810,7 @@ private fun ConversationTimeline(
     val latestItems = stateHolder.snapshot.conversation
     val selectedSessionId = stateHolder.snapshot.selectedSessionId
     val latestHistoryLoading = selectedSessionId in stateHolder.historyPagingSessionIds
-    val selectedSessionIsRunning = stateHolder.snapshot.sessions
-        .firstOrNull { it.id == selectedSessionId }
-        ?.isRunning == true
+    val selectedSessionIsRunning = stateHolder.selectedSessionIsRunning
     val latestOnUserInteraction by rememberUpdatedState(onUserInteraction)
     val latestSnapshot by rememberUpdatedState(stateHolder.snapshot)
     val latestRunning by rememberUpdatedState(selectedSessionIsRunning)
@@ -1232,6 +1259,7 @@ private fun ConversationTimeline(
                         )
                         is ConversationTimelineEntry.AssistantMarkdown -> DshLazyMarkdownText(
                             markdown = entry.markdown,
+                            copyMarkdown = entry.copyMarkdown,
                             knownFiles = entry.knownFiles,
                             onOpenFile = { path ->
                                 selectedSessionId?.let { session ->
@@ -1256,7 +1284,7 @@ private fun ConversationTimeline(
                                     }
                                 )
                             }
-                            if (entry.text.isNotEmpty()) CopyButton(entry.text)
+                            if (entry.text.isNotEmpty()) CopyButton(entry.text, markdown = true)
                         }
                     }
                 }
@@ -1544,6 +1572,7 @@ private fun EmptyConversation(modifier: Modifier = Modifier) {
 private fun Composer(
     stateHolder: AndroidSharedStateHolder,
     onPickImage: () -> Unit,
+    onPickFile: () -> Unit,
     onDismissInput: () -> Unit
 ) {
     val voice = stateHolder.voiceInput
@@ -1552,6 +1581,16 @@ private fun Composer(
     val keyboardController = LocalSoftwareKeyboardController.current
     val queueEditFocusRequester = remember { FocusRequester() }
     var requestTextFocus by remember { mutableStateOf(false) }
+    var showsFileUploadUpgradeAlert by remember { mutableStateOf(false) }
+    if (showsFileUploadUpgradeAlert) {
+        DshAlertDialog(
+            title = appText("请升级网关"),
+            message = appText("当前网关不支持文件上传，请升级到支持文件上传的 Mobile Gateway，并重新连接。"),
+            confirmLabel = appText("好"),
+            onConfirm = { showsFileUploadUpgradeAlert = false },
+            onDismissRequest = { showsFileUploadUpgradeAlert = false }
+        )
+    }
     LaunchedEffect(requestTextFocus, voice.state.voiceMode) {
         if (requestTextFocus && !voice.state.voiceMode) {
             queueEditFocusRequester.requestFocus()
@@ -1601,7 +1640,7 @@ private fun Composer(
     val isDark = isSystemInDarkTheme()
     val shadowColor = dshFloatingSurfaceShadow(isDark)
     val glassEdge = dshGlassEdge(isDark)
-    val composerHasContent = stateHolder.messageDraft.trim().isNotEmpty() || stateHolder.preparedImages.isNotEmpty()
+    val composerHasContent = stateHolder.messageDraft.trim().isNotEmpty() || stateHolder.preparedImages.isNotEmpty() || stateHolder.fileUploads.drafts.isNotEmpty() || stateHolder.fileUploads.preparing
     val voiceDividerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
     LaunchedEffect(stateHolder.preparedImages.isNotEmpty()) {
         if (stateHolder.preparedImages.isNotEmpty()) voice.setVoiceMode(false)
@@ -1684,6 +1723,20 @@ private fun Composer(
                         }
                     }
                 }
+                if (stateHolder.fileUploads.preparing) Text(appText("正在准备文件…"), style = MaterialTheme.typography.labelSmall)
+                if (stateHolder.fileUploads.drafts.isNotEmpty()) {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(stateHolder.fileUploads.drafts.size) { index ->
+                            val file = stateHolder.fileUploads.drafts[index]
+                            PendingFileCard(
+                                file = file,
+                                enabled = !stateHolder.messageSubmissionPending,
+                                onRetry = { stateHolder.fileUploads.retry(file.id) },
+                                onRemove = { stateHolder.fileUploads.remove(file.id) }
+                            )
+                        }
+                    }
+                }
                 val commandToken = stateHolder.slashCommands.commandToken
                 val commandHint = stateHolder.slashCommands.argumentHint
                 if (voice.state.voiceMode) {
@@ -1761,13 +1814,40 @@ private fun Composer(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(7.dp)
                 ) {
-                    ComposerIconButton(R.drawable.ic_composer_image, appText("添加图片"), onPickImage)
-                    PermissionControl(stateHolder, Modifier.width(82.dp))
+                    Box {
+                        var attachmentMenu by remember { mutableStateOf(false) }
+                        ComposerIconButton(R.drawable.ic_composer_add, appText("添加附件"), { attachmentMenu = true })
+                        DshMenu(expanded = attachmentMenu, onDismissRequest = { attachmentMenu = false }) {
+                            DshMenuItem(text = { Text(appText("图片")) },
+                                enabled = "images" in stateHolder.gatewayState.capabilities && stateHolder.preparedImages.size < 20,
+                                onClick = { attachmentMenu = false; onPickImage() })
+                            DshMenuItem(text = { Text(appText("文件")) },
+                                enabled = !stateHolder.isViewingTeamMember &&
+                                    !stateHolder.fileUploads.preparing && stateHolder.fileUploads.drafts.size < 20 && !stateHolder.messageSubmissionPending,
+                                onClick = {
+                                    attachmentMenu = false
+                                    if (stateHolder.fileUploads.supported) onPickFile()
+                                    else showsFileUploadUpgradeAlert = true
+                                })
+                        }
+                    }
+                    if (!stateHolder.isViewingTeamMember) PermissionControl(stateHolder, Modifier.width(82.dp))
                     Spacer(Modifier.width(2.dp))
-                    ModelControl(
-                        stateHolder = stateHolder,
-                        modifier = Modifier.weight(1f)
-                    )
+                    if (!stateHolder.isViewingTeamMember) {
+                        ModelControl(
+                            stateHolder = stateHolder,
+                            modifier = Modifier.weight(1f)
+                        )
+                    } else if (stateHolder.selectedMemberCanSend) {
+                        Spacer(Modifier.weight(1f))
+                    } else {
+                        Text(
+                            "只读成员会话",
+                            Modifier.weight(1f),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     ContextUsageRing(stateHolder)
                     Box(
                         Modifier.size(42.dp)
@@ -1777,7 +1857,8 @@ private fun Composer(
                                 } else 1f
                             )
                             .clip(CircleShape)
-                            .background(DshColors.Ocean)
+                            // 背景直接绘制圆形，避免半透明状态依赖图层裁剪后露出方形底色。
+                            .background(DshColors.Ocean, CircleShape)
                             .clickable(
                                 enabled = if (stateHolder.showsSessionStopButton) {
                                     stateHolder.canCancelSelectedSession
@@ -1819,8 +1900,7 @@ private fun Composer(
                         if (stateHolder.showsSessionStopButton) {
                             Box(
                                 Modifier.size(14.dp)
-                                    .clip(RoundedCornerShape(3.dp))
-                                    .background(Color.White)
+                                    .background(Color.White, RoundedCornerShape(3.dp))
                             )
                         } else {
                             Icon(
@@ -2130,12 +2210,13 @@ internal fun dshGlassEdge(isDark: Boolean): Brush = Brush.verticalGradient(
 private fun ComposerIconButton(iconRes: Int, description: String, onClick: () -> Unit) {
     Box(
         Modifier.size(32.dp).clip(CircleShape).clickable(onClick = onClick).semantics { contentDescription = description },
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.CenterStart
     ) {
         Icon(
             painter = painterResource(iconRes),
             contentDescription = null,
-            modifier = Modifier.size(22.dp),
+            // 加号矢量的描边左侧还留有约 1.5dp 空白，按可见边缘与右侧语音圆按钮对齐。
+            modifier = Modifier.size(22.dp).offset(x = (-1.5).dp),
             tint = MaterialTheme.colorScheme.onSurface
         )
     }
@@ -2215,7 +2296,7 @@ internal fun SessionAgentPresetControl(
             testTag = "session-agent-preset-popover"
         ) {
             state.presets.forEach { preset ->
-                DropdownMenuItem(
+                DshMenuItem(
                     modifier = Modifier.testTag("session-agent-preset-${preset.id}"),
                     enabled = preset.broken != true,
                     text = {
@@ -2288,7 +2369,7 @@ private fun PermissionControl(
             horizontalCompensation = (-28).dp
         ) {
             options.forEach { option ->
-                DropdownMenuItem(
+                DshMenuItem(
                     text = {
                         Text(
                             option.name,
@@ -2331,7 +2412,7 @@ private fun ComposerMenuSectionTitle(title: String) {
 
 @Composable
 private fun ComposerMenuItem(title: String, selected: Boolean, onClick: () -> Unit) {
-    DropdownMenuItem(
+    DshMenuItem(
         text = {
             Text(
                 title,
@@ -2469,10 +2550,6 @@ private fun ComposerPopupMenu(
     horizontalCompensation: Dp,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    val visibility = remember { MutableTransitionState(false) }
-    visibility.targetState = expanded
-    // 退出动画结束后才移除 Popup，避免关闭时直接消失。
-    if (!visibility.currentState && !visibility.targetState) return
     val density = LocalDensity.current
     val windowHeight = with(density) { LocalWindowInfo.current.containerSize.height.toDp() }
     val maxSurfaceHeight = (windowHeight - 100.dp).coerceIn(48.dp, 560.dp)
@@ -2492,52 +2569,13 @@ private fun ComposerPopupMenu(
             anchorGapPx = anchorGapPx
         )
     }
-    Popup(
-        popupPositionProvider = positionProvider,
-        onDismissRequest = onDismissRequest,
-        properties = PopupProperties(focusable = true, clippingEnabled = true)
-    ) {
-        AnimatedVisibility(
-            visibleState = visibility,
-            enter = fadeIn(tween(180)) + scaleIn(
-                animationSpec = tween(220),
-                initialScale = 0.94f,
-                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(
-                    if (alignment == Alignment.BottomEnd) 1f else 0f, 1f
-                )
-            ),
-            exit = fadeOut(tween(140)) + scaleOut(
-                animationSpec = tween(140),
-                targetScale = 0.96f,
-                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(
-                    if (alignment == Alignment.BottomEnd) 1f else 0f, 1f
-                )
-            )
-        ) {
-            Box(Modifier.padding(20.dp)) {
-                Surface(
-                    modifier = Modifier.width(width).heightIn(max = maxSurfaceHeight).dropShadow(
-                        shape = RoundedCornerShape(24.dp),
-                        shadow = Shadow(
-                            radius = 18.dp,
-                            spread = 0.dp,
-                            color = Color.Black.copy(alpha = 0.18f),
-                            offset = DpOffset(x = 0.dp, y = 8.dp)
-                        )
-                    ),
-                    shape = RoundedCornerShape(24.dp),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
-                    tonalElevation = 0.dp,
-                    shadowElevation = 0.dp
-                ) {
-                    Column(
-                        modifier = Modifier.verticalScroll(rememberScrollState()).padding(vertical = 8.dp),
-                        content = content
-                    )
-                }
-            }
-        }
+    DshMenuPopup(expanded, onDismissRequest, positionProvider,
+        modifier = Modifier.width(width).heightIn(max = maxSurfaceHeight),
+        transformOrigin = androidx.compose.ui.graphics.TransformOrigin(
+            if (alignment == Alignment.BottomEnd) 1f else 0f, 1f), shadowPadding = 20.dp) {
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 8.dp), content = content)
     }
+
 }
 
 private class ComposerPopupPositionProvider(
@@ -3008,6 +3046,23 @@ private fun UserMessage(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         UserAttachmentPreview(item.images, thumbnails, states, onRetry, onPreviewImages)
+        item.files.filter { it.attachmentId != null }.forEach { file ->
+            val name = file.name ?: appText("文件")
+            val kind = remember(name) { com.clarklevis.dsh.shared.facade.FileIconCatalog.resolve(name, null) }
+            Row(
+                Modifier.widthIn(max = 320.dp).background(fileCardColor(kind), RoundedCornerShape(12.dp))
+                    .padding(12.dp).testTag("user-file-card"),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                FileTypeIcon(kind, Modifier.size(48.dp))
+                Column(Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(name, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    file.bytes?.let { Text(android.text.format.Formatter.formatShortFileSize(LocalContext.current, it),
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                }
+            }
+        }
         if (item.text.isNotEmpty()) {
             Column(
                 horizontalAlignment = Alignment.End,
@@ -3194,55 +3249,57 @@ internal fun ConversationImagePreviewDialog(
             decorFitsSystemWindows = false
         )
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black)
-                .testTag("conversation-image-preview")
-        ) {
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier.fillMaxSize()
-            ) { page ->
-                val attachment = request.attachments[page]
-                ZoomablePreviewImage(
-                    image = thumbnails[attachment.attachmentId],
-                    contentDescription = attachment.name ?: appText("图片")
-                )
-            }
-            Row(
+        DshMenuHost {
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .fillMaxSize()
+                    .background(Color.Black)
+                    .testTag("conversation-image-preview")
             ) {
-                Surface(
-                    onClick = onDismiss,
-                    modifier = Modifier
-                        .size(38.dp)
-                        .semantics { contentDescription = appText("关闭图片预览") },
-                    shape = RoundedCornerShape(19.dp),
-                    color = Color.White.copy(alpha = 0.16f)
-                ) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_close),
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = Color.White
-                        )
-                    }
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize()
+                ) { page ->
+                    val attachment = request.attachments[page]
+                    ZoomablePreviewImage(
+                        image = thumbnails[attachment.attachmentId],
+                        contentDescription = attachment.name ?: appText("图片")
+                    )
                 }
-                Text(
-                    text = "${pagerState.currentPage + 1} / ${request.attachments.size}",
-                    modifier = Modifier.weight(1f),
-                    color = Color.White,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(Modifier.size(38.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .size(38.dp)
+                            .semantics { contentDescription = appText("关闭图片预览") },
+                        shape = RoundedCornerShape(19.dp),
+                        color = Color.White.copy(alpha = 0.16f)
+                    ) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_close),
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = Color.White
+                            )
+                        }
+                    }
+                    Text(
+                        text = "${pagerState.currentPage + 1} / ${request.attachments.size}",
+                        modifier = Modifier.weight(1f),
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(Modifier.size(38.dp))
+                }
             }
         }
     }
@@ -3326,7 +3383,7 @@ private fun AssistantMessage(
                 modifier = Modifier.fillMaxWidth()
             )
         }
-        CopyButton(item.text)
+        CopyButton(item.text, markdown = true)
     }
 }
 
@@ -3423,7 +3480,7 @@ private fun AttachmentGrid(
 }
 
 @Composable
-private fun CopyButton(text: String) {
+private fun CopyButton(text: String, markdown: Boolean = false) {
     if (text.isEmpty()) return
     val context = LocalContext.current
     var copied by remember { mutableStateOf(false) }
@@ -3436,7 +3493,7 @@ private fun CopyButton(text: String) {
     Box(
         modifier = Modifier.width(16.dp).height(26.dp).clickable {
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            clipboard.setPrimaryClip(ClipData.newPlainText("DeepSeek", text))
+            clipboard.setPrimaryClip(ClipData.newPlainText("DeepSeek", if (markdown) markdownPlainText(text) else text))
             copied = true
         }.semantics { contentDescription = if (copied) appText("已复制") else appText("复制正文") },
         contentAlignment = Alignment.Center

@@ -116,6 +116,7 @@ struct WorkspacePreviewCache: Sendable {
     }
     let root: URL
     let gatewayID: String
+    private let namespace: String
     private let maximumBytes: Int64
     private let targetBytes: Int64
     private let availableBytes: @Sendable () -> Int64
@@ -123,7 +124,7 @@ struct WorkspacePreviewCache: Sendable {
     private let creationEpoch: UInt64
     private var lifetime: WorkspaceFileLifetime { .shared }
 
-    init(gatewayID: String, root: URL? = nil,
+    init(gatewayID: String, root: URL? = nil, namespace: String = "",
          maximumBytes: Int64 = Self.maximumBytes, targetBytes: Int64 = Self.targetBytes,
          availableBytes: @escaping @Sendable () -> Int64 = {
              let home = URL(fileURLWithPath: NSHomeDirectory())
@@ -133,6 +134,7 @@ struct WorkspacePreviewCache: Sendable {
              try FileManager.default.copyItem(at: source, to: target)
          }) {
         self.gatewayID = gatewayID
+        self.namespace = namespace
         self.root = root ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("WorkspacePreviews", isDirectory: true)
         self.maximumBytes = maximumBytes
@@ -324,7 +326,9 @@ struct WorkspacePreviewCache: Sendable {
     }
 
     private func directory(sessionID: String, path: String, size: Int64, modifiedAt: Double) -> URL {
-        let identity = [gatewayID, sessionID, path, String(size), String(modifiedAt)]
+        // 空命名空间保持既有工作区缓存键；上传附件与工作区路径独立。
+        let components = [gatewayID, sessionID, path, String(size), String(modifiedAt)]
+        let identity = (namespace.isEmpty ? components : [namespace] + components)
             .map { "\($0.utf8.count):\($0)" }.joined()
         let key = SHA256.hash(data: Data(identity.utf8)).map { String(format: "%02x", $0) }.joined()
         return root.appendingPathComponent(key, isDirectory: true)

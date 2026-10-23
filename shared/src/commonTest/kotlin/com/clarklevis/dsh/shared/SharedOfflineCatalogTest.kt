@@ -6,17 +6,46 @@ import com.clarklevis.dsh.shared.facade.SharedSessionListStore
 import com.clarklevis.dsh.shared.protocol.wireJson
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.jsonObject
 
 class SharedOfflineCatalogTest {
+    @Test
+    fun avatarAssignmentsRoundTripWithoutBecomingConversationTargets() {
+        val assignments = """[{"leadSessionId":"s","sessionId":"a","index":37}]"""
+        val cached = assertNotNull(codec.withTeamAvatars(catalog(), assignments))
+        assertEquals(assignments, codec.teamAvatarsJson(assertNotNull(codec.normalize(cached))))
+        assertEquals("[]", codec.conversationTargetsJson(cached))
+        assertEquals("[]", codec.teamAvatarsJson(catalog().replace(",\"teamAvatars\":[]", "")), "旧目录应兼容缺少头像字段")
+        assertNull(codec.withTeamAvatars(catalog(), assignments.replace("37", "-1")))
+        assertNull(codec.withTeamAvatars(catalog(), assignments.dropLast(1) + "," + assignments.drop(1)))
+    }
+
     private val codec = SharedOfflineCatalogCodec()
     private val list =
         """{"sessions":[{"id":"s","title":"缓存会话","lastActivityEpochSeconds":42,"isRunning":true,"hasUnread":true,"agentPreset":"code","hasConversation":true}],"archivedSessionIds":["archived"],"selectedSessionId":"s"}"""
     private val workspaces = """[{"workspaceId":"w","path":"/repo","title":"工作区","sessionIds":["s"],"createdAt":"1","updatedAt":"2"}]"""
     private fun catalog() = assertNotNull(codec.create(list, workspaces, "w"))
+
+    @Test
+    fun durableTargetsNormalizeReentryToRootWithoutRestoringStreamState() {
+        val selectedChild = catalog().replace("\"selectedSessionId\":\"s\"", "\"selectedSessionId\":\"review\"")
+        val targets = """[{"sessionId":"review","parentSessionId":"scout","subagentMode":"one-shot"},{"sessionId":"scout","parentSessionId":"s","subagentMode":"continuable"}]"""
+        val cached = assertNotNull(codec.withConversationTargets(selectedChild, targets))
+        val restored = SharedMobileStore().restoreOfflineCatalog(cached)
+        assertEquals("s", restored.selectedSessionId)
+        assertTrue(restored.conversation.isEmpty())
+        assertNotNull(codec.normalize(cached))
+        val routing = com.clarklevis.dsh.shared.facade.SharedTeamStore()
+        assertTrue(routing.restoreRoutingJson(assertNotNull(codec.conversationTargetsJson(cached))))
+        assertTrue(routing.isChild("review"))
+        assertFalse(com.clarklevis.dsh.shared.facade.SharedTeamStore().isChild("review"))
+        assertNull(codec.withConversationTargets(cached, """[{"sessionId":"x","parentSessionId":"y","subagentMode":"continuable"},{"sessionId":"y","parentSessionId":"x","subagentMode":"continuable"}]"""))
+        assertNotNull(codec.normalize(catalog()), "旧目录没有地址字段时仍须兼容")
+    }
 
     @Test
     fun canonicalDirectoryRoundTripsThroughBothPlatformFacadesWithoutHistorySideEffects() {
@@ -168,7 +197,7 @@ class SharedOfflineCatalogTest {
     fun emptyCatalogIsValidAndHasOnlyNavigationKeys() {
         val empty = assertNotNull(codec.create("{}", "[]", null))
         val json = wireJson.parseToJsonElement(empty).jsonObject
-        assertTrue(json.keys.all { it in setOf("version", "sessionList", "workspaces", "selectedWorkspaceId") })
+        assertTrue(json.keys.all { it in setOf("version", "sessionList", "workspaces", "selectedWorkspaceId", "conversationTargets", "teamAvatars") })
         assertTrue(SharedMobileStore().restoreOfflineCatalog(empty).sessions.isEmpty())
     }
 }

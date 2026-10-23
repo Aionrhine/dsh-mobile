@@ -60,7 +60,8 @@ internal sealed interface ConversationTimelineEntry {
         val messageId: String,
         val blockIndex: Int,
         val markdown: String,
-        val knownFiles: List<com.clarklevis.dsh.shared.protocol.PresentedFile> = emptyList()
+        val knownFiles: List<com.clarklevis.dsh.shared.protocol.PresentedFile> = emptyList(),
+        val copyMarkdown: String = markdown
     ) : ConversationTimelineEntry {
         override val id: String = "assistant:$messageId:markdown:$blockIndex"
         override val contentType = ConversationDisplayContentType.ASSISTANT_MARKDOWN
@@ -101,7 +102,8 @@ internal fun makeConversationTimelineEntries(
                     messageId = item.id,
                     blockIndex = index,
                     markdown = markdown,
-                    knownFiles = item.knownFiles
+                    knownFiles = item.knownFiles,
+                    copyMarkdown = item.text
                 )
             )
         }

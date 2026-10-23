@@ -89,6 +89,11 @@ data class GatewayFrame(
     val bundles: List<JsonValue>? = null,
     val plugins: List<JsonValue>? = null,
     val officialItems: List<JsonValue>? = null,
+    val uploadId: String? = null,
+    val nextOffset: Long? = null,
+    val maxBytes: Long? = null,
+    val receiptId: String? = null,
+    val file: PresentedFile? = null,
     val transferId: String? = null,
     val name: String? = null,
     val mediaType: String? = null,
@@ -524,7 +529,13 @@ data class GatewaySessionStatsSnapshot(
 @Serializable data class FinishInfo(val kind: String? = null, val failure: JsonValue? = null)
 
 @Serializable
-data class PresentedFile(val path: String, val description: String? = null)
+data class PresentedFile(
+    val path: String = "",
+    val description: String? = null,
+    val attachmentId: String? = null,
+    val name: String? = null,
+    val bytes: Long? = null
+)
 
 @Serializable
 data class GatewayEvent(
@@ -608,6 +619,7 @@ data class RawSessionEvent(val type: String, val seq: Int, val time: Double, val
                 text = textBlocks(data["content"]),
                 source = data["source"]?.get("kind")?.stringValue,
                 images = imageBlocks(data["content"]),
+                files = fileBlocks(data["content"]),
                 raw = data
             )
             "assistant/chunk" -> {
@@ -725,6 +737,14 @@ data class RawSessionEvent(val type: String, val seq: Int, val time: Double, val
         .filter { it["type"]?.stringValue == "text" }
         .mapNotNull { it["text"]?.stringValue }
         .joinToString("")
+
+    private fun fileBlocks(value: JsonValue?): List<PresentedFile> = value?.arrayValue.orEmpty().mapNotNull { block ->
+        if (block["type"]?.stringValue != "file") return@mapNotNull null
+        val file = block["attachment"] ?: return@mapNotNull null
+        val id = file["attachmentId"]?.stringValue?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+        PresentedFile(attachmentId = id, name = file["name"]?.stringValue,
+            bytes = file["bytes"]?.doubleValue?.toLong())
+    }
 
     private fun imageBlocks(value: JsonValue?): List<GatewayImageAttachment> = value?.arrayValue.orEmpty().mapNotNull { block ->
         if (block["type"]?.stringValue != "image") return@mapNotNull null

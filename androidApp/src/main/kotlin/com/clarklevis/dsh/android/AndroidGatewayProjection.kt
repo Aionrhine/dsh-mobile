@@ -467,7 +467,7 @@ internal class AndroidGatewayProjection(
             "paired", "attachment" -> Unit
             else -> {
                 controlSnapshot = mobileStore.acceptFrame(rawJson)
-                if (frame.kind == "sent") assistantStream.selectSession(controlSnapshot.selectedSessionId)
+                if (frame.kind == "sent" && frame.sessionId == controlSnapshot.selectedSessionId) assistantStream.selectSession(controlSnapshot.selectedSessionId)
             }
         }
         if (frame.kind in setOf("sessions", "session-archives", "session-archived", "workspaces")) {

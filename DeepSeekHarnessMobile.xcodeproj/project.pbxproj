@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		CF206000000000000000001 /* FileUploadController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF206000000000000000002 /* FileUploadController.swift */; };
 		CF205000000000000000001 /* DebugHistoryScrollMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF205000000000000000002 /* DebugHistoryScrollMetrics.swift */; };
 		CF205000000000000000011 /* HistoryPresentationAdmission.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF205000000000000000012 /* HistoryPresentationAdmission.swift */; };
 		CF204000000000000000001 /* RealSessionScrollPerformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF204000000000000000002 /* RealSessionScrollPerformanceTests.swift */; };
@@ -122,6 +123,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		CF206000000000000000002 /* FileUploadController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileUploadController.swift; sourceTree = "<group>"; };
 		CF205000000000000000002 /* DebugHistoryScrollMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugHistoryScrollMetrics.swift; sourceTree = "<group>"; };
 		CF205000000000000000012 /* HistoryPresentationAdmission.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryPresentationAdmission.swift; sourceTree = "<group>"; };
 		CF204000000000000000002 /* RealSessionScrollPerformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealSessionScrollPerformanceTests.swift; sourceTree = "<group>"; };
@@ -269,6 +271,7 @@
 				A0C0FFEE0000000000000004 /* ConversationTimeline.swift */,
 				A0C0FFEE0000000000000012 /* MessageQuote.swift */,
 				E61E231D0CD3E07857F861B0 /* GatewayClient.swift */,
+				CF206000000000000000002 /* FileUploadController.swift */,
 				954FCEA4A6E71F3D1A22BB53 /* GatewayModels.swift */,
 				CA11E000000000000000000A /* L10n.swift */,
 				12863E736F832D8F502B94A0 /* Theme.swift */,
@@ -706,6 +709,7 @@
 				A0C0FFEE0000000000000011 /* MessageQuote.swift in Sources */,
 				AB0180000000000000000001 /* GenuiBlockView.swift in Sources */,
 				80E777AC0855635BC3D12EA7 /* GatewayClient.swift in Sources */,
+				CF206000000000000000001 /* FileUploadController.swift in Sources */,
 				AFAE90EEB4462AD84169D356 /* GatewayModels.swift in Sources */,
 				CA11E0000000000000000009 /* L10n.swift in Sources */,
 				991D4FD90B81F84A0B8B79AD /* Theme.swift in Sources */,
@@ -976,7 +980,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 29;
+				CURRENT_PROJECT_VERSION = 31;
 				DEVELOPMENT_TEAM = "$(LOCAL_DEVELOPMENT_TEAM)";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AgentLiveActivityWidget/Info.plist;
@@ -986,7 +990,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.7.8;
+				MARKETING_VERSION = 1.7.10;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(LOCAL_BUNDLE_IDENTIFIER).AgentLiveActivityWidget";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -1003,7 +1007,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 29;
+				CURRENT_PROJECT_VERSION = 31;
 				DEVELOPMENT_TEAM = T58RY5HUA7;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AgentLiveActivityWidget/Info.plist;
@@ -1013,7 +1017,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.7.8;
+				MARKETING_VERSION = 1.7.10;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lichaofan.dshmobile.AgentLiveActivityWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;

@@ -15,7 +15,8 @@ import android.text.style.MetricAffectingSpan
 import android.text.style.URLSpan
 import android.util.TypedValue
 import android.view.View
-import androidx.appcompat.widget.AppCompatTextView
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -42,6 +43,8 @@ import io.noties.markwon.core.CorePlugin
 import io.noties.markwon.core.MarkwonTheme
 import io.noties.markwon.core.spans.CodeSpan
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
+import io.noties.markwon.LinkResolverDef
+import io.noties.markwon.MarkwonConfiguration
 import io.noties.markwon.ext.tables.TableAwareMovementMethod
 import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.ext.tables.TableTheme
@@ -186,7 +189,7 @@ private object DshMarkdownTextApplier {
 }
 
 @Composable
-private fun dshMarkdownPalette(compact: Boolean): DshMarkdownPalette {
+internal fun dshMarkdownPalette(compact: Boolean): DshMarkdownPalette {
     val density = LocalDensity.current
     val colors = MaterialTheme.colorScheme
     return DshMarkdownPalette(
@@ -243,7 +246,8 @@ internal fun DshLazyMarkdownText(
     markdown: String,
     modifier: Modifier = Modifier,
     knownFiles: List<PresentedFile> = emptyList(),
-    onOpenFile: ((String) -> Unit)? = null
+    onOpenFile: ((String) -> Unit)? = null,
+    copyMarkdown: String = markdown
 ) {
     val context = LocalContext.current.applicationContext
     val palette = dshMarkdownPalette(compact = false)
@@ -273,6 +277,7 @@ internal fun DshLazyMarkdownText(
         rendered = presented.rendered,
         knownFiles = knownFiles,
         onOpenFile = onOpenFile,
+        copyMarkdown = copyMarkdown,
         palette = palette,
         textSizeSp = 16f,
         lineSpacingExtra = with(density) { 4.dp.toPx() },
@@ -289,7 +294,8 @@ private fun DshRenderedMarkdownText(
     lineSpacingExtra: Float,
     modifier: Modifier,
     knownFiles: List<PresentedFile> = emptyList(),
-    onOpenFile: ((String) -> Unit)? = null
+    onOpenFile: ((String) -> Unit)? = null,
+    copyMarkdown: String = markdown
 ) {
     val context = LocalContext.current.applicationContext
     val textSizePx = with(LocalDensity.current) { textSizeSp.sp.toPx() }
@@ -297,6 +303,12 @@ private fun DshRenderedMarkdownText(
         DshMarkdownTextApplier.get(context, palette)
     }
     val knownFilePaths = remember(knownFiles) { knownFiles.map { it.path } }
+    var messageMenuAnchor by remember { mutableStateOf<androidx.compose.ui.unit.IntOffset?>(null) }
+    var selectionText by remember { mutableStateOf<String?>(null) }
+    selectionText?.let { source ->
+        DshMarkdownSelectionPage(source) { selectionText = null }
+    }
+    Box {
     AndroidView(
         factory = { viewContext ->
             DshMarkdownTextView(viewContext).apply {
@@ -311,8 +323,18 @@ private fun DshRenderedMarkdownText(
             // Opt in to AndroidView reuse inside LazyColumn. update 会在下一次测量前写入新内容。
             textView.tag = null
             textView.onOpenFile = null
+            textView.resetTextInteraction()
+            textView.onSelectText = null
+            textView.plainTextProvider = null
+            textView.onMessageMenuRequested = null
         },
-        onRelease = { textView -> textView.onOpenFile = null },
+        onRelease = { textView ->
+            textView.onOpenFile = null
+            textView.resetTextInteraction()
+            textView.onSelectText = null
+            textView.plainTextProvider = null
+            textView.onMessageMenuRequested = null
+        },
         update = { textView ->
             if (textView.textSize != textSizePx) {
                 textView.setTextSize(TypedValue.COMPLEX_UNIT_PX, textSizePx)
@@ -324,8 +346,12 @@ private fun DshRenderedMarkdownText(
             textView.setLinkTextColor(palette.linkColor)
             // 回调更新不改变文本排版，span 只引用所属 View，避免缓存捕获旧会话。
             textView.onOpenFile = onOpenFile
+            textView.onMessageMenuRequested = { messageMenuAnchor = it }
+            textView.onSelectText = { selectionText = copyMarkdown }
+            textView.plainTextProvider = { markdownPlainText(markwon.parse(copyMarkdown)) }
             val nextTag = MarkdownRenderTag(markdown, palette, knownFilePaths, onOpenFile != null)
             if (textView.tag == nextTag) return@AndroidView
+            textView.resetTextInteraction()
             if (onOpenFile != null) {
                 val linked = SpannableStringBuilder(rendered)
                 fun addFileSpan(start: Int, end: Int, path: String) {
@@ -362,6 +388,16 @@ private fun DshRenderedMarkdownText(
         },
         modifier = modifier.fillMaxWidth()
     )
+    run {
+        DshPointMenu(messageMenuAnchor, { messageMenuAnchor = null }, Modifier.width(180.dp)) {
+            DshMenuItem(text = { androidx.compose.material3.Text(com.clarklevis.dsh.android.localization.appText("复制")) },
+                onClick = { messageMenuAnchor = null; context.copyMarkdownText(markdownPlainText(markwon.parse(copyMarkdown))) })
+            DshMenuItem(text = { androidx.compose.material3.Text(com.clarklevis.dsh.android.localization.appText("选择文字")) },
+                onClick = { messageMenuAnchor = null; selectionText = copyMarkdown })
+        }
+    }
+    }
+
 }
 
 /**
@@ -395,6 +431,16 @@ internal fun buildDshMarkwon(
         .usePlugin(CorePlugin.create())
         .usePlugin(
             object : AbstractMarkwonPlugin() {
+                override fun configureConfiguration(builder: MarkwonConfiguration.Builder) {
+                    val fallback = LinkResolverDef()
+                    builder.linkResolver { view, link ->
+                        // 表格单元格独立保存 span，无法通过正文的 URLSpan 遍历替换。
+                        val callback = (view as? DshMarkdownTextView)?.onOpenFile
+                        val path = ConversationFileReferences.filePath(link)
+                        if (callback != null && path != null) callback(path) else fallback.resolve(view, link)
+                    }
+                }
+
                 override fun configureParser(builder: Parser.Builder) {
                     builder.customBlockParserFactory(DshTableBlockParserFactory())
                 }
@@ -427,6 +473,7 @@ internal fun buildDshMarkwon(
         )
         .usePlugin(HtmlPlugin.create())
         .usePlugin(MovementMethodPlugin.create(TableAwareMovementMethod.create()))
+        .usePlugin(DshMarkdownCopyPlugin((44 * context.resources.displayMetrics.density).toInt()))
         .build()
 }
 
@@ -453,12 +500,32 @@ internal class DshInlineCodeSpan(
     }
 }
 
-internal class DshMarkdownTextView(context: Context) : AppCompatTextView(context) {
+internal class DshMarkdownTextView(context: Context) : DshSelectableMarkdownView(context) {
     internal var onOpenFile: ((String) -> Unit)? = null
 
     override fun onDraw(canvas: Canvas) {
+        if (isSelectionPage) drawSelectionCodeCards(canvas)
         drawInlineCodeBackgrounds(canvas)
         super.onDraw(canvas)
+    }
+
+    /** 与 TextView.onDraw 使用相同的正文原点及裁剪；Canvas 已由 View 处理过滚动。 */
+    internal fun withTextBackgroundCanvas(canvas: Canvas, draw: () -> Unit) {
+        val saveCount = canvas.save()
+        try {
+            val maxScrollY = (layout?.height ?: 0) - (height - compoundPaddingTop - compoundPaddingBottom)
+            canvas.clipRect(
+                (compoundPaddingLeft + scrollX).toFloat(),
+                if (scrollY == 0) 0f else (extendedPaddingTop + scrollY).toFloat(),
+                (width - compoundPaddingRight + scrollX).toFloat(),
+                (height + scrollY - if (scrollY == maxScrollY) 0 else extendedPaddingBottom).toFloat()
+            )
+            // 不再减 scrollX / scrollY，否则背景会以正文的两倍速度移动。
+            canvas.translate(compoundPaddingLeft.toFloat(), totalPaddingTop.toFloat())
+            draw()
+        } finally {
+            canvas.restoreToCount(saveCount)
+        }
     }
 
     private fun drawInlineCodeBackgrounds(canvas: Canvas) {
@@ -467,15 +534,11 @@ internal class DshMarkdownTextView(context: Context) : AppCompatTextView(context
         val spans = spanned.getSpans(0, spanned.length, DshInlineCodeSpan::class.java)
         if (spans.isEmpty()) return
 
-        val saveCount = canvas.save()
-        canvas.translate(
-            (compoundPaddingLeft - scrollX).toFloat(),
-            (extendedPaddingTop - scrollY).toFloat()
-        )
-        spans.forEach { span ->
-            drawInlineCodeSpan(canvas, textLayout, spanned, span)
+        withTextBackgroundCanvas(canvas) {
+            spans.forEach { span ->
+                drawInlineCodeSpan(canvas, textLayout, spanned, span)
+            }
         }
-        canvas.restoreToCount(saveCount)
     }
 
     private fun drawInlineCodeSpan(

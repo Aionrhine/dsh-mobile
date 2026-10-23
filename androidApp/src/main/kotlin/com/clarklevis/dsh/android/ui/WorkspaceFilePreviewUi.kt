@@ -27,8 +27,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -214,51 +212,48 @@ internal fun WorkspaceFilePreviewSheet(
             isAppearanceLightNavigationBars = !dark
         )
     ) {
-        Box(Modifier.fillMaxWidth().fillMaxHeight(0.94f).testTag("workspace-file-preview-sheet")) {
-            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
-                content(PaddingValues(top = headerHeight))
-            }
-            overlay(PaddingValues(top = headerHeight))
-            Row(
-                modifier = Modifier.fillMaxWidth()
-                    .onSizeChanged { headerHeight = with(density) { it.height.toDp() } }
-                    .background(MaterialTheme.colorScheme.surface)
-                    .testTag("workspace-preview-header")
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                WorkspaceSheetIconButton(R.drawable.ic_close, appText("关闭文件预览"), closeWithAnimation)
-                Text(
-                    fileName,
-                    modifier = Modifier.weight(1f).testTag("workspace-preview-title"),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.Center
-                )
-                Box {
-                    WorkspaceSheetIconButton(R.drawable.ic_more_horizontal, appText("文件菜单"), { showsMenu = true })
-                    val menuShape = RoundedCornerShape(28.dp)
-                    DropdownMenu(
-                        expanded = showsMenu,
-                        onDismissRequest = { showsMenu = false },
-                        modifier = Modifier.width(232.dp).testTag("workspace-preview-menu"),
-                        offset = DpOffset(0.dp, 8.dp),
-                        shape = menuShape,
-                        containerColor = if (dark) androidx.compose.ui.graphics.Color(0xFF252528) else androidx.compose.ui.graphics.Color(0xFFF7F7F7),
-                        tonalElevation = 0.dp,
-                        shadowElevation = 12.dp
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text(appText("保存"), fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurface) },
-                            trailingIcon = {
-                                Icon(painterResource(R.drawable.ic_save_to_files), appText("保存到文件"), Modifier.size(20.dp),
-                                    tint = MaterialTheme.colorScheme.onSurface)
-                            },
-                            contentPadding = PaddingValues(horizontal = 20.dp),
-                            enabled = onSave != null,
-                            onClick = { showsMenu = false; onSave?.invoke() }
-                        )
+        DshMenuColumnHost {
+            Box(Modifier.fillMaxWidth().fillMaxHeight(0.94f).testTag("workspace-file-preview-sheet")) {
+                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+                    content(PaddingValues(top = headerHeight))
+                }
+                overlay(PaddingValues(top = headerHeight))
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .onSizeChanged { headerHeight = with(density) { it.height.toDp() } }
+                        .background(MaterialTheme.colorScheme.surface)
+                        .testTag("workspace-preview-header")
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    WorkspaceSheetIconButton(R.drawable.ic_close, appText("关闭文件预览"), closeWithAnimation)
+                    Text(
+                        fileName,
+                        modifier = Modifier.weight(1f).testTag("workspace-preview-title"),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center
+                    )
+                    Box {
+                        WorkspaceSheetIconButton(R.drawable.ic_more_horizontal, appText("文件菜单"), { showsMenu = true })
+                        val menuShape = RoundedCornerShape(28.dp)
+                        DshMenu(
+                            expanded = showsMenu,
+                            onDismissRequest = { showsMenu = false },
+                            modifier = Modifier.width(232.dp).testTag("workspace-preview-menu"),
+                            offset = DpOffset(0.dp, 8.dp)) {
+                            DshMenuItem(
+                                text = { Text(appText("保存"), fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurface) },
+                                trailingIcon = {
+                                    Icon(painterResource(R.drawable.ic_save_to_files), appText("保存到文件"), Modifier.size(20.dp),
+                                        tint = MaterialTheme.colorScheme.onSurface)
+                                },
+                                contentPadding = PaddingValues(horizontal = 20.dp),
+                                enabled = onSave != null,
+                                onClick = { showsMenu = false; onSave?.invoke() }
+                            )
+                        }
                     }
                 }
             }

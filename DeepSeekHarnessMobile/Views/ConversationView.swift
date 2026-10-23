@@ -1,6 +1,7 @@
 import SwiftUI
 import MarkdownUI
 import PhotosUI
+import UniformTypeIdentifiers
 import UIKit
 import DeepSeekHarnessShared
 
@@ -357,9 +358,15 @@ struct ConversationView: View {
     @ObservedObject private var quoteInbox = ConversationQuoteInbox.shared
     @ObservedObject private var selectionOffer = ConversationSelectionObserver.shared
     @State private var quotesExpanded = false
+    @State private var memberDrafts: [String: String] = [:]
+    @State private var memberImages: [String: [GatewayOutgoingImage]] = [:]
     @State private var voiceSnapshot: SharedVoiceInputSnapshot?
     @State private var voiceTouchActive = false
     @State private var voiceToast: String?
+    @State private var showsPhotoPicker = false
+    @State private var showsFilePicker = false
+    @State private var showsFileUploadUpgradeAlert = false
+    @State private var filePickerSessionID: String?
     @State private var selectedPhotoItems: [PhotosPickerItem] = []
     @State private var pendingImages: [GatewayOutgoingImage] = []
     @State private var isImportingImages = false
@@ -397,6 +404,10 @@ struct ConversationView: View {
         ZStack {
             conversationBackground.ignoresSafeArea()
             VStack(spacing: 0) {
+                if store.isViewingTeamMember {
+                    Text("团队 › \(store.selectedSession?.title ?? "成员")" + (store.selectedMemberCanSend ? "" : " · 只读"))
+                        .appFont(.caption).foregroundStyle(.secondary).lineLimit(1).padding(.bottom, 4)
+                }
                 Picker("视图", selection: $activeView) {
                     Text("对话").tag(0)
                     Text("轨迹").tag(1)
@@ -828,6 +839,13 @@ struct ConversationView: View {
             store.leaveSessionAgentPreset()
         }
         .onChange(of: store.selectedSessionId) { previous, current in
+            if let previous {
+                memberDrafts[previous] = draft
+                memberImages[previous] = pendingImages
+            }
+            draft = current.flatMap { memberDrafts[$0] } ?? ""
+            pendingImages = current.flatMap { memberImages[$0] } ?? []
+            selectedPhotoItems = []
             store.voiceInput.open(context: current ?? "new-session", draft: draft)
             if previous != nil && current == nil { dismissConversation() }
         }
@@ -1046,6 +1064,60 @@ struct ConversationView: View {
 
     private var voiceState: SharedVoiceInputSnapshot { voiceSnapshot ?? store.voiceInput.state }
 
+    private var attachmentMenu: some View {
+        Menu {
+            Button { showsPhotoPicker = true } label: {
+                Label("图片", systemImage: "photo")
+            }
+            .disabled(!store.supportsImages || pendingImages.count >= 20 || isImportingImages)
+            Button {
+                guard store.fileUploads.supported else {
+                    showsFileUploadUpgradeAlert = true
+                    return
+                }
+                filePickerSessionID = store.selectedSessionId
+                showsFilePicker = true
+            } label: {
+                Label("文件", systemImage: "doc")
+            }
+            .disabled(store.isViewingTeamMember || store.fileUploads.drafts.count >= 20 || store.fileUploads.preparing)
+        } label: {
+            Image(systemName: "plus.circle")
+                .appFont(.system(size: 21, weight: .regular))
+                // SF Symbol 自身含侧边留白，补偿后与语音圆按钮保持相同可见边距。
+                .offset(x: -2)
+                // 可见图标贴齐输入框的内容边缘，点击区域仍保留 32pt。
+                .frame(width: 32, height: 32, alignment: .leading)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .disabled(store.messageSubmissionPending)
+        .accessibilityLabel("添加附件")
+        .photosPicker(isPresented: $showsPhotoPicker, selection: $selectedPhotoItems,
+            maxSelectionCount: max(1, 20 - pendingImages.count), matching: .images)
+        .fileImporter(isPresented: $showsFilePicker, allowedContentTypes: [.item], allowsMultipleSelection: true,
+            onCompletion: importPickedFiles)
+        .alert("请升级网关", isPresented: $showsFileUploadUpgradeAlert) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text("当前网关不支持文件上传，请升级到支持文件上传的 Mobile Gateway，并重新连接。")
+        }
+    }
+
+    private func importPickedFiles(_ result: Result<[URL], Error>) {
+        store.voiceInput.setVoiceMode(false)
+        guard store.selectedSessionId == filePickerSessionID else { return }
+        switch result {
+        case .success(let urls):
+            Task {
+                guard await store.ensureFileUploadSession() else { return }
+                store.fileUploads.select(sessionID: store.selectedSessionId, allowed: !store.isViewingTeamMember)
+                await store.fileUploads.importFiles(urls)
+            }
+        case .failure(let error): store.lastError = error.localizedDescription
+        }
+    }
+
     private var composerCard: some View {
         // Erased before the change handlers attach. The chrome chain below is
         // deep enough that instantiating this type overflows the main thread
@@ -1054,6 +1126,13 @@ struct ConversationView: View {
         .onChange(of: store.messageAcceptedRevision) { _, _ in
             guard let submitted = submittedQueueDraft else { return }
             defer { submittedQueueDraft = nil; submittedQueueImages = [] }
+            if let target = submittedQueueSessionID, target != store.selectedSessionId {
+                if memberDrafts[target] == submitted, memberImages[target] == submittedQueueImages {
+                    memberDrafts[target] = ""
+                    memberImages[target] = []
+                }
+                return
+            }
             guard (submittedQueueSessionID == nil || submittedQueueSessionID == store.selectedSessionId),
                   draft == submitted, pendingImages == submittedQueueImages else { return }
             draft = ""
@@ -1065,17 +1144,21 @@ struct ConversationView: View {
         }
         .onChange(of: store.queueRevision) { _, _ in restoreQueuedDraft() }
         .onChange(of: store.selectedSessionId) { _, _ in
+            store.fileUploads.select(sessionID: store.selectedSessionId, allowed: !store.isViewingTeamMember)
             queueExpanded = false
             quotesExpanded = false
             quoteInbox.clear()
             selectionOffer.clear()
             restoreQueuedDraft()
         }
-        .onAppear { restoreQueuedDraft() }
+        .onAppear {
+            store.fileUploads.select(sessionID: store.selectedSessionId, allowed: !store.isViewingTeamMember)
+            restoreQueuedDraft()
+        }
         .onChange(of: selectedPhotoItems) { _, items in
             guard !items.isEmpty else { return }
             store.voiceInput.setVoiceMode(false)
-            Task { await importPhotos(items) }
+            Task { await importPhotos(items, targetSessionID: store.selectedSessionId) }
         }
         .onChange(of: draft) { _, value in
             store.voiceInput.draftChanged(value)
@@ -1129,6 +1212,8 @@ struct ConversationView: View {
             if !pendingImages.isEmpty {
                 pendingImageStrip
             }
+            if store.fileUploads.preparing { ProgressView("正在准备文件…").appFont(.caption) }
+            if !store.fileUploads.drafts.isEmpty { pendingFileStrip }
             if let pending = voiceState.pendingTranscript {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(pending).appFont(.caption).lineLimit(3)
@@ -1162,34 +1247,16 @@ struct ConversationView: View {
     /// The photo, permission, model, context and send controls.
     private var composerControlsRow: some View {
             HStack(spacing: 7) {
-                PhotosPicker(
-                    selection: $selectedPhotoItems,
-                    maxSelectionCount: max(1, 20 - pendingImages.count),
-                    matching: .images
-                ) {
-                    Group {
-                        if isImportingImages {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Image("ComposerImage")
-                                .renderingMode(.template)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 22, height: 22)
-                        }
-                    }
-                    .frame(width: 32, height: 32)
-                    .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .disabled(!store.supportsImages || pendingImages.count >= 20 || isImportingImages)
-                .accessibilityLabel(store.supportsImages ? String(localized: "添加图片") : String(localized: "当前网关不支持图片"))
+                attachmentMenu
 
-                permissionControl
+                if !store.isViewingTeamMember { permissionControl }
 
                 Spacer(minLength: 2)
 
-                modelControl
+                if !store.isViewingTeamMember { modelControl }
+                else {
+                    Text(store.selectedSession?.title ?? "成员会话").appFont(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
 
                 Button { showsContextUsage = true } label: {
                     if contextIsLoading && store.selectedContextSnapshot == nil {
@@ -1266,9 +1333,9 @@ struct ConversationView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(
-                    showsSessionStopButton
+                    !store.selectedMemberCanSend || (showsSessionStopButton
                         ? store.isCancellingSelectedSession
-                        : (composerHasContent && (store.sessionAgentPreset.blocksSending || store.waitingForNewSession || isImportingImages || store.commandSubmissionPending || store.messageSubmissionPending))
+                        : (composerHasContent && (store.sessionAgentPreset.blocksSending || store.waitingForNewSession || isImportingImages || store.fileUploads.preparing || (!store.fileUploads.drafts.isEmpty && !store.fileUploads.canSend) || store.commandSubmissionPending || store.messageSubmissionPending)))
                 )
                 .opacity(
                     showsSessionStopButton
@@ -1503,10 +1570,39 @@ struct ConversationView: View {
         !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !pendingImages.isEmpty
             || !quoteInbox.isEmpty
+            || !store.fileUploads.drafts.isEmpty
+            || store.fileUploads.preparing
     }
 
     private var showsSessionStopButton: Bool {
-        store.supportsSessionCancel && store.selectedSession?.isRunning == true && !composerHasContent
+        store.selectedMemberCanSend && store.supportsSessionCancel && store.selectedSession?.isRunning == true && !composerHasContent
+    }
+
+    private var pendingFileStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(store.fileUploads.drafts, id: \.id) { file in
+                    PendingFileCard(
+                        file: file,
+                        status: uploadStatus(file),
+                        enabled: !store.messageSubmissionPending,
+                        onRetry: { store.fileUploads.retry(file.id) },
+                        onRemove: { store.fileUploads.remove(file.id) }
+                    )
+                }
+            }
+        }
+    }
+
+    private func uploadStatus(_ file: SharedUploadDraft) -> String {
+        switch file.status {
+        case "waiting": String(localized: "等待上传")
+        case "opening": String(localized: "开始上传…")
+        case "uploading": "\(String(localized: "上传中")) \(file.size > 0 ? file.confirmedBytes * 100 / file.size : 0)%"
+        case "committing": String(localized: "处理中…")
+        case "ready": "\(String(localized: "可发送")) · \(ByteCountFormatter.string(fromByteCount: file.size, countStyle: .file))"
+        default: String(localized: String.LocalizationValue(file.error ?? "上传失败"))
+        }
     }
 
     /// Offers the text currently selected in a message. Nothing is drawn over
@@ -1659,20 +1755,20 @@ struct ConversationView: View {
     }
 
     @MainActor
-    private func importPhotos(_ items: [PhotosPickerItem]) async {
+    private func importPhotos(_ items: [PhotosPickerItem], targetSessionID: String?) async {
         isImportingImages = true
         defer {
             isImportingImages = false
-            selectedPhotoItems = []
+            if store.selectedSessionId == targetSessionID { selectedPhotoItems = [] }
         }
         var imported: [GatewayOutgoingImage] = []
         for item in items.prefix(max(0, 20 - pendingImages.count)) {
             do {
-                guard let data = try await item.loadTransferable(type: Data.self),
-                      let mediaType = Self.imageMediaType(for: data) else {
+                guard let data = try await item.loadTransferable(type: Data.self) else {
                     store.lastError = String(localized: "所选图片不是受支持的 PNG、JPEG、WebP 或 GIF。")
                     continue
                 }
+                let mediaType = Self.imageMediaType(for: data) ?? "image/heic"
                 let prepared = try await Task.detached(priority: .userInitiated) {
                     try GatewayImagePreprocessor.prepare(data: data, mediaType: mediaType)
                 }.value
@@ -1681,16 +1777,20 @@ struct ConversationView: View {
                 store.lastError = String(localized: "image.process.failed", defaultValue: "处理所选图片失败：\(error.localizedDescription)")
             }
         }
-        let existingBytes = pendingImages.reduce(0) { $0 + $1.data.count }
+        var destination = store.selectedSessionId == targetSessionID ? pendingImages : targetSessionID.flatMap { memberImages[$0] } ?? []
+        let existingBytes = destination.reduce(0) { $0 + $1.data.count }
         var acceptedBytes = existingBytes
-        for image in imported where !pendingImages.contains(where: { $0.mediaType == image.mediaType && $0.data == image.data }) {
+        for image in imported where !destination.contains(where: { $0.mediaType == image.mediaType && $0.data == image.data }) {
+            guard destination.count < 20 else { break }
             guard acceptedBytes + image.data.count <= 100 * 1024 * 1024 else {
                 store.lastError = String(localized: "一条消息中的图片总大小不能超过 100 MiB。")
                 break
             }
-            pendingImages.append(image)
+            destination.append(image)
             acceptedBytes += image.data.count
         }
+        if store.selectedSessionId == targetSessionID { pendingImages = destination }
+        else if let targetSessionID { memberImages[targetSessionID] = destination }
     }
 
     private static func imageMediaType(for data: Data) -> String? {
@@ -2133,19 +2233,8 @@ struct ConversationView: View {
                 return [ConversationViewportEntry(
                     id: entry.id,
                     revision: revision,
-                    userMessage: .init(
-                        text: item.text,
-                        images: item.images.map { image in
-                            .init(
-                                id: image.id,
-                                data: store.imageData(for: image.id),
-                                width: image.width,
-                                height: image.height,
-                                name: image.name
-                            )
-                        },
-                        showsCopyButton: entry.showsCopyButton
-                    )
+                    userMessage: .init(item: item, imageData: { store.imageData(for: $0) },
+                        showsCopyButton: entry.showsCopyButton, onOpenFile: uploadedFileOpener())
                 )]
             }
             switch entry.content {
@@ -2157,7 +2246,8 @@ struct ConversationView: View {
                         item: item,
                         showsCopyButton: entry.showsCopyButton,
                         imageData: { store.imageData(for: $0) },
-                        onOpenFile: conversationFileOpener()
+                        onOpenFile: conversationFileOpener(),
+                        onOpenUploadedFile: uploadedFileOpener()
                     )),
                     // Completed responses are immutable for this revision.
                     // The viewport measures their SwiftUI root directly before
@@ -2270,6 +2360,15 @@ struct ConversationView: View {
             )
         case .toolDetail(let tool):
             ConversationProcessToolDetailRow(tool: tool)
+        }
+    }
+
+    private func uploadedFileOpener() -> (PresentedFile) -> Void {
+        let gatewayID = store.gatewayLocalID
+        let sessionID = store.selectedSessionId
+        return { file in
+            guard let sessionID else { return }
+            store.openUploadedFile(gatewayID: gatewayID, sessionID: sessionID, file: file)
         }
     }
 
@@ -2644,8 +2743,7 @@ private struct ConversationDefaultModelSummary: View {
             } else {
                 Text(title)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-                    .allowsTightening(true)
+                    .truncationMode(.tail)
                 if let effortTitle {
                     Text(effortTitle)
                         .appFont(.caption2.weight(.semibold))
@@ -2753,8 +2851,7 @@ private struct ConversationModelMenuLabel: View {
             } else {
                 Text(title)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-                    .allowsTightening(true)
+                    .truncationMode(.tail)
                     .layoutPriority(1)
                 if let effortTitle {
                     Text(effortTitle)
@@ -4352,6 +4449,7 @@ struct ConversationRow: View {
     let showsCopyButton: Bool
     let imageData: (String) -> Data?
     var onOpenFile: ((String) -> Void)? = nil
+    var onOpenUploadedFile: ((PresentedFile) -> Void)? = nil
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -4361,6 +4459,9 @@ struct ConversationRow: View {
                 VStack(alignment: .trailing, spacing: 8) {
                     if !item.images.isEmpty {
                         AttachmentImageGrid(attachments: item.images, imageData: imageData)
+                    }
+                    ForEach(item.files.filter { $0.attachmentId != nil }, id: \.attachmentId) { file in
+                        UploadedFileCard(file: file) { onOpenUploadedFile?(file) }
                     }
                     if !item.text.isEmpty {
                         Text(item.text).appFont(.body)
@@ -4410,7 +4511,7 @@ struct ConversationRow: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 if showsCopyButton && !item.text.isEmpty {
-                    CopyMessageButton(text: item.text)
+                    CopyMessageButton(text: ParsedMarkdownCache.document(for: item.text).renderPlainText())
                         .padding(.bottom, 8)
                 }
             }
@@ -4484,6 +4585,7 @@ struct ConversationRow: View {
 
 struct CopyMessageButton: View {
     let text: String
+    var isCode = false
     @State private var copied = false
 
     var body: some View {
@@ -4508,11 +4610,11 @@ struct CopyMessageButton: View {
                 }
             }
                 .foregroundStyle(copied ? DSHColor.ocean : Color.secondary)
-                .frame(width: 16, height: 26)
+                .frame(width: isCode ? 44 : 16, height: isCode ? 44 : 26)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(copied ? String(localized: "已复制") : String(localized: "复制正文"))
+        .accessibilityLabel(copied ? String(localized: "已复制") : String(localized: isCode ? "复制代码" : "复制正文"))
     }
 }
 
@@ -4654,6 +4756,10 @@ struct MarkdownContent: View {
     }
 
     var body: some View {
+        renderedMarkdown
+    }
+
+    private var renderedMarkdown: some View {
         Markdown(PreparedMarkdownCache.document(for: text, filePaths: knownFiles.map(\.path)))
             .environment(\.openURL, OpenURLAction { url in
                 guard let onOpenFile else { return .systemAction }
@@ -4695,6 +4801,7 @@ struct MarkdownContent: View {
 
 }
 
+
 /// Reuses only render products; callbacks, font sizes and themes stay on the
 /// current view. File order owns the synthetic URL indices and belongs in the key.
 enum PreparedMarkdownCache {
@@ -4714,7 +4821,7 @@ enum PreparedMarkdownCache {
             let padded = filePaths.isEmpty ? InlineCodePadding.apply(to: source) : source
             var destinations: [String: String] = [:]
             for (index, path) in filePaths.enumerated() {
-                let destination = "dsh-file-reference:///\(index)"
+                let destination = "dsh-file-reference:///(index)"
                 destinations[path] = destination
                 let name = path.replacingOccurrences(of: "\\", with: "/")
                     .split(separator: "/").last.map(String.init) ?? path
@@ -4871,10 +4978,12 @@ private extension Theme {
             }
             .codeBlock { configuration in
                 VStack(alignment: .leading, spacing: 6) {
-                    if let language = configuration.language, !language.isEmpty {
-                        Text(language.uppercased())
+                    HStack {
+                        Text(configuration.language?.isEmpty == false ? configuration.language!.uppercased() : String(localized: "代码"))
                             .appFont(.caption2.monospaced())
                             .foregroundStyle(.secondary)
+                        Spacer(minLength: 12)
+                        CopyMessageButton(text: configuration.content, isCode: true)
                     }
                     ScrollView(.horizontal, showsIndicators: false) {
                         configuration.label
@@ -4890,7 +4999,8 @@ private extension Theme {
                     // vertical size when the hosting cell is self-sized.
                     .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(compact ? 10 : 12)
+                .padding(.horizontal, compact ? 10 : 12)
+                .padding(.bottom, compact ? 10 : 12)
                 .background(Color(uiColor: .secondarySystemFill))
                 .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                 .markdownMargin(top: 2, bottom: compact ? 6 : 10)
@@ -5035,5 +5145,527 @@ enum JSONSyntaxHighlighter {
         var result = AttributedString(value)
         result.foregroundColor = color
         return result
+    }
+}
+
+/// 与更多菜单等大的圆形团队入口，保持独立的弹层锚点。
+struct TeamNavigationEntry: View {
+    @ObservedObject var store: AppStore
+    @State private var showsSheet = false
+    @State private var menuIdentity = UUID()
+
+    var body: some View {
+        HStack(spacing: 0) {
+            if store.teamSnapshot.visible {
+                TeamCachedMenuButton(
+                    members: store.teamSnapshot.members,
+                    title: store.teamSessionTitle,
+                    selectedID: store.selectedSessionId,
+                    select: { member in Task { await store.selectTeamMember(member) } },
+                    showDetails: {
+                        // 非动画退出 zoom 后重建源按钮，清除系统保留的源快照隐藏状态。
+                        menuIdentity = UUID()
+                        showsSheet = true
+                    }
+                )
+                .id(menuIdentity)
+                .frame(width: 44, height: 44)
+            }
+        }
+        // 面板由稳定容器呈现，不随入口按钮重建而销毁。
+        .sheet(isPresented: $showsSheet) {
+            TeamContentSheet { member in
+                Task { await store.selectTeamMember(member) }
+            }.environmentObject(store)
+        }
+    }
+}
+
+/// 提前布局完整成员行，避免系统 Menu 的 subtitle 独立延迟入场。
+private struct TeamCachedMenuButton: UIViewRepresentable {
+    let members: [MobileTeamMember]
+    let title: String
+    let selectedID: String?
+    let select: (MobileTeamMember) -> Void
+    let showDetails: () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeUIView(context: Context) -> UIButton {
+        var configuration: UIButton.Configuration
+        if #available(iOS 26.0, *) { configuration = .glass() }
+        else { configuration = .plain() }
+        configuration.cornerStyle = .capsule
+        configuration.contentInsets = .zero
+        configuration.image = Self.glyph
+        configuration.baseForegroundColor = .label
+        let button = UIButton(configuration: configuration)
+        button.layer.cornerRadius = 22
+        button.clipsToBounds = true
+        button.accessibilityLabel = "查看智能体团队"
+        button.accessibilityIdentifier = "team-entry"
+        button.addTarget(context.coordinator, action: #selector(Coordinator.open(_:)), for: .touchUpInside)
+        updateUIView(button, context: context)
+        return button
+    }
+
+    func updateUIView(_ button: UIButton, context: Context) {
+        let coordinator = context.coordinator
+        coordinator.select = select
+        coordinator.showDetails = showDetails
+        guard coordinator.members != members || coordinator.title != title || coordinator.selectedID != selectedID else { return }
+        coordinator.members = members
+        coordinator.title = title
+        coordinator.selectedID = selectedID
+        coordinator.prepareContent()
+    }
+
+    static func dismantleUIView(_ button: UIButton, coordinator: Coordinator) {
+        coordinator.content?.dismiss(animated: false)
+        coordinator.clearSource()
+    }
+
+    static let glyph: UIImage = {
+        let renderer = ImageRenderer(content: TeamGlyph().frame(width: 18, height: 18))
+        renderer.scale = 3
+        return (renderer.uiImage ?? UIImage(systemName: "person.2") ?? UIImage()).withRenderingMode(.alwaysTemplate)
+    }()
+
+    final class Coordinator: NSObject, UIPopoverPresentationControllerDelegate {
+        var members: [MobileTeamMember] = []
+        var title: String?
+        var selectedID: String?
+        var select: ((MobileTeamMember) -> Void)?
+        var showDetails: (() -> Void)?
+        var content: UIHostingController<TeamMemberPopover>?
+
+        func prepareContent() {
+            let root = TeamMemberPopover(members: members, title: title ?? "Lead 会话", selectedID: selectedID,
+                select: { [weak self] member in
+                    self?.content?.dismiss(animated: true) { [weak self] in
+                        self?.clearSource()
+                        self?.select?(member)
+                    }
+                }, showDetails: { [weak self] in
+                    // 完整面板直接接替菜单，避免先等待 zoom 收回再播放 sheet 入场。
+                    self?.content?.dismiss(animated: false) { [weak self] in
+                        self?.clearSource()
+                        // 脱离 UIKit 的无动画退出事务，保留 sheet 自身的入场动画。
+                        DispatchQueue.main.async { [weak self] in self?.showDetails?() }
+                    }
+                })
+            let host: UIHostingController<TeamMemberPopover>
+            if let content { host = content; host.rootView = root }
+            else {
+                host = UIHostingController(rootView: root)
+                host.modalPresentationStyle = .popover
+                host.view.backgroundColor = .clear
+                content = host
+            }
+            // 在数据变化时完成布局，点击只负责呈现已经准备好的内容。
+            let size = host.sizeThatFits(in: CGSize(width: 300, height: 480))
+            host.preferredContentSize = size
+            host.view.frame = CGRect(origin: .zero, size: size)
+            host.view.setNeedsLayout()
+            host.view.layoutIfNeeded()
+        }
+
+        @objc func open(_ button: UIButton) {
+            guard let content, content.presentingViewController == nil, button.window != nil else { return }
+            var responder: UIResponder? = button
+            while let current = responder {
+                if let presenter = current as? UIViewController {
+                    guard presenter.presentedViewController == nil else { return }
+                    let barItem = sourceBarButton(containing: button, presenter: presenter)
+                    if #available(iOS 26.0, *), let barItem {
+                        content.preferredTransition = .zoom(sourceBarButtonItemProvider: { [weak barItem] _ in barItem })
+                    } else if #available(iOS 18.0, *) {
+                        content.preferredTransition = .zoom(sourceViewProvider: { [weak button] _ in button })
+                    }
+                    let popover = content.popoverPresentationController
+                    // 使用真实玻璃按钮，避免 SwiftUI 宿主矩形进入源快照。
+                    if let barItem { popover?.sourceItem = barItem }
+                    else { popover?.sourceItem = button }
+                    popover?.sourceView = button
+                    popover?.sourceRect = button.bounds
+                    popover?.permittedArrowDirections = .up
+                    popover?.canOverlapSourceViewRect = true
+                    popover?.delegate = self
+                    presenter.present(content, animated: true)
+                    return
+                }
+                responder = current.next
+            }
+        }
+
+        private func sourceBarButton(containing button: UIButton, presenter: UIViewController) -> UIBarButtonItem? {
+            var controller: UIViewController? = presenter
+            while let current = controller {
+                let items = current.navigationItem.rightBarButtonItems ?? []
+                if let item = items.first(where: { item in
+                    item.customView.map { button.isDescendant(of: $0) } == true
+                }) { return item }
+                controller = current.parent
+            }
+            return nil
+        }
+
+        func clearSource() {
+            content?.popoverPresentationController?.sourceItem = nil
+            content?.popoverPresentationController?.sourceView = nil
+            if #available(iOS 18.0, *) { content?.preferredTransition = nil }
+        }
+
+        func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+            clearSource()
+        }
+
+        func adaptivePresentationStyle(for controller: UIPresentationController,
+            traitCollection: UITraitCollection) -> UIModalPresentationStyle { .none }
+    }
+}
+
+private struct TeamMemberPopover: View {
+    let members: [MobileTeamMember]
+    let title: String
+    let selectedID: String?
+    let select: (MobileTeamMember) -> Void
+    let showDetails: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).appFont(.caption).foregroundStyle(.secondary).lineLimit(2).padding(.horizontal, 12)
+            Text("成员 \(members.count)").appFont(.headline).padding(.horizontal, 12)
+            VStack(spacing: 0) {
+                ScrollView {
+                    VStack(spacing: 2) {
+                        ForEach(members) { member in
+                            TeamMemberRow(member: member, selected: member.id == selectedID) { select(member) }
+                        }
+                    }
+                }
+                .frame(maxHeight: 300)
+                .clipped()
+                Divider()
+            }
+            Button(action: showDetails) {
+                HStack {
+                    Text("查看完整团队内容").appFont(.subheadline.weight(.medium))
+                    Spacer()
+                    Image(systemName: "chevron.right").appFont(.caption)
+                }.padding(12)
+            }.buttonStyle(.plain)
+        }
+        .padding(12)
+        .frame(width: 300)
+        .transaction { $0.animation = nil }
+    }
+}
+
+/// 与 Web 团队入口一致的双人线框图标，使用矢量避免位图缩放模糊。
+private struct TeamGlyph: View {
+    var body: some View {
+        Canvas { context, size in
+            var path = Path()
+            path.addEllipse(in: CGRect(x: 5, y: 3, width: 8, height: 8))
+            path.move(to: CGPoint(x: 2, y: 22))
+            path.addCurve(to: CGPoint(x: 16, y: 22), control1: CGPoint(x: 2, y: 12), control2: CGPoint(x: 16, y: 12))
+            path.move(to: CGPoint(x: 17, y: 3))
+            path.addCurve(to: CGPoint(x: 17, y: 11), control1: CGPoint(x: 22, y: 3), control2: CGPoint(x: 22, y: 11))
+            path.move(to: CGPoint(x: 20, y: 15))
+            path.addQuadCurve(to: CGPoint(x: 23, y: 22), control: CGPoint(x: 23, y: 16))
+            let transform = CGAffineTransform(scaleX: size.width / 24, y: size.height / 24)
+            context.stroke(path.applying(transform), with: .foreground, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+private struct TeamMemberAvatar: View {
+    let index: Int?
+    var size: CGFloat = 32
+
+    var body: some View {
+        Image(String(format: "AgentAvatar%03d", min(143, max(0, index ?? 0))))
+            .renderingMode(.original)
+            .resizable()
+            .scaledToFit()
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
+    }
+}
+
+private struct TeamMemberRow: View {
+    let member: MobileTeamMember
+    let selected: Bool
+    let action: () -> Void
+    @AppStorage(AppFontScale.key) private var fontScale: Double = 1
+    @AppStorage(AppFontScale.followsSystemKey) private var followsSystemFont = false
+
+    private var rowScale: CGFloat {
+        CGFloat(AppFontScale.effective(fontScale, followsSystem: followsSystemFont))
+            * max(1, UIFont.preferredFont(forTextStyle: .body).pointSize / 17)
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .center, spacing: 10) {
+                TeamMemberAvatar(index: member.avatarIndex)
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack {
+                        Text(member.name).appFont(.body.weight(.medium)).lineLimit(1).truncationMode(.tail)
+                        if selected {
+                            Text("当前会话").appFont(.caption2).foregroundStyle(.blue).fixedSize()
+                        }
+                    }
+                    Text([member.model, member.statusLabel].compactMap { $0 }.joined(separator: " · "))
+                        .appFont(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
+                    Text(member.error ?? member.detail ?? " ")
+                        .appFont(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
+                        .accessibilityHidden(member.error == nil && member.detail == nil)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "checkmark").foregroundStyle(.blue)
+                    .frame(width: 18).opacity(selected ? 1 : 0).accessibilityHidden(!selected)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: 56 * rowScale)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8 * rowScale)
+            .contentShape(Rectangle())
+            .background(selected ? Color.blue.opacity(0.08) : Color.clear, in: RoundedRectangle(cornerRadius: 14))
+        }
+        .buttonStyle(.plain)
+        .disabled(!member.canOpen)
+        .opacity(member.canOpen ? 1 : 0.55)
+        .accessibilityIdentifier("team-member-\(member.id)")
+    }
+}
+
+struct TeamContentSheet: View {
+    @EnvironmentObject private var store: AppStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var filter = "all"
+    @State private var expanded: Set<String> = []
+    let select: (MobileTeamMember) -> Void
+
+    private var tasks: [MobileTeamTask] {
+        let current = store.teamSnapshot.members.first { $0.id == store.selectedSessionId }
+        return store.teamSnapshot.tasks.filter {
+            filter == "all" || (filter == "unassigned" ? $0.ownerName == nil : current != nil && $0.ownerName == current?.name)
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(store.teamSessionTitle).appFont(.subheadline.weight(.medium)).lineLimit(2)
+                            .accessibilityIdentifier("team-root-session-title")
+                        if !store.teamSnapshot.isTeam && store.teamSnapshot.state == "ready" {
+                            Text("当前会话使用普通子智能体").appFont(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    if let error = store.teamSnapshot.error { Text(error).foregroundStyle(.orange).appFont(.callout) }
+                    if store.teamSnapshot.state != "ready" {
+                        HStack {
+                            Text(store.teamSnapshot.state == "migration-required" ? "团队数据待刷新，请在桌面端确认会话格式" : "团队数据暂不可用")
+                            Spacer()
+                            Button("重试") { store.refreshTeam() }
+                        }.appFont(.callout).foregroundStyle(.secondary)
+                    }
+                    Text("成员 \(store.teamSnapshot.members.count)").appFont(.headline)
+                    LazyVStack(spacing: 2) {
+                        ForEach(store.teamSnapshot.members) { member in
+                            TeamMemberRow(member: member, selected: member.id == store.selectedSessionId) {
+                                dismiss(); select(member)
+                            }
+                        }
+                    }
+                    Text(store.teamSnapshot.state == "ready" || !store.teamSnapshot.tasks.isEmpty
+                         ? "共享任务 \(store.teamSnapshot.tasks.count)" : "共享任务 · 待同步").appFont(.headline)
+                    Picker("任务筛选", selection: $filter) {
+                        Text("全部").tag("all")
+                        Text("当前成员").tag("current")
+                        Text("未分配").tag("unassigned")
+                    }.pickerStyle(.segmented)
+                    if tasks.isEmpty {
+                        Text(store.teamSnapshot.state != "ready" ? "共享任务尚未同步，请重试"
+                             : !store.teamSnapshot.tasks.isEmpty ? "当前筛选下暂无共享任务"
+                             : store.teamSnapshot.isTeam ? "当前团队尚未创建共享任务"
+                             : "此会话尚无团队共享任务；普通子智能体的内部待办显示在各自会话中。")
+                            .foregroundStyle(.secondary).padding(.vertical)
+                    }
+                    ForEach(tasks) { task in taskCard(task) }
+                }
+                .padding(20)
+                .readableContentWidth()
+            }
+            .navigationTitle(store.teamSnapshot.isTeam ? "智能体团队" : "子智能体")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private func taskCard(_ task: MobileTeamTask) -> some View {
+        let isExpanded = expanded.contains(task.id)
+        let owner = store.teamSnapshot.members.first { $0.name == task.ownerName }
+        let openOwner: () -> Void = {
+            if let owner, owner.canOpen { dismiss(); select(owner) }
+        }
+        let toggleDetails: () -> Void = {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                if isExpanded { expanded.remove(task.id) } else { expanded.insert(task.id) }
+            }
+        }
+        return VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 12) {
+                    Text(task.subject).appFont(.body.weight(.semibold)).frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(spacing: 6) {
+                        Circle().fill(taskColor(task)).frame(width: 7, height: 7)
+                        Text(task.statusLabel).appFont(.caption)
+                    }.foregroundStyle(.secondary).fixedSize()
+                }
+                if !task.description.isEmpty {
+                    Text(task.description).appFont(.subheadline).foregroundStyle(.secondary)
+                        .lineLimit(isExpanded ? nil : 2).frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }.allowsHitTesting(false)
+            HStack {
+                Text(task.id).appFont(.caption.monospaced()).foregroundStyle(.secondary).allowsHitTesting(false)
+                Spacer()
+                Button(action: toggleDetails) {
+                    HStack(spacing: 4) {
+                        Text(isExpanded ? "收起" : "展开").appFont(.caption)
+                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down").appFont(.caption2)
+                    }
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 6)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isExpanded ? "收起任务详情" : "展开任务详情")
+                .accessibilityIdentifier("team-task-toggle-\(task.id)")
+            }
+            Button(action: openOwner) {
+                HStack(spacing: 8) {
+                    if let owner {
+                        TeamMemberAvatar(index: owner.avatarIndex, size: 20)
+                    } else {
+                        Image(systemName: "person.crop.circle").frame(width: 20, height: 20).accessibilityHidden(true)
+                    }
+                    Text("负责人：\(task.ownerName ?? "未分配")")
+                }
+                .appFont(.caption).foregroundStyle(owner?.canOpen == true ? Color.blue : Color.secondary)
+            }
+            .buttonStyle(.plain)
+            .disabled(owner?.canOpen != true)
+            .accessibilityIdentifier("team-task-owner-\(task.id)")
+            if !task.writeScopes.isEmpty {
+                Text("写入范围：\(task.writeScopes.joined(separator: "、"))").appFont(.caption).foregroundStyle(.secondary)
+                    .allowsHitTesting(false)
+            }
+            if isExpanded {
+                Group {
+                    Text("版本：\(task.revision)").appFont(.caption).foregroundStyle(.secondary)
+                    if !task.blockedBy.isEmpty {
+                        Text("依赖：" + task.blockedBy.map { id in store.teamSnapshot.tasks.first { $0.id == id }?.subject ?? id }.joined(separator: "、"))
+                            .appFont(.caption).foregroundStyle(.secondary)
+                    }
+                    if task.status == "pending" {
+                        Text(task.ready ? "可领取" : "等待前置任务完成").appFont(.caption).foregroundStyle(.secondary)
+                    }
+                    ForEach(task.writeScopeWarnings, id: \.self) { Text($0).appFont(.caption).foregroundStyle(.orange) }
+                }.allowsHitTesting(false)
+            }
+        }
+        .padding(16)
+        // 卡片与展开按钮共享展开动作，负责人按钮单独处理会话导航。
+        .background {
+            Button(action: toggleDetails) {
+                RoundedRectangle(cornerRadius: 18).fill(Color(uiColor: .secondarySystemGroupedBackground))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("任务：\(task.subject)，\(isExpanded ? "收起任务详情" : "展开任务详情")")
+            .accessibilityIdentifier("team-task-body-\(task.id)")
+        }
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.primary.opacity(0.08), lineWidth: 0.7).allowsHitTesting(false))
+        .accessibilityIdentifier("team-task-\(task.id)")
+    }
+
+    private func taskColor(_ task: MobileTeamTask) -> Color {
+        switch task.status {
+        case "completed": return .green
+        case "in_progress": return .blue
+        case "pending": return task.ready ? .gray : .orange
+        default: return .gray
+        }
+    }
+}
+
+
+/// 与 Android 待发送文件卡片保持相同尺寸、排版和中性背景。
+private struct PendingFileCard: View {
+    let file: SharedUploadDraft
+    let status: String
+    let enabled: Bool
+    let onRetry: () -> Void
+    let onRemove: () -> Void
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "doc")
+                .appFont(.system(size: 16))
+                .foregroundStyle(Color.primary.opacity(0.6))
+                .frame(width: 16, height: 16)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(file.file?.name ?? file.name)
+                    .appFont(.system(size: 13))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Text(status)
+                    .appFont(.system(size: 12))
+                    .foregroundStyle(file.status == "error" ? Color.red : Color.primary.opacity(0.6))
+                    .lineLimit(2)
+                if file.status == "uploading" {
+                    ProgressView(value: Double(file.confirmedBytes), total: Double(max(1, file.size)))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if file.status == "error" {
+                action("arrow.clockwise", label: "重试上传", tint: .primary.opacity(0.6), onRetry)
+            }
+            action("xmark.circle.fill", label: "移除文件", tint: .primary, onRemove)
+        }
+        .padding(10)
+        .frame(width: 240)
+        .frame(minHeight: 56)
+        .background(background, in: RoundedRectangle(cornerRadius: 12))
+        .disabled(!enabled)
+    }
+
+    private var background: Color {
+        colorScheme == .dark
+            ? Color(red: 43 / 255, green: 48 / 255, blue: 56 / 255)
+            : Color(red: 233 / 255, green: 233 / 255, blue: 237 / 255)
+    }
+
+    private func action(_ symbol: String, label: LocalizedStringKey, tint: Color, _ callback: @escaping () -> Void) -> some View {
+        Button(action: callback) {
+            Image(systemName: symbol)
+                .appFont(.system(size: 16))
+                .foregroundStyle(tint)
+                .frame(width: 32, height: 32)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(label))
     }
 }

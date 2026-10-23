@@ -225,3 +225,41 @@ final class ControlledHistoryPresentationPerformanceTests: XCTestCase {
         XCTAssertFalse(viewport.exists)
     }
 }
+
+/// 需要已配对的真实网关；通过环境变量显式启用，常规 CI 不访问用户会话。
+final class RealSessionDirectoryLinkUITests: XCTestCase {
+    func testDirectoryLinkOpensExistingWorkspaceBrowserAtTargetDirectory() throws {
+        guard ProcessInfo.processInfo.environment["DSH_DIRECTORY_SMOKE"] == "1" else {
+            throw XCTSkip("真实目录链接验收需要显式启用")
+        }
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(app.staticTexts["已连接"].waitForExistence(timeout: 20))
+        let session = app.staticTexts["制作产品宣传片"].firstMatch
+        XCTAssertTrue(session.waitForExistence(timeout: 10))
+        session.tap()
+        let team = app.buttons["查看智能体团队"]
+        XCTAssertTrue(team.waitForExistence(timeout: 10))
+        team.tap()
+        let member = app.staticTexts["footage-scout"].firstMatch
+        XCTAssertTrue(member.waitForExistence(timeout: 5))
+        member.tap()
+        let viewport = app.collectionViews["conversation-history-viewport"]
+        XCTAssertTrue(viewport.waitForExistence(timeout: 10))
+        let link = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "stills/")).firstMatch
+        for _ in 0..<6 {
+            if link.exists && link.isHittable { break }
+            viewport.swipeDown(velocity: .slow)
+        }
+        XCTAssertTrue(link.exists && link.isHittable, "会话中应有交付目录链接")
+        link.tap()
+        XCTAssertTrue(app.staticTexts["promo/analysis/stills"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["s04-scan-connected.png"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["完成"].exists)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "子 Agent 目录链接打开工作区文件"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+}

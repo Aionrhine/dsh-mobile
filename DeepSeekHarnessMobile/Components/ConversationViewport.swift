@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import ChatLayout
+import class DeepSeekHarnessShared.FileIconCatalog
 #if DEBUG
 import os.signpost
 import Darwin
@@ -41,7 +42,23 @@ struct ConversationViewportEntry: Identifiable {
 
         let text: String
         let images: [Image]
+        let files: [PresentedFile]
+        var onOpenFile: ((PresentedFile) -> Void)?
         let showsCopyButton: Bool
+
+        init(text: String, images: [Image], files: [PresentedFile] = [], showsCopyButton: Bool, onOpenFile: ((PresentedFile) -> Void)? = nil) {
+            self.text = text
+            self.images = images
+            self.files = files
+            self.onOpenFile = onOpenFile
+            self.showsCopyButton = showsCopyButton
+        }
+
+        init(item: ConversationItem, imageData: (String) -> Data?, showsCopyButton: Bool, onOpenFile: ((PresentedFile) -> Void)? = nil) {
+            self.init(text: item.text, images: item.images.map {
+                Image(id: $0.id, data: imageData($0.id), width: $0.width, height: $0.height, name: $0.name)
+            }, files: item.files, showsCopyButton: showsCopyButton, onOpenFile: onOpenFile)
+        }
     }
 
     let id: String
@@ -1595,6 +1612,7 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
     ) -> Bool {
         guard lhs.text == rhs.text,
               lhs.showsCopyButton == rhs.showsCopyButton,
+              lhs.files == rhs.files,
               lhs.images.count == rhs.images.count else { return false }
         return zip(lhs.images, rhs.images).allSatisfy { old, new in
             old.id == new.id
@@ -2991,10 +3009,93 @@ private final class UserMessageCell: StableSelfSizingCollectionViewCell {
         }
     }
 
+    /// 文件卡片复用原有预览入口；回调由当前 cell payload 提供，避免复用时携带旧会话。
+    private final class FileAttachmentCard: UIControl {
+        private let icon = UIImageView()
+        private let nameLabel = UILabel()
+        private let sizeLabel = UILabel()
+        private let file: PresentedFile
+        private let action: () -> Void
+
+        private static var nameFont: UIFont {
+            UIFont.appPreferredFont(forTextStyle: .subheadline).withWeight(.medium)
+        }
+        private static var sizeFont: UIFont { .appPreferredFont(forTextStyle: .caption1) }
+
+        static func height(for file: PresentedFile, width: CGFloat) -> CGFloat {
+            let name = file.name ?? String(localized: "文件")
+            let nameWidth = max(1, width - 84)
+            let bounds = (name as NSString).boundingRect(
+                with: CGSize(width: nameWidth, height: .greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                attributes: [.font: nameFont], context: nil)
+            let nameHeight = min(ceil(bounds.height), ceil(nameFont.lineHeight * 2))
+            let detailsHeight = file.bytes == nil ? 0 : 4 + ceil(sizeFont.lineHeight)
+            return ceil(24 + max(48, nameHeight + detailsHeight))
+        }
+
+        init(file: PresentedFile, width: CGFloat, action: @escaping () -> Void) {
+            self.file = file
+            self.action = action
+            super.init(frame: .zero)
+            let name = file.name ?? String(localized: "文件")
+            let kind = FileIconCatalog.shared.resolve(name: name, mediaType: nil)
+            backgroundColor = UIColor(named: "FileCard_\(kind.colorFamily)") ?? .secondarySystemBackground
+            layer.cornerRadius = 12
+            layer.cornerCurve = .continuous
+            icon.image = UIImage(named: "FileIcon_\(kind.assetKey)")
+            icon.contentMode = .scaleAspectFit
+            nameLabel.text = name
+            nameLabel.font = Self.nameFont
+            nameLabel.textColor = .label
+            nameLabel.numberOfLines = 2
+            nameLabel.lineBreakMode = .byTruncatingMiddle
+            sizeLabel.font = Self.sizeFont
+            sizeLabel.textColor = .secondaryLabel
+            sizeLabel.text = file.bytes.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) }
+            sizeLabel.isHidden = file.bytes == nil
+            addSubview(icon)
+            addSubview(nameLabel)
+            addSubview(sizeLabel)
+            isAccessibilityElement = true
+            accessibilityTraits = .button
+            addTarget(self, action: #selector(openFile), for: .touchUpInside)
+            accessibilityIdentifier = "user-file-card"
+            accessibilityLabel = [name, sizeLabel.text].compactMap { $0 }.joined(separator: ", ")
+            translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                widthAnchor.constraint(equalToConstant: width),
+                heightAnchor.constraint(equalToConstant: Self.height(for: file, width: width))
+            ])
+        }
+
+        required init?(coder: NSCoder) { nil }
+
+        @objc private func openFile() { action() }
+        override func accessibilityActivate() -> Bool { action(); return true }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            icon.frame = CGRect(x: 12, y: (bounds.height - 48) / 2, width: 48, height: 48)
+            let textWidth = max(1, bounds.width - 84)
+            let nameSize = nameLabel.sizeThatFits(CGSize(width: textWidth, height: Self.nameFont.lineHeight * 2))
+            let nameHeight = min(ceil(nameSize.height), ceil(Self.nameFont.lineHeight * 2))
+            let sizeHeight = sizeLabel.isHidden ? 0 : ceil(Self.sizeFont.lineHeight)
+            let textHeight = nameHeight + (sizeLabel.isHidden ? 0 : 4 + sizeHeight)
+            let top = (bounds.height - textHeight) / 2
+            nameLabel.frame = CGRect(x: 72, y: top, width: textWidth, height: nameHeight)
+            sizeLabel.frame = CGRect(x: 72, y: top + nameHeight + 4, width: textWidth, height: sizeHeight)
+        }
+    }
+
     private static let decodedImageCache = NSCache<NSString, UIImage>()
 
     private let stack = UIStackView()
     private let imageGrid = UIStackView()
+    private let fileCards = UIStackView()
+    private var renderedFiles: [PresentedFile] = []
+    private var renderedFileWidth: CGFloat = 0
+    private var renderedFileFontSize: CGFloat = 0
     private let bubbleView = UIView()
     private let messageLabel = UILabel()
     private let copyButton = UIButton(type: .system)
@@ -3006,6 +3107,7 @@ private final class UserMessageCell: StableSelfSizingCollectionViewCell {
     private var imageViewsByID: [String: UIImageView] = [:]
     private var renderedImageAvailability: [String: Bool] = [:]
     var onOpenImagePreview: (([ConversationImagePreviewItem], Int) -> Void)?
+    private var onOpenFile: ((PresentedFile) -> Void)?
 
     static func estimatedHeight(for payload: ConversationViewportEntry.UserMessage, width: CGFloat) -> CGFloat {
         let horizontalBubbleInset: CGFloat = 34
@@ -3023,6 +3125,11 @@ private final class UserMessageCell: StableSelfSizingCollectionViewCell {
         ).height
         var contentHeight: CGFloat = 0
         if imageHeight > 0 { contentHeight += imageHeight }
+        let cardWidth = min(320, max(1, width - horizontalBubbleInset))
+        for file in payload.files {
+            if contentHeight > 0 { contentHeight += 8 }
+            contentHeight += FileAttachmentCard.height(for: file, width: cardWidth)
+        }
         if !payload.text.isEmpty {
             if contentHeight > 0 { contentHeight += 8 }
             contentHeight += ceil(textBounds.height) + 20
@@ -3044,6 +3151,10 @@ private final class UserMessageCell: StableSelfSizingCollectionViewCell {
         imageGrid.axis = .vertical
         imageGrid.alignment = .trailing
         imageGrid.spacing = 6
+        fileCards.axis = .vertical
+        fileCards.alignment = .trailing
+        fileCards.spacing = 8
+        fileCards.isHidden = true
 
         bubbleView.layer.cornerRadius = 15
         bubbleView.layer.cornerCurve = .continuous
@@ -3065,6 +3176,7 @@ private final class UserMessageCell: StableSelfSizingCollectionViewCell {
 
         contentView.addSubview(stack)
         stack.addArrangedSubview(imageGrid)
+        stack.addArrangedSubview(fileCards)
         stack.addArrangedSubview(bubbleView)
         bubbleView.addSubview(messageLabel)
         stack.addArrangedSubview(copyButton)
@@ -3107,6 +3219,7 @@ private final class UserMessageCell: StableSelfSizingCollectionViewCell {
         copyResetWorkItem = nil
         messageLabel.text = nil
         onOpenImagePreview = nil
+        onOpenFile = nil
         // Keep an already-built attachment grid until the next payload is
         // known. UICollectionView commonly dequeues the same cell for the
         // same row when it re-enters the viewport; retaining the hierarchy
@@ -3121,6 +3234,7 @@ private final class UserMessageCell: StableSelfSizingCollectionViewCell {
     }
 
     func apply(_ payload: ConversationViewportEntry.UserMessage, containerWidth: CGFloat) {
+        onOpenFile = payload.onOpenFile
         messageLabel.font = .appPreferredFont(forTextStyle: .body)
         if messageLabel.text != payload.text {
             messageLabel.text = payload.text
@@ -3128,6 +3242,26 @@ private final class UserMessageCell: StableSelfSizingCollectionViewCell {
         bubbleView.isHidden = payload.text.isEmpty
         copyButton.isHidden = payload.text.isEmpty || !payload.showsCopyButton
         applyImages(payload.images, containerWidth: containerWidth)
+        applyFiles(payload.files, containerWidth: containerWidth)
+    }
+
+    private func applyFiles(_ files: [PresentedFile], containerWidth: CGFloat) {
+        fileCards.isHidden = files.isEmpty
+        let width = min(320, max(1, containerWidth - 34))
+        let fontSize = UIFont.appPreferredFont(forTextStyle: .subheadline).pointSize
+        guard files != renderedFiles || width != renderedFileWidth || fontSize != renderedFileFontSize else { return }
+        for card in fileCards.arrangedSubviews {
+            fileCards.removeArrangedSubview(card)
+            card.removeFromSuperview()
+        }
+        renderedFiles = files
+        renderedFileWidth = width
+        renderedFileFontSize = fontSize
+        for file in files {
+            fileCards.addArrangedSubview(FileAttachmentCard(file: file, width: width) { [weak self] in
+                self?.onOpenFile?(file)
+            })
+        }
     }
 
     private func applyImages(

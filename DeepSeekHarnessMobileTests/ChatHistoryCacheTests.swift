@@ -95,6 +95,82 @@ final class ChatHistoryCacheTests: XCTestCase {
     }
 
     @MainActor
+    func testColdLaunchDoesNotQueryLegacySelectedSubagentOnWorkspace() async throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let suite = UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let cache = ChatHistoryCache(url: directory.appendingPathComponent("legacy-child.db"))
+        let lead = SessionSummary(id: "lead", title: "团队", lastActivity: .now, isRunning: false, hasUnread: false)
+        let snapshot = KMPSessionListSnapshot(sessions: [lead], archivedSessionIds: [], selectedSessionId: "scout")
+        let json = try XCTUnwrap(SharedOfflineCatalogCodec().create(
+            sessionListJson: String(decoding: JSONEncoder().encode(snapshot), as: UTF8.self),
+            workspacesJson: "[]", selectedWorkspaceId: nil))
+        let owner = cache.makeProtectionOwner(gatewayID: "legacy-child")
+        let saved = await cache.saveOfflineCatalog(owner: owner, json: json)
+        XCTAssertTrue(saved)
+        let store = AppStore(preferences: UserDefaultsAppPreferences(userDefaults: defaults), gatewayLocalID: "legacy-child", chatHistoryCache: cache)
+        await store.awaitOfflineCatalogForTesting()
+        XCTAssertEqual(store.selectedSessionId, "scout")
+        XCTAssertFalse(store.teamStore.isChild(sessionId: "scout"))
+        var sent: [[String: Any]] = []
+        store.gateway.installConnectedTransportForTesting { payload in
+            sent.append((try? JSONSerialization.jsonObject(with: Data(payload.utf8))) as? [String: Any] ?? [:])
+        }
+        store.gateway.onFrame?(try GatewayWireDecoder.decode(Data(#"{"kind":"hello","protocol":3,"historyFormatVersion":4,"capabilities":["agent-team-v1","subagent-conversations-v1","session-agent-preset","tasks","goals"]}"#.utf8)))
+        await store.awaitPendingKMPEventDeliveriesForTesting()
+        XCTAssertFalse(sent.contains { $0["sessionId"] as? String == "scout" }, "主页不能用缓存中的裸子 ID 查询普通会话接口")
+        XCTAssertNil(store.lastError)
+        store.deactivateGateway()
+        await cache.close()
+    }
+
+    @MainActor
+    func testTeamAddressSurvivesRestartAndRestoresLeadSelection() async throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let suite = UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = UserDefaultsAppPreferences(userDefaults: defaults, gatewayID: "team-host")
+        let cache = ChatHistoryCache(url: directory.appendingPathComponent("team-routing.db"))
+        let lead = SessionSummary(id: "lead", title: "团队", lastActivity: .now, isRunning: false, hasUnread: false)
+        preferences.saveSessions([lead])
+        let store = AppStore(preferences: preferences, gatewayLocalID: "team-host", chatHistoryCache: cache)
+        await store.awaitOfflineCatalogForTesting()
+        store.gateway.installConnectedTransportForTesting()
+        let hello = try GatewayWireDecoder.decode(Data(#"{"kind":"hello","protocol":3,"historyFormatVersion":4,"capabilities":["agent-team-v1","subagent-conversations-v1","tasks","goals"]}"#.utf8))
+        store.gateway.onFrame?(hello)
+        _ = await store.prepareConversation(for: lead)
+        store.gateway.onFrame?(try GatewayWireDecoder.decode(Data(#"{"kind":"agent-team-updated","sessionId":"lead","asOfSeq":8,"agentTeam":{"members":[{"id":"lead","name":"lead","role":"lead","phase":"active"},{"id":"scout","name":"素材分析","role":"teammate","phase":"active"}],"tasks":[]}}"#.utf8)))
+        await store.selectTeamMember(try XCTUnwrap(store.teamSnapshot.members.last))
+        XCTAssertEqual(store.selectedSessionId, "scout")
+        await store.awaitOfflineCatalogForTesting()
+        store.deactivateGateway()
+        let reopened = AppStore(preferences: preferences, gatewayLocalID: "team-host", chatHistoryCache: cache)
+        await reopened.awaitOfflineCatalogForTesting()
+        XCTAssertEqual(reopened.selectedSessionId, "lead")
+        XCTAssertTrue(reopened.teamStore.isChild(sessionId: "scout"))
+        var sent: [[String: Any]] = []
+        reopened.gateway.installConnectedTransportForTesting { payload in
+            sent.append((try? JSONSerialization.jsonObject(with: Data(payload.utf8))) as? [String: Any] ?? [:])
+        }
+        reopened.gateway.onFrame?(hello)
+        reopened.refreshSessionControls(for: "scout")
+        let childRequests = sent.filter { $0["sessionId"] as? String == "scout" }
+        XCTAssertEqual(Set(childRequests.compactMap { $0["type"] as? String }), ["tasks", "goal"])
+        XCTAssertTrue(childRequests.allSatisfy { $0["parentSessionId"] as? String == "lead" && $0["subagentMode"] as? String == "continuable" })
+        XCTAssertNil(reopened.lastError)
+        let other = AppStore(preferences: UserDefaultsAppPreferences(userDefaults: defaults, gatewayID: "other-host"), gatewayLocalID: "other-host", chatHistoryCache: cache)
+        await other.awaitOfflineCatalogForTesting()
+        XCTAssertFalse(other.teamStore.isChild(sessionId: "scout"))
+        other.deactivateGateway()
+        reopened.deactivateGateway()
+        await cache.close()
+    }
+
+    @MainActor
     func testOfflineCatalogSurvivesPreferencesLossAndAuthoritativeEmptyDoesNotResurrect() async throws {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -133,7 +209,7 @@ final class ChatHistoryCacheTests: XCTestCase {
         cache = ChatHistoryCache(url: directory.appendingPathComponent("catalog.db"))
         defaults.removePersistentDomain(forName: suite)
         let reopened = AppStore(preferences: UserDefaultsAppPreferences(userDefaults: defaults), gatewayLocalID: "catalog-g", chatHistoryCache: cache)
-        reopened.connectOnColdLaunchIfPaired()
+        await reopened.connectOnColdLaunchIfPaired()
         await reopened.awaitOfflineCatalogForTesting()
         XCTAssertNil(reopened.lastError, "凭据丢失时仍应允许离线阅读，不弹配对警告")
         XCTAssertFalse(reopened.gateway.state.isConnected)
