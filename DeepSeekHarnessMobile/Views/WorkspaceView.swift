@@ -585,7 +585,7 @@ struct WorkspaceView: View {
                 Text(store.searchCoverage).appFont(.caption).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            ForEach(displayedSessions.prefix(searchQuery.isEmpty ? 12 : 100)) { session in
+            ForEach(displayedSessions) { session in
                 Button {
                     sessionSearchIsFocused = false
                     onOpenSession(session)

@@ -711,7 +711,7 @@ private fun SessionList(
     onArchive: (String) -> Unit
 ) {
     Column(Modifier.background(Color.Transparent)) {
-        sessions.take(12).forEach { session ->
+        sessions.forEach { session ->
             androidx.compose.runtime.key(session.id) {
                 var menuVisible by remember { mutableStateOf(false) }
                 var renaming by remember { mutableStateOf(false) }
