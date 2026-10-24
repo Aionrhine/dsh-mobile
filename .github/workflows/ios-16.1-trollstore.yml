@@ -86,36 +86,59 @@ jobs:
 
       - name: 组装 Payload 并 ad-hoc 签名
         run: |
-          set -euo pipefail
+          set -uo pipefail
           APP="build/DshMobile.xcarchive/Products/Applications/DshMobile.app"
-          test -d "$APP" || { echo "::error::未找到 $APP"; ls -R build/DshMobile.xcarchive/Products | head -50; exit 1; }
+          if [ ! -d "$APP" ]; then
+            echo "::error::未找到 $APP"
+            ls -R build/DshMobile.xcarchive/Products | head -60
+            exit 1
+          fi
 
           rm -rf build/Payload build/*.ipa
           mkdir -p build/Payload
           cp -R "$APP" build/Payload/
+          echo "--- Payload 结构 ---"
+          find build/Payload -maxdepth 4 \( -name "*.appex" -o -name "DshMobile" -o -name "*.framework" \) | head -20
 
-          brew install ldid >/dev/null 2>&1 || true
-          command -v ldid >/dev/null || { echo "::error::ldid 不可用"; exit 1; }
+          # ad-hoc 签名：优先 codesign（macOS 原生、更可靠），失败再退 ldid
+          sign_target() {
+            local t="$1"
+            if codesign --force --sign - --timestamp=none "$t" 2>&1; then
+              echo "  OK codesign: $t"
+            elif ldid -S "$t" 2>&1; then
+              echo "  OK ldid: $t"
+            else
+              echo "  FAILED: $t"
+              return 1
+            fi
+          }
 
-          # 先签扩展，再签主可执行文件，最后签整包（顺序不能反）
-          for appex in "build/Payload/DshMobile.app"/PlugIns/*.appex; do
+          if ! command -v ldid >/dev/null; then
+            brew install ldid >/dev/null 2>&1 || echo "::warning::ldid 安装失败，仅用 codesign"
+          fi
+
+          FAIL=0
+          for appex in build/Payload/DshMobile.app/PlugIns/*.appex; do
             [ -e "$appex" ] || continue
-            EXEC=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$appex/Info.plist")
-            echo "sign extension: $appex/$EXEC"
-            ldid -S "$appex/$EXEC"
-            ldid -S "$appex"
+            EXEC=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$appex/Info.plist" 2>/dev/null || basename "$appex" .appex)
+            echo "extension: $appex (CFBundleExecutable=$EXEC)"
+            sign_target "$appex/$EXEC" || FAIL=1
+            sign_target "$appex" || FAIL=1
           done
 
-          # 内嵌的动态库（当前工程为静态 framework，通常为空）
-          find "build/Payload/DshMobile.app/Frameworks" -name "*.dylib" -o -name "*.framework" 2>/dev/null | while read -r item; do
-            case "$item" in
-              *.framework) NAME=$(basename "$item" .framework); ldid -S "$item/$NAME" || true ;;
-              *.dylib) ldid -S "$item" || true ;;
-            esac
-          done
+          if [ -d build/Payload/DshMobile.app/Frameworks ]; then
+            while IFS= read -r item; do
+              case "$item" in
+                *.framework) sign_target "$item/$(basename "$item" .framework)" || FAIL=1 ;;
+                *.dylib) sign_target "$item" || FAIL=1 ;;
+              esac
+            done < <(find build/Payload/DshMobile.app/Frameworks \( -name "*.dylib" -o -name "*.framework" \) -maxdepth 2)
+          fi
 
-          ldid -S "build/Payload/DshMobile.app/DshMobile"
-          ldid -S "build/Payload/DshMobile.app"
+          sign_target build/Payload/DshMobile.app/DshMobile || FAIL=1
+          sign_target build/Payload/DshMobile.app || FAIL=1
+
+          codesign -dv build/Payload/DshMobile.app 2>&1 | head -5 || true
 
           cd build
           zip -qry "Whaleness-iOS16.1-trollstore.ipa" Payload
@@ -123,6 +146,7 @@ jobs:
           ls -lh build/*.ipa
           /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist" || true
           /usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP/Info.plist" || true
+          if [ "$FAIL" -ne 0 ]; then echo "::error::存在签名失败项"; exit 1; fi
 
       - name: 上传 ipa
         uses: actions/upload-artifact@v4
