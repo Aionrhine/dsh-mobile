@@ -1382,7 +1382,13 @@ private final class GatewayScannerController: UIViewController, AVCaptureMetadat
                 connection.videoRotationAngle = angle
             }
         } else if connection.isVideoOrientationSupported {
-            connection.videoOrientation = orientation
+            // iOS 17 之前只有 AVCaptureVideoOrientation，需显式映射。
+            switch orientation {
+            case .landscapeRight: connection.videoOrientation = .landscapeRight
+            case .landscapeLeft: connection.videoOrientation = .landscapeLeft
+            case .portraitUpsideDown: connection.videoOrientation = .portraitUpsideDown
+            default: connection.videoOrientation = .portrait
+            }
         }
     }
 
