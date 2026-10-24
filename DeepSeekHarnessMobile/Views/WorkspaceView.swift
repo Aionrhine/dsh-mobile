@@ -83,20 +83,20 @@ struct WorkspaceView: View {
             }
             .frame(width: geometry.size.width, height: fullHeight)
             .offset(y: -topInset)
-            .onChange(of: geometry.size) { _, _ in
+            .onChangeCompat(of: geometry.size) { _, _ in
                 // 旋转或调整分屏后清理旧拖拽距离，避免侧栏停在半开位置。
                 drawerFeedback.endDrag(cancelled: true)
                 drawerDragStart = nil
                 drawerOffset = progress > 0.5 ? drawerWidth : 0
             }
-            .onChange(of: drawerClosingGestureActive) { _, active in
+            .onChangeCompat(of: drawerClosingGestureActive) { _, active in
                 if !active {
                     finishDrawerDrag(translation: 0, velocity: 0, cancelled: true, width: drawerWidth)
                 }
             }
         }
         .background(DSHColor.navy.ignoresSafeArea())
-        .onChange(of: drawerOffset) { _, value in
+        .onChangeCompat(of: drawerOffset) { _, value in
             if value > 0 { sessionSearchIsFocused = false }
         }
         .foregroundStyle(.white)
@@ -132,7 +132,7 @@ struct WorkspaceView: View {
         } message: {
             Text("会话将被归档并从列表隐藏，历史记录会保留。")
         }
-        .onChange(of: searchQuery) { _, value in store.search(value) }
+        .onChangeCompat(of: searchQuery) { _, value in store.search(value) }
         .sheet(isPresented: $showsDirectoryBrowser) {
             DirectoryBrowserSheet()
                 .environmentObject(store)
@@ -877,10 +877,10 @@ private struct DirectoryBrowserSheet: View {
                         Button("取消") { dismiss() }
                     }
                 }
-                .onChange(of: store.createdDirectoryPathToReveal) { _, _ in
+                .onChangeCompat(of: store.createdDirectoryPathToReveal) { _, _ in
                     revealCreatedDirectory(using: proxy)
                 }
-                .onChange(of: store.directoryEntries) { _, _ in
+                .onChangeCompat(of: store.directoryEntries) { _, _ in
                     revealCreatedDirectory(using: proxy)
                 }
                 .task(id: highlightedDirectoryPath) {
@@ -894,12 +894,12 @@ private struct DirectoryBrowserSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
-        .presentationBackground(.ultraThinMaterial)
+        .background(.ultraThinMaterial)
         .onAppear {
             store.directoryEntries = []
             store.browseDirectories()
         }
-        .onChange(of: store.selectedWorkspaceId) { _, _ in
+        .onChangeCompat(of: store.selectedWorkspaceId) { _, _ in
             guard let creatingPath,
                   store.activeWorkspace?.path == creatingPath else { return }
             dismiss()
@@ -1168,7 +1168,7 @@ private struct ManualGatewayPairingSheet: View {
             }
         }
         .presentationDetents([.large])
-        .presentationBackground(.regularMaterial)
+        .background(.regularMaterial)
     }
 
     @ViewBuilder

@@ -639,7 +639,7 @@ private struct AgentPresetSelectionView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 48)
                 } else if store.agentPresets.isEmpty && store.agentPresetsLoadError == nil {
-                    ContentUnavailableView(
+                    DshEmptyState(
                         "没有可用的 Agent 预设",
                         systemImage: "point.3.filled.connected.trianglepath.dotted",
                         description: Text("网关暂无可用预设，可下拉刷新。")
@@ -792,7 +792,7 @@ private struct DefaultModelSelectionView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 48)
                 } else if modelGroups.isEmpty {
-                    ContentUnavailableView(
+                    DshEmptyState(
                         "暂无可用模型",
                         systemImage: "cpu",
                         description: Text("未能读取到模型列表，请检查网关连接后下拉重试。")
