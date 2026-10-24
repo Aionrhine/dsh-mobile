@@ -9,11 +9,23 @@
 |---|---|
 | 源码降到 iOS 16.1（部署目标 + 全部 iOS 17/16.4/16.2 专属 API） | 已改完，逐处可查 |
 | 清除工程里作者硬编码的签名标识（`T58RY5HUA7` / `com.lichaofan.dshmobile`） | 已改完 |
-| GitHub Actions 流水线（macos-26 编译 → ad-hoc 签名 → 出 ipa） | 已写好 |
-| **实际编译通过** | **未验证**。本机是 Windows，没有 Xcode，无法编译。首次跑 CI 大概率还要修 1～2 轮编译错误 |
-| **真机运行时行为** | **未验证**。只能等你在 iPhone 13 上实测 |
+| GitHub Actions 流水线（macos-26 编译 → ad-hoc 签名 → 出 ipa） | 已跑通 |
+| **实际编译 + 归档 + 签名 + 出 ipa** | **已验证**：Actions run `40092268487` 成功，产物 13 MB |
+| **真机运行时行为** | **未验证**。需要装到 iPhone 13 上实测 |
 
-一句话：**代码层面的适配已经做完，编译和签名链路需要靠 GitHub Actions 跑一次才算证明。**
+## 构建结果（已验证）
+
+| 项 | 值 |
+|---|---|
+| 仓库分支 | `summ9919/dsh-mobile` @ `ios-16.1` |
+| 成功运行 | Actions run `40092268487`，全 10 步通过 |
+| 产物 | `Whaleness-iOS16.1-trollstore.ipa`，13 MB（解包 25 MB / 36 个条目） |
+| `CFBundleIdentifier` | `com.example.dshmobile` |
+| `MinimumOSVersion` | **16.1** |
+| `NSSupportsLiveActivities` | `true` |
+| 内嵌扩展 | `PlugIns/AgentLiveActivityWidget.appex`（`MinimumOSVersion` 同为 16.1） |
+| 签名 | ad-hoc（`codesign -f -s -`），`_CodeSignature/` 存在；扩展与主包均已签名 |
+| 编译错误修复轮次 | 3 轮，共修 54 处（53 个可用性/类型错误 + 1 处类型不匹配） |
 
 ## 二、编译环境（硬性要求，缺一不可）
 
@@ -84,6 +96,22 @@ cp config/Local.xcconfig.example config/Local.xcconfig
 | `ActivityViewContext.isStale` | **iOS 16.2** | 9 处改为 `isStaleCompat`（16.1 恒按"未过期"处理） |
 | `LiveActivityIntent` + `Button(intent:)` | iOS 17 | 两个 Intent 标注 `@available(iOS 17.0, *)`；16.1 上实时活动里的审批按钮显示为"在 App 内处理审批" |
 
+### 4.2b 编译阶段才发现、静态扫描漏掉的 8 类问题（已按编译错误逐条修完）
+
+上游用 `#available` 包住了 UI 层的 iOS 26 API，但**非 UI 层的系统 API 版本要求没管**，只有真正编译才暴露：
+
+| API | 最低系统 | 处理 |
+|---|---|---|
+| `ActivityContent` / `Activity.request(attributes:content:pushType:)` / `update(_:)` / `end(_:dismissalPolicy:)` / `activity.content` | **iOS 16.2** | 在 `AgentLiveActivityManager.swift` 尾部加 `requestCompat` / `stateCompat` / `updateCompat` / `endCompat` 四个兼容方法：16.2+ 走 ActivityContent，16.1 走 `contentState` 版 API（`request(attributes:contentState:)`、`update(using:)`、`end(using:)`）。**36 个错误一次性收敛** |
+| `AVAudioApplication.recordPermission` / `requestRecordPermission` | iOS 17 | 回退到 `AVAudioSession.sharedInstance()` 的同名 API |
+| `CLBackgroundActivitySession` | iOS 17 | 属性改为 `AnyObject?` 承载，17+ 才创建，关闭时 `as?` 降级 |
+| `UIHostingController.safeAreaRegions` | **iOS 16.4** | 2 处包 `#available(iOS 16.4, *)` |
+| `WKWebView.traitOverrides` / `updateTraitsIfNeeded` | iOS 17 | 17+ 用 traitOverrides，16.1 退回 `overrideUserInterfaceStyle` |
+| `Chart` 的 `SectorMark` | iOS 17 | 17+ 保留环形图，16.1 退回占位圆环 |
+| `.animation(_:body:)`、`Text.foregroundStyle`、`AVCaptureConnection.videoRotationAngle` | iOS 17 | 分别改为 `.animation(_:value:)`、`.foregroundColor`、`.videoOrientation`（含 `UIInterfaceOrientation → AVCaptureVideoOrientation` 显式映射） |
+
+教训：**`#available` 只守卫了 UI 层**。这类项目要降到更低系统，必须先跑一次真编译拿到完整错误清单，静态 grep 一定漏。
+
 ### 4.3 已确认无需改动
 
 - `@Observable` / Observation：**项目零使用**（grep 命中的是变量名 `pairingObservation`），状态层是 Combine `ObservableObject`，无需重构。
@@ -94,24 +122,26 @@ cp config/Local.xcconfig.example config/Local.xcconfig
 
 ## 五、怎么构建
 
+> **当前状态：已经构建好了。** 产物 `Whaleness-iOS16.1-trollstore.ipa`（13 MB）可直接装。
+> 下面这段是「以后要重新构建 / 换 bundle id」时用的。
+
 ```bash
-# 1. 在 GitHub 上 fork 上游仓库，然后本地拿到你自己的 fork
+# 方案 A（推荐）：直接用已经推好的分支，不需要重新 patch
+git clone -b ios-16.1 https://github.com/summ9919/dsh-mobile.git
+cd dsh-mobile
+# 打开仓库 Actions 页面 → "Build iOS 16.1 IPA (TrollStore)" → Run workflow
+# （可选）bundle_id 输入框填自己的包名，留空则用 com.example.dshmobile
+
+# 方案 B：从上游干净克隆 + 打补丁
 git clone https://github.com/<你的用户名>/dsh-mobile.git
 cd dsh-mobile
-
-# 2. 应用本次适配补丁（补丁文件与本说明放在同一目录）
 git apply --whitespace=nowarn ../ios16.1-adaptation.patch
-
-# 3. 提交并推送
 git add -A
 git commit -m "feat: support iOS 16.1 (deployment target + API backport) and add TrollStore CI"
 git push
-
-# 4. 打开仓库 Actions 页面 → 选 "Build iOS 16.1 IPA (TrollStore)" → Run workflow
-#    （可选）在 bundle_id 输入框填自己的包名，留空则用 com.example.dshmobile
 ```
 
-跑完在 Actions 的 Artifacts 里下载 `Whaleness-iOS16.1-trollstore`，解压得到 `Whaleness-iOS16.1-trollstore.ipa`。
+单次构建约 **11 分钟**（Gradle 6 分钟 + Xcode 归档 5 分钟）。跑完在 Actions 的 Artifacts 里下载 `Whaleness-iOS16.1-trollstore`。
 
 ## 六、TrollStore 安装
 
