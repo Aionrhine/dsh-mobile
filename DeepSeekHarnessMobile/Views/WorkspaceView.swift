@@ -523,7 +523,7 @@ struct WorkspaceView: View {
                 "",
                 text: $searchQuery,
                 prompt: Text("搜索会话内容")
-                    .foregroundStyle(.white.opacity(0.58))
+                    .foregroundColor(.white.opacity(0.58))
             )
             .foregroundStyle(.white.opacity(0.92))
             .tint(.white)
@@ -1377,8 +1377,12 @@ private final class GatewayScannerController: UIViewController, AVCaptureMetadat
         case .portraitUpsideDown: angle = 270
         default: angle = 90
         }
-        if connection.isVideoRotationAngleSupported(angle) {
-            connection.videoRotationAngle = angle
+        if #available(iOS 17.0, *) {
+            if connection.isVideoRotationAngleSupported(angle) {
+                connection.videoRotationAngle = angle
+            }
+        } else if connection.isVideoOrientationSupported {
+            connection.videoOrientation = orientation
         }
     }
 

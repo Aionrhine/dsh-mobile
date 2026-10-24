@@ -504,8 +504,12 @@ private final class PluginSVGImageRenderer: NSObject, WKNavigationDelegate {
         let job = queue.removeFirst()
         active = job
         // 离屏视图不会自动经历显示周期，加载 SVG 前显式刷新其主题环境。
-        webView.traitOverrides.userInterfaceStyle = job.request.isDark ? .dark : .light
-        webView.updateTraitsIfNeeded()
+        if #available(iOS 17.0, *) {
+            webView.traitOverrides.userInterfaceStyle = job.request.isDark ? .dark : .light
+            webView.updateTraitsIfNeeded()
+        } else {
+            webView.overrideUserInterfaceStyle = job.request.isDark ? .dark : .light
+        }
         navigation = webView.loadHTMLString("""
         <html><head><meta name='viewport' content='width=device-width,initial-scale=1'>
         <meta name='color-scheme' content='\(job.request.isDark ? "dark" : "light")'>

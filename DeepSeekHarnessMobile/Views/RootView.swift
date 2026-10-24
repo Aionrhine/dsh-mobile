@@ -531,9 +531,8 @@ struct ScheduledTaskCard: View {
                     Image(systemName: "chevron.down")
                         .appFont(.system(size: 14, weight: .semibold))
                         .foregroundStyle(.secondary)
-                        .animation(reduceMotion ? nil : .easeInOut(duration: 0.26)) { icon in
-                            icon.rotationEffect(.degrees(expanded ? 180 : 0))
-                        }
+                        .rotationEffect(.degrees(expanded ? 180 : 0))
+                        .animation(reduceMotion ? nil : .easeInOut(duration: 0.26), value: expanded)
                         .frame(width: 36, height: 34)
                 }
                 .frame(maxWidth: .infinity)

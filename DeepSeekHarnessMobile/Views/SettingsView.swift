@@ -1036,16 +1036,23 @@ struct StorageSpaceView: View {
                 if let usage = store.storageUsage {
                     ZStack {
                         if usage.totalBytes > 0 {
-                            Chart(CacheStorageCategory.allCases) { category in
-                                if usage.bytes(for: category) > 0 {
-                                    SectorMark(angle: .value("磁盘占用", usage.bytes(for: category)),
-                                        innerRadius: .ratio(0.72), angularInset: 1.5)
-                                        .foregroundStyle(category.color)
-                                        .cornerRadius(3)
+                            if #available(iOS 17.0, *) {
+                                Chart(CacheStorageCategory.allCases) { category in
+                                    if usage.bytes(for: category) > 0 {
+                                        SectorMark(angle: .value("磁盘占用", usage.bytes(for: category)),
+                                            innerRadius: .ratio(0.72), angularInset: 1.5)
+                                            .foregroundStyle(category.color)
+                                            .cornerRadius(3)
+                                    }
                                 }
+                                .chartLegend(.hidden)
+                                .accessibilityHidden(true)
+                            } else {
+                                // SectorMark 为 iOS 17 起可用，16.1 退回占位圆环。
+                                Circle().stroke(Color.secondary.opacity(0.12), lineWidth: 26)
+                                    .padding(13)
+                                    .accessibilityHidden(true)
                             }
-                            .chartLegend(.hidden)
-                            .accessibilityHidden(true)
                         } else {
                             Circle().stroke(Color.secondary.opacity(0.12), lineWidth: 26)
                                 .padding(13)
