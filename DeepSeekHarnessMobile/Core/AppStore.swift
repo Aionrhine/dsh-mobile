@@ -1220,7 +1220,12 @@ final class AppStore: ObservableObject {
         let groupedSessionIds = Set(workspaces.flatMap(\.sessionIds))
         return historySessions.filter { !groupedSessionIds.contains($0.id) }
     }
-    var historySessions: [SessionSummary] { sessions.filter(\.isVisibleInHistory) }
+    func isSubagentSession(_ sessionID: String) -> Bool {
+        teamStore.isChild(sessionId: sessionID) || sessions.first { $0.id == sessionID }?.isSubagent == true
+    }
+    var historySessions: [SessionSummary] {
+        sessions.filter { $0.isVisibleInHistory && !teamStore.isChild(sessionId: $0.id) }
+    }
 
     /// 废弃整个业务容器，旧异步工作最多只能触达已断开的旧 GatewayClient。
     func deactivateGateway() {
@@ -2263,13 +2268,14 @@ final class AppStore: ObservableObject {
                 }
                 self.conversationFileIsOpening = false
                 guard let url else {
-                    self.failWorkspaceFilePreview(String(localized: "当前设备没有此文件的本地副本，当前网关尚不支持下载已发送附件。"))
+                    self.failWorkspaceFilePreview(String(localized: "找不到此文件的本地副本，文件可能已被移动或删除。"))
                     return
                 }
                 self.workspaceFilePreviewProgress = 1
+                let previewName = file.name ?? url.lastPathComponent
                 self.completedWorkspaceFile = WorkspaceLocalFile(url: url, sessionID: sessionID,
-                    remotePath: attachmentID, name: name,
-                    mediaType: UTType(filenameExtension: (name as NSString).pathExtension)?.preferredMIMEType
+                    remotePath: attachmentID, name: previewName,
+                    mediaType: UTType(filenameExtension: (previewName as NSString).pathExtension)?.preferredMIMEType
                         ?? "application/octet-stream", purpose: "preview")
             }
         }
@@ -2808,6 +2814,7 @@ final class AppStore: ObservableObject {
             publishTeamSnapshot()
             let routing = teamStore.routingJson()
             if routing != persistedTeamRouting {
+                objectWillChange.send()
                 persistedTeamRouting = routing
                 persistOfflineCatalog()
             }

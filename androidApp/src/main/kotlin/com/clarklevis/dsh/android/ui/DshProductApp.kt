@@ -313,6 +313,7 @@ internal fun WorkspaceScreen(
     val ungroupedSelected = stateHolder.isUngroupedWorkspaceSelected
     val sessions = remember(
         stateHolder.snapshot.sessions,
+        stateHolder.childSessionIds,
         stateHolder.gatewayState.connection,
         stateHolder.snapshot.searchResultSessionIds,
         stateHolder.localChatMatches,
@@ -324,7 +325,8 @@ internal fun WorkspaceScreen(
         val scoped = workspaceScopedSessions(
             sessions = stateHolder.snapshot.sessions,
             workspaces = workspaces,
-            selectedWorkspaceId = stateHolder.selectedWorkspaceId
+            selectedWorkspaceId = stateHolder.selectedWorkspaceId,
+            childSessionIds = stateHolder.childSessionIds
         )
         if (searchQuery.isBlank()) {
             scoped
@@ -394,7 +396,8 @@ internal fun WorkspaceScreen(
                                     workspace = selectedWorkspace,
                                     ungrouped = ungroupedSelected,
                                     ungroupedCount = stateHolder.snapshot.sessions.count { session ->
-                                        session.isVisibleInHistory && workspaces.none { session.id in it.sessionIds }
+                                        session.isVisibleInHistory && session.id !in stateHolder.childSessionIds &&
+                                            workspaces.none { session.id in it.sessionIds }
                                     },
                                     state = stateHolder.gatewayState,
                                     onClick = { showWorkspaceMenu = true }
@@ -634,10 +637,13 @@ internal fun LocalChatSearchContent(
     val scopedIds = workspaceScopedSessions(
         stateHolder.snapshot.sessions,
         stateHolder.availableWorkspaces,
-        stateHolder.selectedWorkspaceId
+        stateHolder.selectedWorkspaceId,
+        stateHolder.childSessionIds
     ).mapTo(mutableSetOf()) { it.id }
     val catalogIds = stateHolder.snapshot.sessions.mapTo(mutableSetOf()) { it.id }
-    stateHolder.localChatMatches.filter { it.sessionId !in catalogIds || it.sessionId in scopedIds }.forEach { match ->
+    stateHolder.localChatMatches.filter {
+        !stateHolder.isSubagentSession(it.sessionId) && (it.sessionId !in catalogIds || it.sessionId in scopedIds)
+    }.forEach { match ->
         Column(
             Modifier.fillMaxWidth().clickable {
                 stateHolder.prepareLocalChatMatch(match)
@@ -862,7 +868,8 @@ internal fun filterSessionsByQuery(
 internal fun workspaceScopedSessions(
     sessions: List<SessionSummary>,
     workspaces: List<GatewayWorkspace>,
-    selectedWorkspaceId: String?
+    selectedWorkspaceId: String?,
+    childSessionIds: Set<String> = emptySet()
 ): List<SessionSummary> {
     val selected = workspaces.firstOrNull { it.workspaceId == selectedWorkspaceId }
         ?: workspaces.firstOrNull()
@@ -871,9 +878,9 @@ internal fun workspaceScopedSessions(
         selected == null
     ) {
         val assigned = workspaces.flatMapTo(mutableSetOf()) { it.sessionIds }
-        return sessions.filter { it.isVisibleInHistory && it.id !in assigned }
+        return sessions.filter { it.isVisibleInHistory && it.id !in childSessionIds && it.id !in assigned }
     }
-    return sessions.filter { it.isVisibleInHistory && it.id in selected.sessionIds }
+    return sessions.filter { it.isVisibleInHistory && it.id !in childSessionIds && it.id in selected.sessionIds }
 }
 
 internal fun relativeTime(

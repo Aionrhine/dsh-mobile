@@ -1763,6 +1763,8 @@ struct KMPSessionSummarySnapshot: Codable, Equatable {
     var hasUnread: Bool
     var agentPreset: String?
     var hasConversation: Bool?
+    var parentSessionId: String?
+    var origin: String?
 
     init(_ session: SessionSummary) {
         id = session.id
@@ -1772,6 +1774,8 @@ struct KMPSessionSummarySnapshot: Codable, Equatable {
         hasUnread = session.hasUnread
         agentPreset = session.agentPreset
         hasConversation = session.hasConversation
+        parentSessionId = session.parentSessionId
+        origin = session.origin
     }
 
     var persistedSession: SessionSummary {
@@ -1782,7 +1786,9 @@ struct KMPSessionSummarySnapshot: Codable, Equatable {
             isRunning: isRunning,
             hasUnread: hasUnread,
             agentPreset: agentPreset,
-            hasConversation: hasConversation
+            hasConversation: hasConversation,
+            parentSessionId: parentSessionId,
+            origin: origin
         )
     }
 }
@@ -4166,7 +4172,7 @@ final class KMPSessionControlStoreAdapter {
             )
             try ifPresent(permission["options"]) { options in
                 for (index, option) in try array(options, "\(path).options").enumerated() {
-                    _ = try allow(option, keys: ["value", "name"], path: "\(path).options[\(index)]")
+                    _ = try allow(option, keys: ["value", "name", "description"], path: "\(path).options[\(index)]")
                 }
             }
         }

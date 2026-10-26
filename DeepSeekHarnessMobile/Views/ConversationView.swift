@@ -1623,9 +1623,8 @@ struct ConversationView: View {
                     store.lastError = String(localized: "所选图片不是受支持的 PNG、JPEG、WebP 或 GIF。")
                     continue
                 }
-                let mediaType = Self.imageMediaType(for: data) ?? "image/heic"
                 let prepared = try await Task.detached(priority: .userInitiated) {
-                    try GatewayImagePreprocessor.prepare(data: data, mediaType: mediaType)
+                    try GatewayImagePreprocessor.prepare(data: data)
                 }.value
                 imported.append(GatewayOutgoingImage(mediaType: prepared.mediaType, data: prepared.data))
             } catch {
@@ -1646,18 +1645,6 @@ struct ConversationView: View {
         }
         if store.selectedSessionId == targetSessionID { pendingImages = destination }
         else if let targetSessionID { memberImages[targetSessionID] = destination }
-    }
-
-    private static func imageMediaType(for data: Data) -> String? {
-        let bytes = [UInt8](data.prefix(12))
-        if bytes.starts(with: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) { return "image/png" }
-        if bytes.starts(with: [0xFF, 0xD8, 0xFF]) { return "image/jpeg" }
-        if bytes.count >= 6,
-           String(bytes: bytes.prefix(6), encoding: .ascii).map({ $0 == "GIF87a" || $0 == "GIF89a" }) == true { return "image/gif" }
-        if bytes.count >= 12,
-           String(bytes: bytes[0..<4], encoding: .ascii) == "RIFF",
-           String(bytes: bytes[8..<12], encoding: .ascii) == "WEBP" { return "image/webp" }
-        return nil
     }
 
     private var composerBottomPadding: CGFloat {
@@ -4746,33 +4733,16 @@ struct MarkdownSelectionPage: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ZStack {
-                Text("选择文字")
-                    .font(.system(size: 17, weight: .semibold))
-                HStack {
-                    Button("关闭") { dismiss() }
-                        .font(.system(size: 17))
-                        .foregroundStyle(Color.primary)
-                        .frame(minWidth: 64, minHeight: 44)
-                        .background(Color(uiColor: MarkdownSelectionAppearance.buttonBackground), in: Capsule())
-                        .accessibilityIdentifier("markdown-selection-close")
-                    Spacer()
-                }
+            DocumentPageHeader(title: "选择文字", closeIdentifier: "markdown-selection-close", onClose: { dismiss() }) {
+                EmptyView()
             }
-            .padding(.horizontal, 20)
-            .frame(height: 60)
             MarkdownTextSelection(
                 document: ParsedMarkdownCache.document(for: document.text),
                 font: UIFont.systemFont(ofSize: document.fontSize)
             )
         }
-        .background(Color(uiColor: .systemBackground))
+        .background(DocumentPageAppearance.background)
     }
-}
-
-private enum MarkdownSelectionAppearance {
-    static let buttonBackground = UIColor { $0.userInterfaceStyle == .dark
-        ? UIColor(white: 0.145, alpha: 1) : UIColor(red: 245/255, green: 245/255, blue: 247/255, alpha: 1) }
 }
 
 /// 原生 TextView 独立滚动，聊天页的 MarkdownUI 始终保留在原来的布局中。
@@ -5119,6 +5089,11 @@ private extension Theme {
                 .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                 .markdownMargin(top: 2, bottom: compact ? 6 : 10)
             }
+            .table { configuration in
+                MarkdownTableCard(content: configuration.content,
+                    fontSize: UIFontMetrics.default.scaledValue(for: compact ? 13 : 17) * scale)
+                    .markdownMargin(top: 2, bottom: compact ? 6 : 10)
+            }
             .thematicBreak {
                 Rectangle()
                     .fill(Color(uiColor: .separator).opacity(0.55))
@@ -5449,7 +5424,7 @@ private struct TeamMemberPopover: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title).appFont(.caption).foregroundStyle(.secondary).lineLimit(2).padding(.horizontal, 12)
-            Text("成员 \(members.count)").appFont(.headline).padding(.horizontal, 12)
+            Text("成员 \(String(members.count))").appFont(.headline).padding(.horizontal, 12)
             VStack(spacing: 0) {
                 ScrollView {
                     VStack(spacing: 2) {
@@ -5584,12 +5559,12 @@ struct TeamContentSheet: View {
                     if let error = store.teamSnapshot.error { Text(error).foregroundStyle(.orange).appFont(.callout) }
                     if store.teamSnapshot.state != "ready" {
                         HStack {
-                            Text(store.teamSnapshot.state == "migration-required" ? "团队数据待刷新，请在桌面端确认会话格式" : "团队数据暂不可用")
+                            Text(store.teamSnapshot.state == "migration-required" ? String(localized: "团队数据待刷新，请在桌面端确认会话格式") : String(localized: "团队数据暂不可用"))
                             Spacer()
                             Button("重试") { store.refreshTeam() }
                         }.appFont(.callout).foregroundStyle(.secondary)
                     }
-                    Text("成员 \(store.teamSnapshot.members.count)").appFont(.headline)
+                    Text("成员 \(String(store.teamSnapshot.members.count))").appFont(.headline)
                     LazyVStack(spacing: 2) {
                         ForEach(store.teamSnapshot.members) { member in
                             TeamMemberRow(member: member, selected: member.id == store.selectedSessionId) {
@@ -5598,17 +5573,17 @@ struct TeamContentSheet: View {
                         }
                     }
                     Text(store.teamSnapshot.state == "ready" || !store.teamSnapshot.tasks.isEmpty
-                         ? "共享任务 \(store.teamSnapshot.tasks.count)" : "共享任务 · 待同步").appFont(.headline)
+                         ? String(format: String(localized: "共享任务 %@"), String(store.teamSnapshot.tasks.count)) : String(localized: "共享任务 · 待同步")).appFont(.headline)
                     Picker("任务筛选", selection: $filter) {
                         Text("全部").tag("all")
                         Text("当前成员").tag("current")
                         Text("未分配").tag("unassigned")
                     }.pickerStyle(.segmented)
                     if tasks.isEmpty {
-                        Text(store.teamSnapshot.state != "ready" ? "共享任务尚未同步，请重试"
-                             : !store.teamSnapshot.tasks.isEmpty ? "当前筛选下暂无共享任务"
-                             : store.teamSnapshot.isTeam ? "当前团队尚未创建共享任务"
-                             : "此会话尚无团队共享任务；普通子智能体的内部待办显示在各自会话中。")
+                        Text(store.teamSnapshot.state != "ready" ? String(localized: "共享任务尚未同步，请重试")
+                             : !store.teamSnapshot.tasks.isEmpty ? String(localized: "当前筛选下暂无共享任务")
+                             : store.teamSnapshot.isTeam ? String(localized: "当前团队尚未创建共享任务")
+                             : String(localized: "此会话尚无团队共享任务；普通子智能体的内部待办显示在各自会话中。"))
                             .foregroundStyle(.secondary).padding(.vertical)
                     }
                     ForEach(tasks) { task in taskCard(task) }
@@ -5616,7 +5591,7 @@ struct TeamContentSheet: View {
                 .padding(20)
                 .readableContentWidth()
             }
-            .navigationTitle(store.teamSnapshot.isTeam ? "智能体团队" : "子智能体")
+            .navigationTitle(store.teamSnapshot.isTeam ? String(localized: "智能体团队") : String(localized: "子智能体"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
         }
@@ -5654,7 +5629,7 @@ struct TeamContentSheet: View {
                 Spacer()
                 Button(action: toggleDetails) {
                     HStack(spacing: 4) {
-                        Text(isExpanded ? "收起" : "展开").appFont(.caption)
+                        Text(isExpanded ? String(localized: "收起") : String(localized: "展开")).appFont(.caption)
                         Image(systemName: isExpanded ? "chevron.up" : "chevron.down").appFont(.caption2)
                     }
                     .foregroundStyle(.secondary)
@@ -5662,7 +5637,7 @@ struct TeamContentSheet: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(isExpanded ? "收起任务详情" : "展开任务详情")
+                .accessibilityLabel(isExpanded ? String(localized: "收起任务详情") : String(localized: "展开任务详情"))
                 .accessibilityIdentifier("team-task-toggle-\(task.id)")
             }
             Button(action: openOwner) {
@@ -5672,7 +5647,7 @@ struct TeamContentSheet: View {
                     } else {
                         Image(systemName: "person.crop.circle").frame(width: 20, height: 20).accessibilityHidden(true)
                     }
-                    Text("负责人：\(task.ownerName ?? "未分配")")
+                    Text("负责人：\(task.ownerName ?? String(localized: "未分配"))")
                 }
                 .appFont(.caption).foregroundStyle(owner?.canOpen == true ? Color.blue : Color.secondary)
             }
@@ -5680,18 +5655,18 @@ struct TeamContentSheet: View {
             .disabled(owner?.canOpen != true)
             .accessibilityIdentifier("team-task-owner-\(task.id)")
             if !task.writeScopes.isEmpty {
-                Text("写入范围：\(task.writeScopes.joined(separator: "、"))").appFont(.caption).foregroundStyle(.secondary)
+                Text("写入范围：\(task.writeScopes.joined(separator: String(localized: "、")))").appFont(.caption).foregroundStyle(.secondary)
                     .allowsHitTesting(false)
             }
             if isExpanded {
                 Group {
-                    Text("版本：\(task.revision)").appFont(.caption).foregroundStyle(.secondary)
+                    Text("版本：\(String(task.revision))").appFont(.caption).foregroundStyle(.secondary)
                     if !task.blockedBy.isEmpty {
-                        Text("依赖：" + task.blockedBy.map { id in store.teamSnapshot.tasks.first { $0.id == id }?.subject ?? id }.joined(separator: "、"))
+                        Text(String(localized: "依赖：") + task.blockedBy.map { id in store.teamSnapshot.tasks.first { $0.id == id }?.subject ?? id }.joined(separator: String(localized: "、")))
                             .appFont(.caption).foregroundStyle(.secondary)
                     }
                     if task.status == "pending" {
-                        Text(task.ready ? "可领取" : "等待前置任务完成").appFont(.caption).foregroundStyle(.secondary)
+                        Text(task.ready ? String(localized: "可领取") : String(localized: "等待前置任务完成")).appFont(.caption).foregroundStyle(.secondary)
                     }
                     ForEach(task.writeScopeWarnings, id: \.self) { Text($0).appFont(.caption).foregroundStyle(.orange) }
                 }.allowsHitTesting(false)
@@ -5704,7 +5679,7 @@ struct TeamContentSheet: View {
                 RoundedRectangle(cornerRadius: 18).fill(Color(uiColor: .secondarySystemGroupedBackground))
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("任务：\(task.subject)，\(isExpanded ? "收起任务详情" : "展开任务详情")")
+            .accessibilityLabel("任务：\(task.subject)，\(isExpanded ? String(localized: "收起任务详情") : String(localized: "展开任务详情"))")
             .accessibilityIdentifier("team-task-body-\(task.id)")
         }
         .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.primary.opacity(0.08), lineWidth: 0.7).allowsHitTesting(false))

@@ -788,6 +788,7 @@ private func previewState(
     )
 }
 
+@available(iOS 17.0, *)
 #Preview("运行中 · 紧凑", as: .dynamicIsland(.compact), using: previewAttributes) {
     AgentLiveActivityWidget()
 } contentStates: {
@@ -799,6 +800,7 @@ private func previewState(
     )
 }
 
+@available(iOS 17.0, *)
 #Preview("运行中 · 展开", as: .dynamicIsland(.expanded), using: previewAttributes) {
     AgentLiveActivityWidget()
 } contentStates: {
@@ -810,6 +812,7 @@ private func previewState(
     )
 }
 
+@available(iOS 17.0, *)
 #Preview("等待审批 · 展开", as: .dynamicIsland(.expanded), using: previewAttributes) {
     AgentLiveActivityWidget()
 } contentStates: {
@@ -821,6 +824,7 @@ private func previewState(
     )
 }
 
+@available(iOS 17.0, *)
 #Preview("等待选择 · 展开", as: .dynamicIsland(.expanded), using: previewAttributes) {
     AgentLiveActivityWidget()
 } contentStates: {
@@ -832,6 +836,7 @@ private func previewState(
     )
 }
 
+@available(iOS 17.0, *)
 #Preview("等待选择 · 锁屏", as: .content, using: previewAttributes) {
     AgentLiveActivityWidget()
 } contentStates: {
@@ -843,18 +848,21 @@ private func previewState(
     )
 }
 
+@available(iOS 17.0, *)
 #Preview("已允许 · 展开", as: .dynamicIsland(.expanded), using: previewAttributes) {
     AgentLiveActivityWidget()
 } contentStates: {
     previewState(phase: .approved, status: "已允许本次操作", detail: "批准已送达")
 }
 
+@available(iOS 17.0, *)
 #Preview("已拒绝 · 展开", as: .dynamicIsland(.expanded), using: previewAttributes) {
     AgentLiveActivityWidget()
 } contentStates: {
     previewState(phase: .rejected, status: "已拒绝本次操作", detail: "本次命令未执行")
 }
 
+@available(iOS 17.0, *)
 #Preview("提交失败 · 展开", as: .dynamicIsland(.expanded), using: previewAttributes) {
     AgentLiveActivityWidget()
 } contentStates: {
@@ -866,6 +874,7 @@ private func previewState(
     )
 }
 
+@available(iOS 17.0, *)
 #Preview("运行中 · 锁屏", as: .content, using: previewAttributes) {
     AgentLiveActivityWidget()
 } contentStates: {
@@ -877,6 +886,7 @@ private func previewState(
     )
 }
 
+@available(iOS 17.0, *)
 #Preview("等待审批 · 锁屏", as: .content, using: previewAttributes) {
     AgentLiveActivityWidget()
 } contentStates: {

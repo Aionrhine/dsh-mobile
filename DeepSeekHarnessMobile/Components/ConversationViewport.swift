@@ -2770,7 +2770,7 @@ final class HostedConversationCell: StableSelfSizingCollectionViewCell {
         host.view.frame = contentView.bounds
         host.view.bounds.origin = .zero
         contentView.addSubview(host.view)
-        host.updateTraitsIfNeeded()
+        if #available(iOS 17.0, *) { host.updateTraitsIfNeeded() }
         guard host.traitCollection == prepared.renderTraits else {
             return reject(.postMoveTraitsMismatch, actualTraits: host.traitCollection)
         }
@@ -3861,6 +3861,8 @@ final class DebugConversationWarmHostToken {}
 enum DebugWarmHostInstallFailure: String {
     case stateMismatch, tokenMismatch, ownerMismatch, parentContextMismatch, fontMismatch, postMoveTraitsMismatch
     func publicTraitDifferences(actual: UITraitCollection, expected: UITraitCollection) -> [String] {
+        // 旧系统没有公开的 trait 差异枚举接口，只记录匿名差异。
+        guard #available(iOS 17.0, *) else { return actual == expected ? [] : ["other"] }
         let allowed: [UITrait] = [UITraitUserInterfaceStyle.self, UITraitPreferredContentSizeCategory.self,
             UITraitHorizontalSizeClass.self, UITraitVerticalSizeClass.self, UITraitDisplayScale.self,
             UITraitLayoutDirection.self, UITraitAccessibilityContrast.self, UITraitLegibilityWeight.self]
@@ -3920,7 +3922,7 @@ final class DebugPreparedConversationHost {
         host = UIHostingController(rootView: AnyView(TopPinnedConversationContent(id: entry.id,
             revision: entry.revision, content: entry.content,
             onHeightChange: { [weak relay] in relay?.report($0) })))
-        host.safeAreaRegions = []
+        if #available(iOS 16.4, *) { host.safeAreaRegions = [] }
         host.view.backgroundColor = .clear
         host.view.clipsToBounds = true
         host.view.frame = carrier.contentView.bounds
@@ -3929,12 +3931,12 @@ final class DebugPreparedConversationHost {
         collection.addSubview(carrier)
         carrier.contentView.addSubview(host.view)
         host.didMove(toParent: parent)
-        host.updateTraitsIfNeeded()
+        if #available(iOS 17.0, *) { host.updateTraitsIfNeeded() }
     }
     func measureHeight() -> CGFloat {
         if let measuredHeight { return measuredHeight }
         let height = host.sizeThatFits(in: CGSize(width: context.width, height: CGFloat.greatestFiniteMagnitude)).height
-        host.updateTraitsIfNeeded()
+        if #available(iOS 17.0, *) { host.updateTraitsIfNeeded() }
         measuredHeight = height
         renderTraits = host.traitCollection
         return height
