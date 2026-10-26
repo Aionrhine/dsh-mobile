@@ -44,7 +44,7 @@ struct MarkdownTableCard: View {
     var body: some View {
         VStack(spacing: 0) {
             MarkdownTableActions(model: model, onExpand: { fullscreenModel = model; fullscreen = true })
-            MarkdownTableViewport(model: model, fontSize: fontSize)
+            MarkdownTableViewport(model: model, fontSize: fontSize, roundTopCorners: false)
         }
         .background { Rectangle().fill(DocumentPageAppearance.toolbar) }
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -66,9 +66,7 @@ struct MarkdownTablePage: View {
             MarkdownTableActions(model: model, onClose: { dismiss() }, onRotate: { rotationRequest += 1 })
             ScrollView(.vertical, showsIndicators: true) {
                 MarkdownTableViewport(model: model, fontSize: fontSize)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .padding(.horizontal, 20)
             .padding(.top, 12)
             .padding(.bottom, 20)
@@ -88,14 +86,18 @@ private struct MarkdownTableViewportWidth: PreferenceKey {
 private struct MarkdownTableViewport: View {
     let model: MarkdownTableModel
     let fontSize: CGFloat
+    var roundTopCorners = true
     @State private var viewportWidth: CGFloat = 0
 
     var body: some View {
+        let outline = MarkdownTableOutline(roundTopCorners: roundTopCorners)
         ScrollView(.horizontal, showsIndicators: true) {
             MarkdownTableGrid(model: model, fontSize: fontSize,
                 widths: model.widths(fontSize: fontSize, viewportWidth: viewportWidth))
         }
         .fixedSize(horizontal: false, vertical: true)
+        .clipShape(outline)
+        .overlay(outline.strokeBorder(DocumentPageAppearance.border, lineWidth: 0.5).allowsHitTesting(false))
         .background {
             GeometryReader { geometry in
                 Color.clear.preference(key: MarkdownTableViewportWidth.self, value: geometry.size.width)
@@ -165,6 +167,27 @@ private struct MarkdownTableGrid: View {
         case .trailing: return .topTrailing
         default: return .topLeading
         }
+    }
+}
+
+/// 圆角和弧形封边只属于整张表格；卡片内的表头直接衔接上方操作栏。
+private struct MarkdownTableOutline: InsettableShape {
+    let roundTopCorners: Bool
+    var insetAmount: CGFloat = 0
+
+    func path(in rect: CGRect) -> Path {
+        var corners: UIRectCorner = [.bottomLeft, .bottomRight]
+        if roundTopCorners { corners.formUnion([.topLeft, .topRight]) }
+        let radius = max(0, 12 - insetAmount)
+        return Path(UIBezierPath(roundedRect: rect.insetBy(dx: insetAmount, dy: insetAmount),
+                                 byRoundingCorners: corners,
+                                 cornerRadii: CGSize(width: radius, height: radius)).cgPath)
+    }
+
+    func inset(by amount: CGFloat) -> Self {
+        var shape = self
+        shape.insetAmount += amount
+        return shape
     }
 }
 

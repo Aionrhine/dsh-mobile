@@ -312,12 +312,12 @@ private fun DshRenderedMarkdownText(
                 while (last > start && rendered[last - 1] == '\n') last--
                 return if (last > start) SpannedString(rendered.subSequence(start, last)) else null
             }
-            tables.forEach { marker ->
+            tables.forEachIndexed { tableIndex, marker ->
                 textPart(rendered.getSpanStart(marker))?.let { part ->
                     DshRenderedMarkdownText(markdown, part, palette, textSizeSp, lineSpacingExtra,
                         Modifier.fillMaxWidth(), knownFiles, onOpenFile, copyMarkdown)
                 }
-                DshMarkdownTableCard(marker.table, textSizeSp, onOpenFile, copyMarkdown)
+                DshMarkdownTableCard(marker.table, textSizeSp, onOpenFile, copyMarkdown, markdown, tableIndex)
                 offset = rendered.getSpanEnd(marker)
             }
             textPart(rendered.length)?.let { part ->

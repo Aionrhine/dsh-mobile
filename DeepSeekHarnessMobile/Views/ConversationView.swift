@@ -1835,7 +1835,7 @@ struct ConversationView: View {
             .appFont(.caption.weight(.medium))
             .foregroundStyle(.secondary)
             .lineLimit(1)
-            .frame(width: 92, alignment: .leading)
+            .frame(minWidth: 92, alignment: .leading)
             .accessibilityElement(children: .combine)
             .accessibilityLabel(String(localized: "a11y.defaults.permission", defaultValue: "新会话默认权限：\(store.permissionDefault.map(permissionTitle) ?? String(localized: "未读取"))"))
         } else {
@@ -1894,7 +1894,7 @@ struct ConversationView: View {
             }
             .appFont(.caption.weight(.medium))
             .foregroundStyle(.secondary)
-            .frame(width: 78, alignment: .leading)
+            .frame(minWidth: 78, alignment: .leading)
             .contentShape(Rectangle())
         }
         .disabled(permissionOptions.isEmpty)

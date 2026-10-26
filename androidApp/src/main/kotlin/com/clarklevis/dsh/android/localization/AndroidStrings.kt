@@ -851,6 +851,7 @@ internal object AndroidStrings {
         "酝酿下一步中" to "Planning the next step",
         "重命名" to "Rename",
         "重命名会话" to "Rename conversation",
+        "会话名称" to "Conversation name",
         "重新加载历史" to "Reload history",
         "重新校准方向中" to "Adjusting direction",
         "重新连接" to "Reconnect",

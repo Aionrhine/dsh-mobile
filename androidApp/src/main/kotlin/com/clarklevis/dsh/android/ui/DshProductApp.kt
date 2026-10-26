@@ -37,7 +37,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -165,8 +164,13 @@ internal fun DshProductApp(
             WorkspaceScreen(
                 stateHolder = stateHolder,
                 onOpenSession = { id ->
-                    stateHolder.selectSession(id)
-                    navController.navigate(ROUTE_CONVERSATION)
+                    // 转场期间首页仍能收到点击，直接读取当前目的地以拦截重复事件。
+                    if (navController.currentDestination?.route == ROUTE_WORKSPACE) {
+                        stateHolder.selectSession(id)
+                        navController.navigate(ROUTE_CONVERSATION) {
+                            launchSingleTop = true
+                        }
+                    }
                 },
                 onNewSession = {
                     workspaceScope.launch {
@@ -739,17 +743,14 @@ private fun SessionList(
                         }
                     )
                 }
-                if (renaming) AlertDialog(
+                if (renaming) RenameSessionDialog(
+                    title = title,
+                    onTitleChange = { title = it },
                     onDismissRequest = { renaming = false },
-                    title = { Text(appText("重命名会话")) },
-                    text = { OutlinedTextField(value = title, onValueChange = { title = it }, singleLine = true) },
-                    confirmButton = {
-                        TextButton(enabled = title.isNotBlank(), onClick = {
-                            onRename(session.id, title)
-                            renaming = false
-                        }) { Text(appText("保存")) }
-                    },
-                    dismissButton = { TextButton(onClick = { renaming = false }) { Text(appText("取消")) } }
+                    onSave = {
+                        onRename(session.id, title)
+                        renaming = false
+                    }
                 )
                 if (archiving) AlertDialog(
                     onDismissRequest = { archiving = false },

@@ -18,9 +18,10 @@ object MarkdownSelectionHtml {
         pre{position:relative;padding:34px 12px 12px;border-radius:9px;background:var(--code);white-space:pre-wrap;overflow-wrap:anywhere}
         pre:before{content:attr(data-language);position:absolute;top:10px;left:12px;font:11px/16px ui-monospace,monospace;color:#8e8e93;-webkit-user-select:none;user-select:none}
         pre code{font-size:.8em;padding:0;background:none;border-radius:0;white-space:pre-wrap}
-        .table-scroll{width:100%;overflow-x:auto;margin:0 0 10px;border-radius:12px;-webkit-overflow-scrolling:touch}
-        table{table-layout:fixed;border-collapse:separate;border-spacing:0;border-top:1px solid var(--border);border-left:1px solid var(--border);font:inherit}
+        .table-scroll{width:100%;overflow-x:auto;margin:0 0 10px;border:1px solid var(--border);border-radius:12px;-webkit-overflow-scrolling:touch}
+        table{table-layout:fixed;border-collapse:separate;border-spacing:0;font:inherit}
         th,td{vertical-align:top;padding:12px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);overflow-wrap:anywhere;text-align:left}
+        tr>:last-child{border-right:0}tbody tr:last-child td{border-bottom:0}
         th{font-weight:600;background:var(--header)}td{background:var(--bg)}tbody tr:nth-child(even) td{background:var(--alternate)}
         hr{border:0;border-top:1px solid var(--border);margin:10px 0}::selection{background:rgba(0,122,255,.22)}
         </style></head><body><main id="content">$body</main>

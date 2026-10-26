@@ -84,8 +84,9 @@ internal fun DshTableTextSelectionPage(markdown: String, onDismiss: () -> Unit) 
                                     evaluateJavascript("window.dshSelectedText()") { result ->
                                         val text = JSONTokener(result).nextValue() as? String
                                         if (!text.isNullOrEmpty()) context.copyMarkdownText(text)
+                                        // 先读取选区再关闭菜单，避免 ActionMode 清空尚未读取的选中文字。
+                                        dismissTextMenu()
                                     }
-                                    dismissTextMenu()
                                 } else label to action
                             })
                         }

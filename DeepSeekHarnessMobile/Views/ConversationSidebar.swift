@@ -42,7 +42,10 @@ struct ConversationSidebar: View {
             }
             navigationRow("定时任务", action: actions.openScheduledTasks) {
                 Image(systemName: "clock")
-                    .appFont(.system(size: 18, weight: .regular))
+                    .resizable()
+                    .scaledToFit()
+                    .fontWeight(.regular)
+                    .frame(width: 20, height: 20)
             }
 
             Text("工作区")

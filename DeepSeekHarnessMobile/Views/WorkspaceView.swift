@@ -81,7 +81,7 @@ struct WorkspaceView: View {
                     .padding(.leading, safeArea.leading)
                     .padding(.trailing, safeArea.trailing)
                     // 先扩展到窗口四边，再绘制和裁剪背景；正文仍留在安全区内。
-                    .background { DeepOceanBackground() }
+                    .background { DeepOceanBackground(prefersOpenLightArcs: usesVerticalToolbar) }
                     .overlay {
                         Color.black.opacity(dimOpacity)
                             .allowsHitTesting(false)
@@ -315,7 +315,10 @@ struct WorkspaceView: View {
             }, action: { selectDrawerItem(onPlugins) })
             drawerItem("定时任务", icon: {
                 Image(systemName: "clock")
-                    .appFont(.system(size: 20, weight: .medium))
+                    .resizable()
+                    .scaledToFit()
+                    .fontWeight(.medium)
+                    .frame(width: 22, height: 22)
                     .frame(width: 24)
             }, action: { selectDrawerItem(onScheduledTasks) })
             Spacer(minLength: 0)

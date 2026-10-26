@@ -6,11 +6,14 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.HorizontalScrollView
 import android.widget.TableLayout
+import android.widget.TableRow
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.Modifier
-import androidx.activity.compose.setContent
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -29,6 +32,52 @@ import org.junit.Test
 class MarkdownTableDeviceTest {
     @get:Rule val locale = ChineseDeviceLocaleRule()
     @get:Rule val compose = createComposeRule()
+
+    @Test fun readingTableKeepsLeadingInsetAfterRecomposition() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val preferences = context.getSharedPreferences("table-inset-test", Context.MODE_PRIVATE)
+        val appearance = AppearanceSettings(preferences).apply { selectInterfaceStyle(InterfaceStyle.DARK) }
+        var root: View? = null
+        val source = "| 对比 | 结论 |\n| --- | --- |\n| 高端定价权 | 苹果 > 三星 > 华为 > 其他中国品牌。iPhone Duo 卖 15999 元仍有人排队，这是品牌溢价，不是参数。 |\n| 供应链抗压 | 三星（上游自供）> 苹果（议价 + 库存）> 华为（自研 + 国内链） |\n| 折叠屏 | 中国厂商领先做产品，但苹果一入场就拿到最高溢价。 |"
+        try {
+            compose.setContent {
+                root = LocalView.current
+                DshTheme(appearance) {
+                    Column(Modifier.width(380.dp).verticalScroll(rememberScrollState()).padding(20.dp)) {
+                        DshMarkdownText(source)
+                    }
+                }
+            }
+            compose.waitForIdle()
+            fun checkInsets() {
+                compose.runOnIdle {
+                    val table = descendants(checkNotNull(root)).filterIsInstance<TableLayout>().single()
+                    val viewport = table.parent as HorizontalScrollView
+                    val minimum = 11 * table.resources.displayMetrics.density
+                    repeat(table.childCount) { rowIndex ->
+                        val cell = (table.getChildAt(rowIndex) as TableRow).getChildAt(0) as DshMarkdownTextView
+                        val inset = cell.left + cell.compoundPaddingLeft + cell.layout.getLineLeft(0) - cell.scrollX - viewport.scrollX
+                        assertTrue("第 $rowIndex 行应保留左内边距；inset=$inset padding=${cell.paddingLeft} cellScroll=${cell.scrollX} tableScroll=${viewport.scrollX}", inset >= minimum)
+                    }
+                }
+            }
+            checkInsets()
+            compose.runOnIdle {
+                val table = descendants(checkNotNull(root)).filterIsInstance<TableLayout>().single()
+                // 普通单元格不应因系统焦点恢复把表格横向推到末端。
+                assertFalse("普通单元格不应抢占焦点", (table.getChildAt(0) as TableRow).getChildAt(1).requestFocusFromTouch())
+            }
+            checkInsets()
+            compose.runOnIdle { appearance.selectInterfaceStyle(InterfaceStyle.LIGHT) }
+            checkInsets()
+            android.os.SystemClock.sleep(300)
+            val image = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+            context.cacheDir.resolve("table-reading-inset.png").outputStream().use {
+                image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+            }
+            image.recycle()
+        } finally { preferences.edit().clear().apply() }
+    }
 
     @Test fun tenColumnsKeepReadableWidthsAndCopyAndFullscreenWork() {
         var root: View? = null
@@ -54,7 +103,7 @@ class MarkdownTableDeviceTest {
         compose.runOnIdle {
             assertTrue("横向拖动应滚动表格", (table.parent as HorizontalScrollView).scrollX > 0)
         }
-        compose.onNodeWithContentDescription("复制表格").performClick()
+        compose.onNodeWithContentDescription(com.clarklevis.dsh.android.localization.appText("复制表格")).performClick()
         val clipboard = InstrumentationRegistry.getInstrumentation().targetContext.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         compose.runOnIdle {
             val plain = clipboard.primaryClip?.getItemAt(0)?.text.toString()
@@ -63,7 +112,10 @@ class MarkdownTableDeviceTest {
             assertFalse(plain.contains("**")); assertFalse(plain.contains("`")); assertFalse(plain.contains("---"))
             assertEquals(10, plain.lineSequence().first().split('\t').size)
         }
-        compose.onNodeWithContentDescription("全屏浏览表格").performClick()
+        compose.onNodeWithContentDescription(com.clarklevis.dsh.android.localization.appText("全屏浏览表格")).performClick()
+        compose.waitUntil(15_000) {
+            compose.onAllNodes(androidx.compose.ui.test.hasTestTag("markdown-table-fullscreen")).fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithTag("markdown-table-fullscreen").assertIsDisplayed()
         android.os.SystemClock.sleep(4000)
         // 保存真实渲染，检查表格宽度、工具栏与同一行单元格的高度。
@@ -72,7 +124,7 @@ class MarkdownTableDeviceTest {
             bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
         }
         bitmap.recycle()
-        val downloads = compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("下载 CSV"))
+        val downloads = compose.onAllNodes(androidx.compose.ui.test.hasContentDescription(com.clarklevis.dsh.android.localization.appText("下载 CSV")))
         downloads[downloads.fetchSemanticsNodes().lastIndex].performClick()
         android.os.SystemClock.sleep(1000)
         val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
@@ -86,101 +138,118 @@ class MarkdownTableDeviceTest {
             }
         }
         assertEquals("选择器取消后应回到应用", "com.clarklevis.dsh.android", automation.rootInActiveWindow?.packageName?.toString())
-        compose.onNodeWithTag("markdown-table-fullscreen").assertIsDisplayed()
+        compose.waitUntil(15_000) {
+            runCatching { compose.onNodeWithTag("markdown-table-fullscreen").assertIsDisplayed(); true }.getOrDefault(false)
+        }
         androidx.test.espresso.Espresso.pressBack()
         compose.onNodeWithTag("markdown-table-fullscreen").assertDoesNotExist()
         compose.onNodeWithTag("markdown-table-card").assertIsDisplayed()
         compose.runOnIdle { ((table.getChildAt(0) as ViewGroup).getChildAt(0)).performLongClick() }
-        compose.onNodeWithText("选择文字").performClick()
+        compose.onNodeWithText(com.clarklevis.dsh.android.localization.appText("选择文字")).performClick()
         compose.onNodeWithTag("markdown-selection-page").assertIsDisplayed()
     }
 
-    @Test fun fullscreenSurvivesRotationAndMatchesDocumentHeaderInDarkMode() {
+    @Test fun fullscreenRotationIsIsolatedAndBackAndCloseRestoreChat() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val preferences = context.getSharedPreferences("table-rotation-test", Context.MODE_PRIVATE)
+        val preferences = AppearanceSettings.preferences(context)
+        val originalStyle = preferences.getString("interface_style", null)
+        val originalLanguage = preferences.getString("language", null)
+        preferences.edit().putString("language", AppLanguage.SIMPLIFIED_CHINESE.name).commit()
         val appearance = AppearanceSettings(preferences).apply { selectInterfaceStyle(InterfaceStyle.DARK) }
-        var activity: androidx.activity.ComponentActivity? = null
-        val source = "| 品牌 | 强项 | 弱项 | 参考 |\n| --- | --- | --- | --- |\n" +
-            (1..8).joinToString("\n") { "| 品牌$it | 信号稳定、系统流畅，支持多设备协同 | 需确认价格与续航表现 | 测试资料 |" }
-        val content: @androidx.compose.runtime.Composable () -> Unit = {
-            var host = androidx.compose.ui.platform.LocalContext.current
-            while (host is android.content.ContextWrapper && host !is androidx.activity.ComponentActivity) host = host.baseContext
-            activity = host as androidx.activity.ComponentActivity
+        var host: androidx.activity.ComponentActivity? = null
+        val source = "| 对比 | 结论 |\n| --- | --- |\n" +
+            (1..8).joinToString("\n") { "| 供应链抗压$it | **信号稳定**、系统流畅，支持多设备协同，需确认价格与续航表现。这段较长内容用于检查旋转后列宽会充分利用横屏空间。 |" }
+        compose.setContent {
+            host = androidx.activity.compose.LocalActivity.current as androidx.activity.ComponentActivity
             DshTheme(appearance) {
                 Column(Modifier.verticalScroll(rememberScrollState())) { DshMarkdownText(source) }
             }
         }
-        compose.setContent(content)
-        val application = checkNotNull(activity).application
-        val initialOrientation = checkNotNull(activity).requestedOrientation
-        val callback = object : android.app.Application.ActivityLifecycleCallbacks {
-            override fun onActivityCreated(next: android.app.Activity, state: android.os.Bundle?) {
-                if (next is androidx.activity.ComponentActivity && next.javaClass == activity?.javaClass) {
-                    java.util.Locale.setDefault(java.util.Locale.SIMPLIFIED_CHINESE)
-                    next.setContent(content = content)
-                }
+        val chat = checkNotNull(host)
+        val originalOrientation = chat.requestedOrientation
+        fun preview(): DshMarkdownTablePreviewActivity? {
+            var result: DshMarkdownTablePreviewActivity? = null
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                result = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
+                    .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED)
+                    .filterIsInstance<DshMarkdownTablePreviewActivity>().firstOrNull()
             }
-            override fun onActivityStarted(next: android.app.Activity) {}
-            override fun onActivityResumed(next: android.app.Activity) {}
-            override fun onActivityPaused(next: android.app.Activity) {}
-            override fun onActivityStopped(next: android.app.Activity) {}
-            override fun onActivitySaveInstanceState(next: android.app.Activity, state: android.os.Bundle) {}
-            override fun onActivityDestroyed(next: android.app.Activity) {}
+            return result
         }
-        application.registerActivityLifecycleCallbacks(callback)
-        fun screenshot(name: String) {
+        fun snapshot(name: String, expectedBackground: Int) {
             compose.waitForIdle()
+            android.os.SystemClock.sleep(500)
+            val image = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+            context.cacheDir.resolve("$name.png").outputStream().use {
+                image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+            }
+            val gutter = image.getPixel((10 * context.resources.displayMetrics.density).toInt(), image.height / 2)
+            assertEquals("独立预览沿用应用深浅模式", expectedBackground, gutter)
+            image.recycle()
+        }
+        var portraitColumnRatio: Double? = null
+        var portraitRowHeight = 0
+        fun waitForPreview(orientation: Int) {
+            compose.waitUntil(15_000) { preview()?.resources?.configuration?.orientation == orientation }
+            compose.waitUntil(15_000) {
+                compose.onAllNodes(androidx.compose.ui.test.hasTestTag("markdown-table-fullscreen"))
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithTag("markdown-table-fullscreen").assertIsDisplayed()
+            compose.runOnIdle { assertEquals("预览不能修改聊天 Activity 方向", originalOrientation, chat.requestedOrientation) }
             val titleBounds = compose.onNodeWithTag("document-page-title").fetchSemanticsNode().boundsInRoot
             val pageBounds = compose.onNodeWithTag("markdown-table-fullscreen").fetchSemanticsNode().boundsInRoot
             assertEquals("横竖屏标题必须始终居中", pageBounds.center.x, titleBounds.center.x, 2f)
-            android.os.SystemClock.sleep(500)
-            val bitmap = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
-            context.cacheDir.resolve("$name.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
-            val gutter = bitmap.getPixel((10 * context.resources.displayMetrics.density).toInt(), bitmap.height / 2)
-            assertEquals("预览页边距必须跟随应用深浅模式", if (name.contains("-dark-")) android.graphics.Color.BLACK else android.graphics.Color.WHITE, gutter)
-            bitmap.recycle()
+            androidx.test.espresso.Espresso.onView(org.hamcrest.Matchers.instanceOf(TableLayout::class.java)).check { view, error ->
+                if (error != null) throw error
+                val grid = view as TableLayout
+                val viewport = grid.parent as HorizontalScrollView
+                val row = grid.getChildAt(1) as TableRow
+                val ratio = row.getChildAt(0).width.toDouble() / row.getChildAt(1).width
+                if (orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) {
+                    assertEquals("少列表格必须铺满横屏视口", viewport.width, grid.width)
+                    assertEquals("扩展时保留各列比例", checkNotNull(portraitColumnRatio), ratio, 0.01)
+                    assertTrue("横屏应减少正文换行", row.height < portraitRowHeight)
+                } else {
+                    portraitColumnRatio = ratio
+                    portraitRowHeight = row.height
+                }
+            }
         }
         try {
-            compose.onNodeWithContentDescription("全屏浏览表格").performClick()
-            compose.onNodeWithTag("markdown-table-fullscreen").assertIsDisplayed()
-            val title = compose.onNodeWithTag("document-page-title").fetchSemanticsNode().boundsInRoot
-            val page = compose.onNodeWithTag("markdown-table-fullscreen").fetchSemanticsNode().boundsInRoot
-            assertEquals(page.center.x, title.center.x, 2f)
-            compose.onNodeWithTag("markdown-table-close").assertIsDisplayed()
-            screenshot("table-page-android-dark-portrait")
-            compose.runOnIdle { appearance.selectInterfaceStyle(InterfaceStyle.LIGHT) }
-            screenshot("table-page-android-light-portrait")
-            compose.onNodeWithContentDescription("旋转屏幕").performClick()
-            compose.waitUntil(10_000) {
-                val metrics = activity?.resources?.configuration
-                metrics != null && metrics.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-            }
-            compose.onNodeWithTag("markdown-table-fullscreen").assertIsDisplayed()
-            screenshot("table-page-android-light-landscape")
-            compose.runOnIdle { appearance.selectInterfaceStyle(InterfaceStyle.DARK) }
-            screenshot("table-page-android-dark-landscape")
-            compose.onNodeWithContentDescription("旋转屏幕").performClick()
-            compose.waitUntil(10_000) {
-                activity?.resources?.configuration?.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT
-            }
-            compose.onNodeWithTag("markdown-table-fullscreen").assertIsDisplayed()
-            // 再次进入横屏后关闭，验证页面退出会还原进入预览前的方向策略。
-            compose.onNodeWithContentDescription("旋转屏幕").performClick()
-            compose.waitUntil(10_000) {
-                activity?.resources?.configuration?.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-            }
+            compose.onNodeWithContentDescription(com.clarklevis.dsh.android.localization.appText("全屏浏览表格")).performClick()
+            waitForPreview(android.content.res.Configuration.ORIENTATION_PORTRAIT)
+            compose.onNodeWithContentDescription(com.clarklevis.dsh.android.localization.appText("旋转屏幕")).performClick()
+            waitForPreview(android.content.res.Configuration.ORIENTATION_LANDSCAPE)
+            snapshot("table-isolated-dark-landscape", android.graphics.Color.BLACK)
+            compose.onNodeWithContentDescription(com.clarklevis.dsh.android.localization.appText("旋转屏幕")).performClick()
+            waitForPreview(android.content.res.Configuration.ORIENTATION_PORTRAIT)
+            compose.onNodeWithContentDescription(com.clarklevis.dsh.android.localization.appText("旋转屏幕")).performClick()
+            waitForPreview(android.content.res.Configuration.ORIENTATION_LANDSCAPE)
             compose.onNodeWithTag("markdown-table-close").performClick()
-            compose.onNodeWithTag("markdown-table-fullscreen").assertDoesNotExist()
-            compose.waitUntil(10_000) {
-                activity?.requestedOrientation == initialOrientation
-            }
+            compose.waitUntil(15_000) { preview() == null && chat.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT }
+            compose.onNodeWithTag("markdown-table-card").assertIsDisplayed()
+            assertFalse("聊天页面不能被旋转销毁", chat.isDestroyed)
+            assertEquals(originalOrientation, chat.requestedOrientation)
+            // 重新进入的预览不能继承上一轮横屏状态，系统返回与关闭按钮行为相同。
+            compose.runOnIdle { appearance.selectInterfaceStyle(InterfaceStyle.LIGHT) }
+            compose.waitForIdle()
+            compose.onNodeWithContentDescription(com.clarklevis.dsh.android.localization.appText("全屏浏览表格")).performClick()
+            waitForPreview(android.content.res.Configuration.ORIENTATION_PORTRAIT)
+            compose.onNodeWithContentDescription(com.clarklevis.dsh.android.localization.appText("旋转屏幕")).performClick()
+            waitForPreview(android.content.res.Configuration.ORIENTATION_LANDSCAPE)
+            snapshot("table-isolated-light-landscape", android.graphics.Color.WHITE)
+            androidx.test.espresso.Espresso.pressBack()
+            compose.waitUntil(15_000) { preview() == null && chat.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT }
+            compose.onNodeWithTag("markdown-table-card").assertIsDisplayed()
+            assertEquals(originalOrientation, chat.requestedOrientation)
         } finally {
-            InstrumentationRegistry.getInstrumentation().runOnMainSync {
-                activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            }
-            android.os.SystemClock.sleep(500)
-            application.unregisterActivityLifecycleCallbacks(callback)
-            preferences.edit().clear().apply()
+            val remainingPreview = preview()
+            InstrumentationRegistry.getInstrumentation().runOnMainSync { remainingPreview?.finish() }
+            preferences.edit().apply {
+                if (originalStyle == null) remove("interface_style") else putString("interface_style", originalStyle)
+                if (originalLanguage == null) remove("language") else putString("language", originalLanguage)
+            }.apply()
         }
     }
 

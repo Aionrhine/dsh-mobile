@@ -142,13 +142,16 @@ enum DSHColor {
 }
 
 struct DeepOceanBackground: View {
+    var prefersOpenLightArcs = false
+
     var body: some View {
         GeometryReader { geometry in
             HarnessAnimatedBackground(
                 style: HarnessBackgroundStyle.resolve(
                     size: geometry.size,
                     isPad: UIDevice.current.userInterfaceIdiom == .pad
-                )
+                ),
+                prefersOpenLightArcs: prefersOpenLightArcs
             )
         }
         .ignoresSafeArea()

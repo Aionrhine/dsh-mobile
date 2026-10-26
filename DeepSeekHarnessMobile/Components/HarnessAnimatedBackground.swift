@@ -18,6 +18,7 @@ enum HarnessBackgroundStyle {
 /// independent, so each layer can be tuned or disabled without touching UI.
 struct HarnessAnimatedBackground: View {
     let style: HarnessBackgroundStyle
+    var prefersOpenLightArcs = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
 
@@ -32,7 +33,9 @@ struct HarnessAnimatedBackground: View {
                 : timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 4_096)
 
             ZStack {
-                HarnessFluidLayer(time: elapsed, style: style)
+                HarnessFluidLayer(
+                    time: elapsed, style: style, prefersOpenLightArcs: prefersOpenLightArcs
+                )
                 HarnessTechnicalGrid(style: style)
                 HarnessWhaleField(time: elapsed, isStatic: reduceMotion, style: style)
                     .blendMode(.screen)
@@ -78,6 +81,7 @@ struct HarnessBackgroundComposition {
 private struct HarnessFluidLayer: View {
     let time: TimeInterval
     let style: HarnessBackgroundStyle
+    let prefersOpenLightArcs: Bool
 
     @ViewBuilder
     var body: some View {
@@ -90,7 +94,8 @@ private struct HarnessFluidLayer: View {
                         ShaderLibrary.harnessFluid(
                             .float2(proxy.size),
                             .float(Float(time)),
-                            .float(style == .pad ? 1 : 0)
+                            .float(style == .pad ? 1 : 0),
+                            .float(prefersOpenLightArcs ? 1 : 0)
                         )
                     )
                 }

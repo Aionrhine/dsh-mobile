@@ -12,9 +12,9 @@ import android.widget.TableLayout
 import android.widget.TableRow
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.compose.LocalActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -42,6 +42,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -60,24 +61,36 @@ import kotlinx.coroutines.withContext
 import org.commonmark.ext.gfm.tables.TableCell
 
 @Composable
-internal fun DshMarkdownTableCard(table: DshTableData, textSizeSp: Float, onOpenFile: ((String) -> Unit)?, copyMarkdown: String) {
+internal fun DshMarkdownTableCard(table: DshTableData, textSizeSp: Float, onOpenFile: ((String) -> Unit)?,
+    copyMarkdown: String, sourceMarkdown: String, tableIndex: Int) {
     val context = LocalContext.current
-    val activity = LocalActivity.current
+    val scope = rememberCoroutineScope()
     var messageAnchor by remember { mutableStateOf<androidx.compose.ui.unit.IntOffset?>(null) }
     var selection by remember { mutableStateOf<String?>(null) }
-    var fullscreen by rememberSaveable { mutableStateOf(false) }
-    var fullscreenSnapshot by remember { mutableStateOf(table) }
-    var originalOrientation by rememberSaveable { mutableStateOf<Int?>(null) }
-    val closeFullscreen: () -> Unit = {
-        fullscreen = false
-        val orientation = originalOrientation
-        originalOrientation = null
-        if (orientation != null) activity?.requestedOrientation = orientation
+    var openingPreview by remember { mutableStateOf(false) }
+    val currentOpenFile by rememberUpdatedState(onOpenFile)
+    val preview = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        result.data?.getStringExtra(DshMarkdownTablePreviewActivity.EXTRA_OPEN_FILE)?.let { currentOpenFile?.invoke(it) }
     }
     val colors = dshDocumentColors()
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(colors.toolbar).testTag("markdown-table-card")) {
-        DshTableActions(table, onExpand = { fullscreenSnapshot = table; fullscreen = true })
-        DshTableGrid(table, textSizeSp, onOpenFile, onMessageMenu = { messageAnchor = it })
+        DshTableActions(table, onExpand = {
+            if (!openingPreview) scope.launch {
+                openingPreview = true
+                try {
+                    val intent = withContext(Dispatchers.IO) {
+                        DshMarkdownTablePreviewActivity.createIntent(context, sourceMarkdown, tableIndex, textSizeSp)
+                    }
+                    preview.launch(intent)
+                } catch (error: Exception) {
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    Toast.makeText(context, appText("加载失败"), Toast.LENGTH_SHORT).show()
+                } finally {
+                    openingPreview = false
+                }
+            }
+        })
+        DshTableGrid(table, textSizeSp, onOpenFile, onMessageMenu = { messageAnchor = it }, roundTopCorners = false)
     }
     DshPointMenu(messageAnchor, { messageAnchor = null }) {
         DshMenuItem(text = { Text(appText("复制")) }, onClick = {
@@ -90,26 +103,20 @@ internal fun DshMarkdownTableCard(table: DshTableData, textSizeSp: Float, onOpen
         })
     }
     selection?.let { source -> DshMarkdownSelectionPage(source) { selection = null } }
-    if (fullscreen) {
-        val snapshot = fullscreenSnapshot
-        DshDocumentDialog(onDismiss = closeFullscreen) {
-            val pageColors = dshDocumentColors()
-            Column(Modifier.fillMaxSize().background(pageColors.background)
-                .documentPageInsets().testTag("markdown-table-fullscreen")) {
-                DshTableActions(snapshot, onClose = closeFullscreen, onRotate = activity?.let { host -> {
-                    if (originalOrientation == null) originalOrientation = host.requestedOrientation
-                    host.requestedOrientation = if (host.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) {
-                        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                    } else {
-                        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-                    }
-                } })
-                Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 20.dp)
-                    .padding(top = 12.dp, bottom = 20.dp).clip(RoundedCornerShape(12.dp))
-                    .verticalScroll(rememberScrollState())) {
-                    DshTableGrid(snapshot, textSizeSp, onOpenFile)
-                }
-            }
+}
+
+/** 独立预览 Activity 复用与聊天卡片相同的网格和操作栏。 */
+@Composable
+internal fun DshMarkdownTablePreview(table: DshTableData, textSizeSp: Float,
+    onClose: () -> Unit, onRotate: () -> Unit, onOpenFile: (String) -> Unit) {
+    val colors = dshDocumentColors()
+    Column(Modifier.fillMaxSize().background(colors.background)
+        .documentPageInsets().testTag("markdown-table-fullscreen")) {
+        DshTableActions(table, onClose = onClose, onRotate = onRotate)
+        Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 20.dp)
+            .padding(top = 12.dp, bottom = 20.dp).clipToBounds()
+            .verticalScroll(rememberScrollState())) {
+            DshTableGrid(table, textSizeSp, onOpenFile)
         }
     }
 }
@@ -184,10 +191,50 @@ private fun DshTableActions(table: DshTableData, modifier: Modifier = Modifier,
 
 private data class TableGridKey(val table: DshTableData, val size: Float, val density: Float, val text: Int, val border: Int, val header: Int, val odd: Int, val background: Int)
 
-/** 每列使用内容测量后的 96～260dp 宽度，超出视口横向滚动，绝不按屏宽均分。 */
+/** 在原生测量阶段分配列宽，旋转、分屏和容器大小变化都使用实际视口宽度。 */
+private class DshTableScrollView(context: android.content.Context) : HorizontalScrollView(context) {
+    private var appliedWidth = -1
+    var naturalColumnWidths: List<Int> = emptyList()
+        set(value) {
+            field = value
+            appliedWidth = -1
+        }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val naturalWidth = naturalColumnWidths.sum()
+        val availableWidth = if (MeasureSpec.getMode(widthMeasureSpec) == MeasureSpec.UNSPECIFIED) 0
+            else (MeasureSpec.getSize(widthMeasureSpec) - paddingLeft - paddingRight).coerceAtLeast(0)
+        val targetWidth = maxOf(naturalWidth, availableWidth)
+        val table = getChildAt(0) as? TableLayout
+        if (table != null && naturalWidth > 0 && targetWidth != appliedWidth) {
+            var naturalEdge = 0L
+            var previousEdge = 0
+            val widths = naturalColumnWidths.map { width ->
+                naturalEdge += width
+                val edge = (naturalEdge * targetWidth / naturalWidth).toInt()
+                (edge - previousEdge).also { previousEdge = edge }
+            }
+            repeat(table.childCount) { rowIndex ->
+                val row = table.getChildAt(rowIndex) as TableRow
+                widths.forEachIndexed { column, width ->
+                    val cell = row.getChildAt(column)
+                    val params = cell.layoutParams as TableRow.LayoutParams
+                    if (params.width != width) {
+                        params.width = width
+                        cell.layoutParams = params
+                    }
+                }
+            }
+            appliedWidth = targetWidth
+        }
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+    }
+}
+
+/** 自然列宽为 96～260dp；少列表格按比例铺满视口，宽表保持自然宽度并横向滚动。 */
 @Composable
 private fun DshTableGrid(table: DshTableData, sizeSp: Float, onOpenFile: ((String) -> Unit)?,
-    onMessageMenu: ((androidx.compose.ui.unit.IntOffset?) -> Unit)? = null) {
+    onMessageMenu: ((androidx.compose.ui.unit.IntOffset?) -> Unit)? = null, roundTopCorners: Boolean = true) {
     val density = LocalDensity.current
     val colors = dshDocumentColors()
     val bodySize = if (sizeSp <= 14f) 13f else 17f
@@ -196,8 +243,13 @@ private fun DshTableGrid(table: DshTableData, sizeSp: Float, onOpenFile: ((Strin
     var savedScrollX by rememberSaveable { mutableStateOf(0) }
     val currentOpen by rememberUpdatedState(onOpenFile)
     val currentMenu by rememberUpdatedState(onMessageMenu)
+    val outline = RoundedCornerShape(
+        topStart = if (roundTopCorners) 12.dp else 0.dp,
+        topEnd = if (roundTopCorners) 12.dp else 0.dp,
+        bottomStart = 12.dp, bottomEnd = 12.dp
+    )
     AndroidView(
-        factory = { context -> HorizontalScrollView(context).apply {
+        factory = { context -> DshTableScrollView(context).apply {
             isHorizontalScrollBarEnabled = true
             isFillViewport = false
             setOnScrollChangeListener { _, x, _, _, _ -> savedScrollX = x }
@@ -217,6 +269,7 @@ private fun DshTableGrid(table: DshTableData, sizeSp: Float, onOpenFile: ((Strin
                     } ?: 0f
                     (natural + 24 * key.density).coerceIn(96 * key.density, 260 * key.density).toInt()
                 }
+                scroll.naturalColumnWidths = widths
                 table.rows.forEachIndexed { rowIndex, cells ->
                     val row = TableRow(scroll.context)
                     repeat(table.columnCount) { column ->
@@ -240,8 +293,17 @@ private fun DshTableGrid(table: DshTableData, sizeSp: Float, onOpenFile: ((Strin
                             setLineSpacing(3 * key.density, 1f)
                             setText(cell?.text ?: "")
                             this.onOpenFile = { currentOpen?.invoke(it) }
-                            linksClickable = true
-                            movementMethod = LinkMovementMethod.getInstance()
+                            val hasLinks = cell?.text?.let { text ->
+                                text.getSpans(0, text.length, android.text.style.ClickableSpan::class.java).isNotEmpty()
+                            } == true
+                            linksClickable = hasLinks
+                            movementMethod = if (hasLinks) LinkMovementMethod.getInstance() else null
+                            // LinkMovementMethod 会启用输入焦点并触发父滚动容器自动显露。
+                            // 普通阅读单元格只接收长按；真实链接保留点击和键盘导航。
+                            isClickable = hasLinks
+                            isLongClickable = onMessageMenu != null
+                            isFocusableInTouchMode = false
+                            isFocusable = hasLinks
                             background = GradientDrawable().apply {
                                 setColor(if (rowIndex == 0) key.header else if (rowIndex % 2 == 0) key.odd else key.background)
                                 setStroke((.5f * key.density).toInt().coerceAtLeast(1), key.border)
@@ -252,6 +314,8 @@ private fun DshTableGrid(table: DshTableData, sizeSp: Float, onOpenFile: ((Strin
                 }
             }
         },
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).testTag("markdown-table-grid")
+        // 轮廓属于整张表格；弧形描边补齐底部封边，表头和正文之间保持直线。
+        modifier = Modifier.fillMaxWidth().clip(outline).border(0.5.dp, colors.border, outline)
+            .testTag("markdown-table-grid")
     )
 }
