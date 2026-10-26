@@ -251,6 +251,18 @@ final class CommandTextView: UITextView {
     private var renderedPresentation: SlashCommandComposerPresentation?
     private var renderedPlaceholder = ""
     private var renderedFontSize: CGFloat?
+    private var lastDrawnSize: CGSize = .zero
+
+    // 占位提示是在 draw(_:) 里自绘的。UIView 默认 contentMode 是 scaleToFill，
+    // 尺寸变化时系统只会拉伸旧的绘制结果而不会重绘：折叠屏从展开变为折叠后，
+    // 输入框变窄，提示文字就被横向压扁。尺寸一变就主动重绘。
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        if bounds.size != lastDrawnSize {
+            lastDrawnSize = bounds.size
+            setNeedsDisplay()
+        }
+    }
 
     func apply(text: String, presentation: SlashCommandComposerPresentation?, placeholder: String) {
         let fontChanged = renderedFontSize != font?.pointSize
