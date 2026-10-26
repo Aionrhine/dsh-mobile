@@ -58,7 +58,7 @@ class AndroidSessionStatsProtocolTest {
                     ?.get("step")
                     ?.doubleValue
             )
-            assertEquals(100, frame.tokenUsage?.totals?.inputTokens)
+            assertEquals(100L, frame.tokenUsage?.totals?.inputTokens)
         }
     }
 

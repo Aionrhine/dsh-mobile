@@ -5944,6 +5944,40 @@ final class GatewayProtocolTests: XCTestCase {
     }
 
     @MainActor
+    func testKMPSessionControlPreservesTokenCountsAboveInt32Max() throws {
+        let json = #"{"kind":"context-usage","sessionId":"session-1","asOfSeq":42,"tokenUsage":{"outputTokens":8235762,"uncachedInputTokens":22506251,"cacheWriteTokens":0,"cacheReadTokens":2284347716}}"#
+        let frame = try GatewayWireDecoder.decode(Data(json.utf8))
+        let usage = try XCTUnwrap(frame.tokenUsage)
+        let adapter = KMPSessionControlStoreAdapter()
+        let context = adapter.reduce(.projection(.contextReceived(
+            sessionID: "session-1", asOfSequence: frame.asOfSeq,
+            tokenUsage: usage, pressure: nil, breakdown: nil
+        )))
+
+        XCTAssertTrue(adapter.isOperational)
+        XCTAssertNil(context.error)
+        XCTAssertTrue(context.applied)
+        XCTAssertEqual(context.snapshot.contextSnapshots["session-1"]?.tokenUsage, usage)
+        XCTAssertEqual(usage.cacheReadTokens, 2_284_347_716)
+
+        let totals = GatewaySessionTokenUsageTotals(
+            inputTokens: 2_284_347_716, outputTokens: 2_284_347_717,
+            cacheReadTokens: 2_284_347_718, cacheWriteTokens: 2_284_347_719,
+            reasoningTokens: 2_284_347_720
+        )
+        let stats = adapter.reduce(.projection(.statsReceived(
+            sessionID: "session-1", asOfSequence: 43, stats: nil,
+            tokenUsageTotals: totals, contextPressure: nil
+        )))
+
+        XCTAssertTrue(adapter.isOperational)
+        XCTAssertNil(stats.error)
+        XCTAssertTrue(stats.applied)
+        XCTAssertEqual(stats.snapshot.sessionStatsSnapshots["session-1"]?.tokenUsage?.totals, totals)
+        XCTAssertEqual(stats.snapshot.contextSnapshots["session-1"]?.tokenUsage, usage)
+    }
+
+    @MainActor
     func testKMPSessionControlAdapterMergesHistoryAndRealtimePartialSnapshots() {
         let adapter = KMPSessionControlStoreAdapter()
         _ = adapter.reduce(.projection(.contextReceived(

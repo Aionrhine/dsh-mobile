@@ -2662,7 +2662,7 @@ private fun ContextUsageRing(stateHolder: AndroidSharedStateHolder) {
                         fontWeight = FontWeight.SemiBold
                     )
                     Spacer(Modifier.weight(1f))
-                    Text("${contextTokenCount(pressure?.pressureTokens)} / ${contextTokenCount(contextWindow)}", fontSize = 12.sp)
+                    Text("${contextTokenCount(pressure?.pressureTokens?.toLong())} / ${contextTokenCount(contextWindow?.toLong())}", fontSize = 12.sp)
                 }
                 LinearProgressIndicator(
                     progress = { progress.coerceIn(0f, 1f) },
@@ -2672,9 +2672,9 @@ private fun ContextUsageRing(stateHolder: AndroidSharedStateHolder) {
                 val breakdown = snapshot?.breakdown
                 val usage = snapshot?.tokenUsage
                 if (breakdown != null) {
-                    ContextUsageRow(appText("系统提示词"), breakdown.systemTokens, Color.Gray)
-                    ContextUsageRow(appText("工具"), breakdown.toolsTokens, Color(0xFF8055CF))
-                    ContextUsageRow(appText("对话消息"), breakdown.messageTokens, DshColors.Ocean)
+                    ContextUsageRow(appText("系统提示词"), breakdown.systemTokens?.toLong(), Color.Gray)
+                    ContextUsageRow(appText("工具"), breakdown.toolsTokens?.toLong(), Color(0xFF8055CF))
+                    ContextUsageRow(appText("对话消息"), breakdown.messageTokens?.toLong(), DshColors.Ocean)
                 } else if (usage != null) {
                     ContextUsageRow(appText("未缓存输入"), usage.uncachedInputTokens, DshColors.Ocean)
                     ContextUsageRow(appText("缓存读取"), usage.cacheReadTokens, Color(0xFF8055CF))
@@ -2688,7 +2688,7 @@ private fun ContextUsageRing(stateHolder: AndroidSharedStateHolder) {
 }
 
 @Composable
-private fun ContextUsageRow(title: String, tokens: Int?, color: Color) {
+private fun ContextUsageRow(title: String, tokens: Long?, color: Color) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Box(Modifier.size(11.dp).background(color, RoundedCornerShape(3.dp)))
         Text(title, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
@@ -2697,7 +2697,7 @@ private fun ContextUsageRow(title: String, tokens: Int?, color: Color) {
     }
 }
 
-private fun contextTokenCount(value: Int?): String = when {
+private fun contextTokenCount(value: Long?): String = when {
     value == null -> "—"
     value >= 1_000_000 -> "~" + String.format(java.util.Locale.ROOT, "%.1fM", value / 1_000_000.0)
     value >= 1_000 -> "~" + String.format(java.util.Locale.ROOT, "%.1fK", value / 1_000.0)

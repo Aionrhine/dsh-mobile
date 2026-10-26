@@ -478,10 +478,11 @@ data class GatewaySessionPermissions(
 
 @Serializable
 data class GatewayTokenUsage(
-    val uncachedInputTokens: Int? = null,
-    val outputTokens: Int? = null,
-    val cacheReadTokens: Int? = null,
-    val cacheWriteTokens: Int? = null,
+    // Token 用量可能跨多轮累计，缓存读取量可超过 32 位整数范围。
+    val uncachedInputTokens: Long? = null,
+    val outputTokens: Long? = null,
+    val cacheReadTokens: Long? = null,
+    val cacheWriteTokens: Long? = null,
     val totals: GatewaySessionTokenUsageTotals? = null
 )
 
@@ -510,11 +511,11 @@ data class GatewaySessionStats(
 
 @Serializable
 data class GatewaySessionTokenUsageTotals(
-    val inputTokens: Int? = null,
-    val outputTokens: Int? = null,
-    val cacheReadTokens: Int? = null,
-    val cacheWriteTokens: Int? = null,
-    val reasoningTokens: Int? = null
+    val inputTokens: Long? = null,
+    val outputTokens: Long? = null,
+    val cacheReadTokens: Long? = null,
+    val cacheWriteTokens: Long? = null,
+    val reasoningTokens: Long? = null
 )
 
 @Serializable

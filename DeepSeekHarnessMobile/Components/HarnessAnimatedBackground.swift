@@ -1,10 +1,16 @@
 import SwiftUI
 import UIKit
 
-/// 手机和平板分别使用各自的背景构图与粒子参数。
+/// 手机使用紧凑构图；平板和展开后的折叠屏共用宽幅构图与细密粒子。
 enum HarnessBackgroundStyle {
     case phone
     case pad
+
+    static func resolve(size: CGSize, isPad: Bool) -> HarnessBackgroundStyle {
+        // Duo 展开约 626×890，旋转后短边不变；普通手机横屏仍使用手机背景。
+        // iPad 的窄窗口保留原有平板背景，不随分屏切换风格。
+        isPad || min(size.width, size.height) >= 600 ? .pad : .phone
+    }
 }
 
 /// The native counterpart of the DeepSeek Harness landing-page background.

@@ -1,34 +1,18 @@
 import SwiftUI
 
-/// 侧栏触发的导航动作，由 RootNavigationHost 注入（它持有导航栈）。
+/// 侧栏触发的导航动作，由会话页传入，最终交给持有导航栈的 RootNavigationHost。
 /// 默认值都是空操作，侧栏脱离导航栈单独预览时不会崩溃。
 struct ConversationSidebarActions {
     var openSession: (SessionSummary) -> Void = { _ in }
-    /// 在指定工作区新建会话；nil 表示「未分组」。
-    var newSession: (GatewayWorkspace?) -> Void = { _ in }
     var openPlugins: () -> Void = {}
     var openScheduledTasks: () -> Void = {}
     var openSettings: () -> Void = {}
 }
 
-private struct ConversationSidebarActionsKey: EnvironmentKey {
-    static let defaultValue = ConversationSidebarActions()
-}
-
-extension EnvironmentValues {
-    var conversationSidebarActions: ConversationSidebarActions {
-        get { self[ConversationSidebarActionsKey.self] }
-        set { self[ConversationSidebarActionsKey.self] = newValue }
-    }
-}
-
-/// 宽屏（折叠屏展开横拿、iPad）进入会话后常驻在左侧的导航栏，布局参照 DSH 网页版：
-/// Logo + 收起按钮 → 新会话 → 插件 / 定时任务 → 工作区（点开显示会话）→ 底部设置。
-///
-/// 由 RootNavigationHost 放在 NavigationStack 外面，所以会话标题等导航栏内容只占右侧。
-/// 折叠 / 竖拿（compact）不显示，仍走单栏 + 原版手势抽屉。
+/// 会话页按需弹出的悬浮侧栏：
+/// Logo → 插件 / 定时任务 → 工作区（点开显示会话）→ 底部设置。
+/// 展示和关闭由会话页管理，不参与根导航容器的宽度分配。
 struct ConversationSidebar: View {
-    static let collapsedKey = "conversationSidebar.collapsed"
     static let width: CGFloat = 300
     private static let ungroupedKey = "__ungrouped__"
 
@@ -36,9 +20,8 @@ struct ConversationSidebar: View {
     /// store 的其他 @Published 每个 token 都在变，观察整个对象会让侧栏每秒重算几十次。
     /// 只订阅侧栏真正显示的三项，分组结果缓存在 @State 里。
     let store: AppStore
+    let actions: ConversationSidebarActions
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.conversationSidebarActions) private var actions
-    @AppStorage(collapsedKey) private var collapsed = false
     /// 展开的工作区 id（逗号分隔），只用于持久化；渲染读 expandedKeys。
     @AppStorage("conversationSidebar.expandedWorkspaces") private var expandedStorage = ""
     @State private var expandedKeys: Set<String> = []
@@ -50,10 +33,6 @@ struct ConversationSidebar: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            newSessionButton
-                .padding(.horizontal, 14)
-                .padding(.bottom, 10)
-
             navigationRow("插件", action: actions.openPlugins) {
                 Image("DshPluginPinwheel")
                     .renderingMode(.template)
@@ -80,7 +59,6 @@ struct ConversationSidebar: View {
                             key: workspace.id,
                             title: workspace.title,
                             icon: "folder",
-                            workspace: workspace,
                             sessions: groups.byWorkspace[workspace.id] ?? []
                         )
                     }
@@ -88,7 +66,6 @@ struct ConversationSidebar: View {
                         key: Self.ungroupedKey,
                         title: String(localized: "未分组"),
                         icon: "tray",
-                        workspace: nil,
                         sessions: groups.ungrouped
                     )
                 }
@@ -111,11 +88,8 @@ struct ConversationSidebar: View {
             (colorScheme == .dark
                 ? Color(red: 28.0 / 255, green: 28.0 / 255, blue: 30.0 / 255)
                 : Color(white: 0.96))
-                .ignoresSafeArea()
         }
-        .overlay(alignment: .trailing) {
-            Divider().opacity(0.4).ignoresSafeArea()
-        }
+        .accessibilityIdentifier("conversation-sidebar")
         .onAppear {
             expandedKeys = Set(expandedStorage.split(separator: ",").map(String.init))
             workspaces = store.workspaces
@@ -139,59 +113,10 @@ struct ConversationSidebar: View {
     // MARK: - 顶部
 
     private var header: some View {
-        HStack(spacing: 8) {
-            HarnessMark(onDarkBackground: colorScheme == .dark, width: 170)
-            Spacer(minLength: 0)
-            Button {
-                withAnimation(.easeInOut(duration: 0.22)) { collapsed = true }
-            } label: {
-                Image(systemName: "sidebar.left")
-                    .appFont(.system(size: 18, weight: .regular))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 36, height: 36)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("收起侧边栏")
-        }
-        .padding(.leading, 18)
-        .padding(.trailing, 10)
-        .padding(.top, 12)
-        .padding(.bottom, 12)
-    }
-
-    private var newSessionButton: some View {
-        Button {
-            actions.newSession(currentWorkspace)
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "plus.circle")
-                    .appFont(.system(size: 17, weight: .regular))
-                Text("新会话")
-                    .appFont(.system(size: 16, weight: .medium))
-            }
-            .frame(maxWidth: .infinity, minHeight: 44)
-            .background {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(colorScheme == .dark ? Color.white.opacity(0.06) : Color.white)
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(Color.primary.opacity(0.12), lineWidth: 1)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityHint("在当前工作区新建会话")
-    }
-
-    /// 新会话落在当前会话所在的工作区；没有当前会话时用首页选中的工作区。
-    private var currentWorkspace: GatewayWorkspace? {
-        if let sessionID = store.selectedSessionId,
-           let workspace = store.workspaces.first(where: { $0.sessionIds.contains(sessionID) }) {
-            return workspace
-        }
-        return store.activeWorkspace
+        HarnessMark(onDarkBackground: colorScheme == .dark, width: 170)
+            .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 12)
     }
 
     // MARK: - 工作区与会话
@@ -201,7 +126,6 @@ struct ConversationSidebar: View {
         key: String,
         title: String,
         icon: String,
-        workspace: GatewayWorkspace?,
         sessions: [SessionSummary]
     ) -> some View {
         let isExpanded = expandedKeys.contains(key)
@@ -245,8 +169,7 @@ struct ConversationSidebar: View {
 
     private func sessionRow(_ session: SessionSummary) -> some View {
         let selected = session.id == selectedSessionID
-        // 是否已在该会话页由导航层判断：侧栏也显示在设置 / 插件等页面，
-        // 那时点当前会话应该回到会话页，不能在这里直接忽略。
+        // 是否已在该会话页由导航层判断，仍然发送动作以便关闭面板。
         return Button {
             actions.openSession(session)
         } label: {
@@ -276,6 +199,7 @@ struct ConversationSidebar: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("conversation-sidebar-session-\(session.id)")
     }
 
     /// 一次遍历把可见会话分到所属工作区（同一会话属于多个工作区时各列一份），

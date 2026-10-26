@@ -26,31 +26,62 @@ struct WorkspaceView: View {
     @GestureState private var drawerClosingGestureActive = false
     @FocusState private var sessionSearchIsFocused: Bool
 
+    @ViewBuilder
     var body: some View {
+        if #available(iOS 27.1, *) {
+            WorkspaceVerticalToolbarLayout { usesVerticalToolbar in
+                workspaceBody(usesVerticalToolbar: usesVerticalToolbar)
+            } toolbar: {
+                ToolbarItem(placement: .topBarTrailing) {
+                    authenticationMenu(inToolbar: true)
+                        .foregroundStyle(.white)
+                }
+                .axisBehavior(.verticalPreferred)
+                .sharedBackgroundVisibility(.hidden)
+                ToolbarItem(placement: .topBarTrailing) {
+                    toolbarSettingsButton
+                        .foregroundStyle(.white)
+                }
+                .axisBehavior(.verticalPreferred)
+                .sharedBackgroundVisibility(.hidden)
+            }
+        } else {
+            workspaceBody(usesVerticalToolbar: false)
+        }
+    }
+
+    private func workspaceBody(usesVerticalToolbar: Bool) -> some View {
         GeometryReader { geometry in
-            let drawerWidth = min(geometry.size.width * 0.76, 360)
+            let safeArea = geometry.safeAreaInsets
+            let drawerWidth = min(geometry.size.width * 0.76, 360) + safeArea.leading
             let progress = min(max(drawerOffset / max(drawerWidth, 1), 0), 1)
             let dimProgress = min(max((progress - 0.45) / 0.55, 0), 1)
             let dimOpacity = 0.16 * dimProgress * dimProgress * (3 - 2 * dimProgress)
-            let topInset = geometry.safeAreaInsets.top
-            let fullHeight = geometry.size.height + topInset + geometry.safeAreaInsets.bottom
+            let topInset = safeArea.top
+            let fullHeight = geometry.size.height + topInset + safeArea.bottom
+            let fullWidth = geometry.size.width + safeArea.leading + safeArea.trailing
 
             ZStack(alignment: .leading) {
                 (colorScheme == .dark
                     ? Color(red: 36.0 / 255, green: 36.0 / 255, blue: 38.0 / 255)
                     : Color.white)
                 drawerContent(progress: progress, topInset: topInset, width: drawerWidth)
+                    .padding(.leading, safeArea.leading)
                     .frame(width: drawerWidth, height: fullHeight, alignment: .topLeading)
                     .highPriorityGesture(drawerClosingGesture(width: drawerWidth))
 
                 workspaceContent(
                     openDrawer: { openDrawer(width: drawerWidth) },
                     size: geometry.size,
-                    safeArea: geometry.safeAreaInsets,
-                    drawerWidth: drawerWidth
+                    safeArea: safeArea,
+                    drawerWidth: drawerWidth,
+                    usesVerticalToolbar: usesVerticalToolbar
                 )
                     .frame(width: geometry.size.width, height: fullHeight)
-                    .background(DSHColor.navy)
+                    .padding(.leading, safeArea.leading)
+                    .padding(.trailing, safeArea.trailing)
+                    // 先扩展到窗口四边，再绘制和裁剪背景；正文仍留在安全区内。
+                    .background { DeepOceanBackground() }
                     .overlay {
                         Color.black.opacity(dimOpacity)
                             .allowsHitTesting(false)
@@ -81,8 +112,8 @@ struct WorkspaceView: View {
                     }
                     .offset(x: drawerOffset)
             }
-            .frame(width: geometry.size.width, height: fullHeight)
-            .offset(y: -topInset)
+            .frame(width: fullWidth, height: fullHeight)
+            .offset(x: -safeArea.leading, y: -topInset)
             .onChangeCompat(of: geometry.size) { _, _ in
                 // 旋转或调整分屏后清理旧拖拽距离，避免侧栏停在半开位置。
                 drawerFeedback.endDrag(cancelled: true)
@@ -157,19 +188,21 @@ struct WorkspaceView: View {
         openDrawer: @escaping () -> Void,
         size: CGSize,
         safeArea: EdgeInsets,
-        drawerWidth: CGFloat
+        drawerWidth: CGFloat,
+        usesVerticalToolbar: Bool
     ) -> some View {
         let usesColumns = AdaptiveLayout.workspaceUsesColumns(
             size: size, accessibilityText: dynamicTypeSize.isAccessibilitySize
         )
         return ZStack {
-            DeepOceanBackground()
+            Color.clear
                 .contentShape(Rectangle())
                 .onTapGesture { sessionSearchIsFocused = false }
             ScrollView {
                 VStack(alignment: .leading, spacing: usesColumns ? 40 : 18) {
                     VStack(alignment: .leading, spacing: 6) {
-                        header(openDrawer: openDrawer).id("workspace-header")
+                        header(openDrawer: openDrawer, usesVerticalToolbar: usesVerticalToolbar)
+                            .id("workspace-header")
                         GatewaySwitcherBar()
                     }
                     if usesColumns {
@@ -246,7 +279,7 @@ struct WorkspaceView: View {
         }
     }
 
-    private func header(openDrawer: @escaping () -> Void) -> some View {
+    private func header(openDrawer: @escaping () -> Void, usesVerticalToolbar: Bool) -> some View {
         HStack {
             Button(action: openDrawer) {
                 HarnessMark(width: dynamicTypeSize.isAccessibilitySize ? 150 : 216)
@@ -256,10 +289,12 @@ struct WorkspaceView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("打开侧边栏")
             Spacer()
-            authenticationMenu
-            settingsButton
-                // Match the outer glass circle to the workspace cards' trailing edge.
-                .padding(.trailing, -4)
+            if !usesVerticalToolbar {
+                authenticationMenu()
+                settingsButton
+                    // Match the outer glass circle to the workspace cards' trailing edge.
+                    .padding(.trailing, -4)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -397,9 +432,10 @@ struct WorkspaceView: View {
     }
 
     @ViewBuilder
-    private var authenticationMenu: some View {
+    private func authenticationMenu(inToolbar: Bool = false) -> some View {
         GatewayAuthenticationMenu(
             gateway: store.gateway,
+            inToolbar: inToolbar,
             onScan: {
                 store.lastError = nil
                 showsQRScanner = true
@@ -416,21 +452,23 @@ struct WorkspaceView: View {
         headerButton(systemName: "gearshape.fill", accessibilityLabel: String(localized: "设置"), action: onSettings)
     }
 
+    @available(iOS 27.1, *)
+    private var toolbarSettingsButton: some View {
+        Button(action: onSettings) {
+            headerButtonLabel(systemName: "gearshape.fill")
+                .glassEffect(.clear.tint(DSHColor.navy.opacity(0.22)), in: .circle)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(String(localized: "设置"))
+    }
+
     @ViewBuilder
     private func headerButton(systemName: String, accessibilityLabel: String, action: @escaping () -> Void) -> some View {
-        let label = headerButtonLabel(systemName: systemName)
-        if #available(iOS 26.0, *) {
-            Button(action: action) { label }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.circle)
-                .accessibilityLabel(accessibilityLabel)
-        } else {
-            Button(action: action) { label }
-                .buttonStyle(.plain)
-                .background(.ultraThinMaterial, in: Circle())
-                .overlay(Circle().stroke(.white.opacity(0.25), lineWidth: 0.8))
-                .accessibilityLabel(accessibilityLabel)
+        Button(action: action) {
+            headerButtonLabel(systemName: systemName)
         }
+        .glassCircleButton(onDarkBackground: true)
+        .accessibilityLabel(accessibilityLabel)
     }
 
     private func headerButtonLabel(systemName: String) -> some View {
@@ -595,6 +633,7 @@ struct WorkspaceView: View {
                     sessionRow(session)
                 }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("workspace-session-\(session.id)")
                     .contextMenu {
                         Button {
                             renamedTitle = session.title
@@ -665,6 +704,24 @@ struct WorkspaceView: View {
         }
         .frame(maxWidth: .infinity).frame(minHeight: 38)
         .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+}
+
+/// 根据系统栏的方向选择入口位置，不按设备型号或横竖屏推测。
+@available(iOS 27.1, *)
+private struct WorkspaceVerticalToolbarLayout<Content: View, Toolbar: ToolbarContent>: View {
+    @Environment(\.toolbarVerticalEdge) private var verticalEdge
+    @ViewBuilder let content: (Bool) -> Content
+    @ToolbarContentBuilder let toolbar: () -> Toolbar
+
+    var body: some View {
+        content(verticalEdge != nil)
+            .toolbar {
+                if verticalEdge != nil {
+                    toolbar()
+                }
+            }
+            .toolbarBackground(.hidden, for: .navigationBar)
     }
 }
 
@@ -1034,19 +1091,16 @@ private struct GatewayConnectionIndicator: View {
 
 private struct GatewayAuthenticationMenu: View {
     @ObservedObject var gateway: GatewayClient
+    var inToolbar = false
     let onScan: () -> Void
     let onManualEntry: () -> Void
 
+    @ViewBuilder
     var body: some View {
-        if #available(iOS 26.0, *) {
-            menu
-                .buttonStyle(.glass)
-                .buttonBorderShape(.circle)
+        if inToolbar {
+            menu.buttonStyle(.plain)
         } else {
-            menu
-                .buttonStyle(.plain)
-                .background(.ultraThinMaterial, in: Circle())
-                .overlay(Circle().stroke(.white.opacity(0.25), lineWidth: 0.8))
+            menu.glassCircleButton(onDarkBackground: true)
         }
     }
 
@@ -1059,12 +1113,20 @@ private struct GatewayAuthenticationMenu: View {
                 Label("手动输入配对信息", systemImage: "keyboard")
             }
         } label: {
-            Image(systemName: "person.badge.key.fill")
-                .appFont(.system(size: 17, weight: .semibold))
-                .frame(width: 40, height: 40)
-                .contentShape(Circle())
+            if #available(iOS 27.1, *), inToolbar {
+                label.glassEffect(.clear.tint(DSHColor.navy.opacity(0.22)), in: .circle)
+            } else {
+                label
+            }
         }
         .accessibilityLabel(String(localized: "a11y.device-auth.state", defaultValue: "设备认证，\(gateway.state.label)"))
+    }
+
+    private var label: some View {
+        Image(systemName: "person.badge.key.fill")
+            .appFont(.system(size: 17, weight: .semibold))
+            .frame(width: 40, height: 40)
+            .contentShape(Circle())
     }
 
 }

@@ -143,7 +143,15 @@ enum DSHColor {
 
 struct DeepOceanBackground: View {
     var body: some View {
-        HarnessAnimatedBackground(style: UIDevice.current.userInterfaceIdiom == .pad ? .pad : .phone)
+        GeometryReader { geometry in
+            HarnessAnimatedBackground(
+                style: HarnessBackgroundStyle.resolve(
+                    size: geometry.size,
+                    isPad: UIDevice.current.userInterfaceIdiom == .pad
+                )
+            )
+        }
+        .ignoresSafeArea()
     }
 }
 

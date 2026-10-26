@@ -1,8 +1,9 @@
 import XCTest
 @testable import DeepSeekHarnessMobile
 
-/// 覆盖折叠屏适配涉及的两处纯逻辑：
+/// 覆盖折叠屏适配涉及的纯逻辑：
 /// - `AdaptiveLayout.workspaceUsesColumns`：首页 / 会话列表何时分栏
+/// - `HarnessBackgroundStyle.resolve`：展开后复用平板背景
 /// - `SessionGroups.group`：会话页侧栏的工作区分组
 final class AdaptiveLayoutTests: XCTestCase {
 
@@ -52,6 +53,36 @@ final class AdaptiveLayoutTests: XCTestCase {
                 accessibilityText: true
             )
         )
+    }
+
+    // MARK: - 首页背景
+
+    func testBackgroundStyleFollowsUnfoldedSizeInBothOrientations() {
+        let cases: [(size: CGSize, expected: HarnessBackgroundStyle)] = [
+            (CGSize(width: 466, height: 678), .phone),
+            (CGSize(width: 678, height: 466), .phone),
+            (CGSize(width: 890, height: 626), .pad),
+            (CGSize(width: 626, height: 890), .pad),
+            (CGSize(width: 932, height: 430), .phone),
+            (CGSize(width: 430, height: 932), .phone),
+            (CGSize(width: 890, height: 599), .phone),
+            (CGSize(width: 600, height: 890), .pad),
+        ]
+
+        for item in cases {
+            XCTAssertEqual(
+                HarnessBackgroundStyle.resolve(size: item.size, isPad: false),
+                item.expected,
+                "背景风格不符预期：\(item.size)"
+            )
+        }
+    }
+
+    func testPadBackgroundStyleIsPreservedForNarrowWindows() {
+        for size in [CGSize(width: 744, height: 1133), CGSize(width: 1133, height: 744),
+                     CGSize(width: 375, height: 1024)] {
+            XCTAssertEqual(HarnessBackgroundStyle.resolve(size: size, isPad: true), .pad)
+        }
     }
 
     // MARK: - SessionGroups
