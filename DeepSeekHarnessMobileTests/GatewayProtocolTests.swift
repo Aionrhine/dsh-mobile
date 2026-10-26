@@ -12402,6 +12402,42 @@ final class TeamIntegrationTests: XCTestCase {
         XCTAssertEqual(teamQueryCount("lead"), 4, "显式重试保留刷新能力")
     }
 
+    func testTeamMenuFitsShortListsAndCapsLongLists() {
+        let defaults = UserDefaults.standard
+        let oldScale = defaults.object(forKey: AppFontScale.key)
+        let oldFollowsSystem = defaults.object(forKey: AppFontScale.followsSystemKey)
+        defaults.set(1.0, forKey: AppFontScale.key)
+        defaults.set(false, forKey: AppFontScale.followsSystemKey)
+        defer {
+            defaults.set(oldScale, forKey: AppFontScale.key)
+            defaults.set(oldFollowsSystem, forKey: AppFontScale.followsSystemKey)
+        }
+        func content(_ count: Int) -> TeamMemberPopover {
+            let members = (0..<count).map { index in
+                MobileTeamMember(id: index == 0 ? "lead" : "member-\(index)",
+                    name: index == 0 ? "lead" : "research-agent-\(index)",
+                    role: index == 0 ? "lead" : "teammate", phase: "active", mode: "continuable",
+                    parentSessionId: index == 0 ? nil : "lead", model: "deepseek-flash",
+                    detail: index == 0 ? nil : "调研手机品牌与产品差异，输出完整对比结论", running: false,
+                    error: nil, canOpen: true, avatarIndex: index)
+            }
+            return TeamMemberPopover(members: members, title: "国内手机品牌差距对比表格", selectedID: "lead",
+                                     select: { _ in }, showDetails: {})
+        }
+        let host = UIHostingController(rootView: content(2))
+        var heights: [CGFloat] = []
+        for count in [2, 3, 8, 12, 3] {
+            host.rootView = content(count)
+            // 与正式弹窗相同的预布局过程，不依赖 UIKit 连续呈现/退出的时序。
+            let size = host.sizeThatFits(in: CGSize(width: 300, height: 480))
+            heights.append(size.height)
+        }
+        XCTAssertLessThan(heights[0], heights[1], "未达到上限时随成员数量增长")
+        XCTAssertLessThan(heights[1], heights[2], "三人成员列表不应撑到最大高度")
+        XCTAssertEqual(heights[2], heights[3], accuracy: 1, "达到上限后增加成员只增加滚动内容")
+        XCTAssertEqual(heights[1], heights[4], accuracy: 1, "缓存成员变少后弹窗应重新收缩")
+    }
+
     func testEntryAppearsWhenLeadCreatesTeamDuringCurrentConversation() async throws {
         let lead = SessionSummary(id: "lead", title: "动态团队", lastActivity: .now, isRunning: false, hasUnread: false)
         let store = AppStore(preferences: AppPreferencesSpy(endpoint: "ws://127.0.0.1:3080/ws/mobile",
@@ -12591,12 +12627,77 @@ final class TeamIntegrationTests: XCTestCase {
 
 @MainActor
 final class MarkdownCopyInteractionTests: XCTestCase {
+    func testTableSelectionRendersCellsAndPreservesCrossParagraphSelection() async throws {
+        let source = "前文 **粗体** 😀\n\n| 品牌 | 结论 |\n| --- | --- |\n| 中文 | **清晰** `code` |\n| 第二行 | 可选择文字 |\n\n后文\n\n```python\n  print('😀')\n```"
+        let wideHeader = (1...18).map { "列\($0)" }.joined(separator: " | ")
+        let wideRule = Array(repeating: "---", count: 18).joined(separator: " | ")
+        let wideRow = (1...18).map { "内容\($0)" }.joined(separator: " | ")
+        let tableSource = source + "\n\n| " + wideHeader + " |\n| " + wideRule + " |\n| " + wideRow + " |"
+        let parsed = MarkdownUI.MarkdownContent(tableSource)
+        XCTAssertTrue(parsed.containsTable)
+        XCTAssertFalse(MarkdownUI.MarkdownContent("```md\n| a | b |\n| --- | --- |\n```").containsTable)
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        let controller = UIHostingController(rootView: MarkdownSelectionPage(document:
+            MarkdownSelectionDocument(text: tableSource, fontSize: 17)).environment(\.locale, Locale(identifier: "zh_Hans")))
+        window.rootViewController = controller
+        window.overrideUserInterfaceStyle = .light
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil }
+        func findWeb(_ view: UIView) -> WKWebView? {
+            if let web = view as? WKWebView { return web }
+            return view.subviews.lazy.compactMap(findWeb).first
+        }
+        var browser: WKWebView?
+        for _ in 0..<50 {
+            browser = findWeb(controller.view)
+            if let browser, (try? await browser.evaluateJavaScript("window.dshReady === true")) as? Bool == true { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        let web = try XCTUnwrap(browser)
+        XCTAssertGreaterThan(web.bounds.height, 300, "网页正文必须占据页头下方的可用高度")
+        let tableCount = try await web.evaluateJavaScript("document.querySelectorAll('table').length") as? Int
+        XCTAssertEqual(tableCount, 2)
+        let metricValue = try await web.evaluateJavaScript("""
+            (()=>{const t=document.querySelector('table'),c=t.rows[1].cells;return [c[0].getBoundingClientRect().width,c[1].getBoundingClientRect().width,t.offsetWidth,t.parentElement.clientWidth,getComputedStyle(c[0]).borderBottomStyle];})()
+            """)
+        let metrics = try XCTUnwrap(metricValue as? [Any])
+        XCTAssertGreaterThanOrEqual(try XCTUnwrap(metrics[0] as? Double), 96)
+        XCTAssertEqual(try XCTUnwrap(metrics[2] as? Double), try XCTUnwrap(metrics[3] as? Double), accuracy: 2)
+        XCTAssertEqual(metrics[4] as? String, "solid")
+        let wideValue = try await web.evaluateJavaScript("""
+            (()=>{const t=document.querySelectorAll('table')[1],w=t.parentElement;w.scrollLeft=100;return [t.offsetWidth>w.clientWidth,w.scrollLeft,document.documentElement.scrollWidth<=innerWidth];})()
+            """)
+        let wideMetrics = try XCTUnwrap(wideValue as? [Any])
+        XCTAssertEqual(wideMetrics[0] as? Bool, true)
+        XCTAssertGreaterThan(try XCTUnwrap(wideMetrics[1] as? Double), 0)
+        XCTAssertEqual(wideMetrics[2] as? Bool, true, "多列表格只在卡片内横向滚动")
+        _ = try await web.evaluateJavaScript("window.dshSelectAll();true")
+        let selectedValue = try await web.evaluateJavaScript("window.dshSelectedText()")
+        let selected = try XCTUnwrap(selectedValue as? String)
+        XCTAssertTrue(selected.contains("中文")); XCTAssertTrue(selected.contains("清晰"))
+        XCTAssertTrue(selected.contains("前文")); XCTAssertTrue(selected.contains("后文"))
+        XCTAssertTrue(selected.contains("  print('😀')"))
+        XCTAssertFalse(selected.contains("**")); XCTAssertFalse(selected.contains("---"))
+        window.overrideUserInterfaceStyle = .dark
+        try await Task.sleep(for: .milliseconds(300))
+        let after = try await web.evaluateJavaScript("window.dshSelectedText()") as? String
+        let theme = try await web.evaluateJavaScript("document.documentElement.dataset.theme") as? String
+        XCTAssertEqual(after, selected)
+        XCTAssertEqual(theme, "dark")
+        try await Task.sleep(for: .milliseconds(300))
+        let snapshot = try await web.takeSnapshot(configuration: nil)
+        let attachment = XCTAttachment(image: snapshot)
+        attachment.name = "选择页可选中的表格与正文"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
     func testSelectionPageSharedVisualFixture() async throws {
         // 与 Android selectionPageUsesSharedTypographyCardsAndBlueSelection 使用相同内容。
         let source = "下面按 **数据怎么流** 和 `palette.py` 两层讲。\n\n"
             + "# 整体流水线\n\n```python\nimage = load(\"你好 😀\")\n\n    print(image)\n```\n\n"
-            + "## 常量与字体\n\n- **亮度**：保留粗体和行内 `LUMA`。\n- 中文、emoji 😀 和跨段落选择。\n\n"
-            + "| 名称 | 值 |\n| --- | --- |\n| 中文 | 😀 |"
+            + "## 常量与字体\n\n- **亮度**：保留粗体和行内 `LUMA`。\n- 中文、emoji 😀 和跨段落选择。"
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         let controller = UIHostingController(rootView: MarkdownSelectionPage(document:
@@ -13251,6 +13352,72 @@ final class MarkdownTableRenderingTests: XCTestCase {
         XCTAssertEqual(escaped.tablePlainTextRows[1], ["转义|竖线", "链接"])
     }
 
+    func testFewColumnsFillViewportWithoutCompressingWideTables() {
+        let model = MarkdownTableModel(content: MarkdownUI.MarkdownContent(
+            "| 对比 | 结论 |\n| --- | --- |\n| 系统与生态 | iOS 一家独占；安卓阵营通过 AI 与影像工作流形成差异 |"))
+        let natural = model.widths(fontSize: 17)
+        for width: CGFloat in [320, 600, 984, 1326] {
+            let columns = model.widths(fontSize: 17, viewportWidth: width)
+            XCTAssertEqual(columns.reduce(0, +), max(width, natural.reduce(0, +)), accuracy: 0.5)
+            XCTAssertEqual(columns[0] / columns[1], natural[0] / natural[1], accuracy: 0.001)
+        }
+        let wide = MarkdownTableModel(content: MarkdownUI.MarkdownContent(source))
+        XCTAssertEqual(wide.widths(fontSize: 17, viewportWidth: 600), wide.widths(fontSize: 17))
+    }
+
+    func testFewColumnTableFillsIPadAndSplitViewContainersWithoutExtraHeight() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        let source = """
+            | 对比 | 结论 |
+            | --- | --- |
+            | 高端定价权 | 苹果 > 三星 > 华为 > 其他中国品牌。这是品牌溢价，不是参数。 |
+            | 供应链抗压 | 三星（上游自供）> 苹果（议价 + 库存）> 华为（自研 + 国内链）> OV 米荣（纯采购） |
+            | 折叠屏 | 中国产商领先做产品，但苹果一入场就拿到最高溢价；三星用矩阵守住全球。 |
+            | 系统与生态 | iOS 一家独占；安卓阵营通过 AI 与影像工作流形成差异。 |
+            | 小众品牌生存 | 外国品牌靠本土运营商与垂直场景；中国品牌靠出海、抱鸿蒙生态与电竞垂类。 |
+            """
+        let content = MarkdownUI.MarkdownContent(source)
+        defer { window.isHidden = true; window.rootViewController = nil }
+        func scrollViews(_ view: UIView) -> [UIScrollView] {
+            ((view as? UIScrollView).map { [$0] } ?? []) + view.subviews.flatMap(scrollViews)
+        }
+        func fixture(width: CGFloat) -> some View {
+            VStack(alignment: .leading, spacing: 12) {
+                DeepSeekHarnessMobile.MarkdownContent(source)
+                Text("后文")
+                Spacer(minLength: 0)
+            }.padding(20).frame(width: width, height: 1000, alignment: .topLeading)
+                .environment(\.locale, Locale(identifier: "zh_Hans"))
+        }
+        let controller = UIHostingController(rootView: fixture(width: 320))
+        window.rootViewController = controller
+        window.overrideUserInterfaceStyle = .light
+        window.makeKeyAndVisible()
+        for width: CGFloat in [320, 600, 984, 1326, 600, 320] {
+            controller.rootView = fixture(width: width)
+            try await Task.sleep(for: .milliseconds(300))
+            let scroll = try XCTUnwrap(scrollViews(controller.view).first)
+            XCTAssertEqual(scroll.bounds.width, width - 40, accuracy: 1)
+            let expected = MarkdownTableModel(content: content).widths(fontSize: 17, viewportWidth: width - 40).reduce(0, +)
+            XCTAssertEqual(scroll.contentSize.width, expected, accuracy: 1, "表格应跟随容器宽度，而非设备屏幕宽度")
+            XCTAssertGreaterThan(scroll.bounds.height, 100)
+            XCTAssertLessThan(scroll.bounds.height, 750, "表格高度应随内容测量，不应占满整个窗口")
+            if width >= 600 {
+                XCTAssertEqual(scroll.contentSize.width, scroll.bounds.width, accuracy: 1)
+                XCTAssertLessThan(scroll.bounds.height, 500)
+            }
+            if UIDevice.current.userInterfaceIdiom == .pad && width == 984 {
+                let attachment = XCTAttachment(image: UIGraphicsImageRenderer(size: window.bounds.size).image { _ in
+                    window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+                })
+                attachment.name = "ipad-few-column-table"
+                attachment.lifetime = .keepAlways
+                add(attachment)
+            }
+        }
+    }
+
     func testFullScreenTableSharedHeaderMarginsDarkModeAndRotation() async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
@@ -13276,7 +13443,7 @@ final class MarkdownTableRenderingTests: XCTestCase {
             attachment.lifetime = .keepAlways
             add(attachment)
         }
-        let scroll = try XCTUnwrap(scrollViews(controller.view).first { $0.contentSize.width > $0.bounds.width + 100 })
+        let scroll = try XCTUnwrap(scrollViews(controller.view).last)
         let bounds = scroll.convert(scroll.bounds, to: controller.view)
         XCTAssertEqual(bounds.minX, 20, accuracy: 1)
         XCTAssertEqual(controller.view.bounds.width - bounds.maxX, 20, accuracy: 1)
@@ -13284,6 +13451,12 @@ final class MarkdownTableRenderingTests: XCTestCase {
             window.overrideUserInterfaceStyle = style
             try await Task.sleep(for: .milliseconds(200))
             capture(style == .dark ? "table-page-ios-dark-portrait" : "table-page-ios-light-portrait")
+        }
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            // iPad 多窗口的窗口形状由系统管理；尺寸重排由上面的容器连续缩放测试覆盖。
+            XCTAssertEqual(scroll.contentSize.width,
+                max(scroll.bounds.width, model.widths(fontSize: 17).reduce(0, +)), accuracy: 1)
+            return
         }
         func rotationControllers(_ controller: UIViewController) -> [DocumentRotationSupport.Controller] {
             ((controller as? DocumentRotationSupport.Controller).map { [$0] } ?? [])
@@ -13313,10 +13486,11 @@ final class MarkdownTableRenderingTests: XCTestCase {
         let window = UIWindow(windowScene: scene)
         let controller = UIHostingController(rootView: VStack(alignment: .leading) {
             Text("前文")
-            MarkdownContent(source)
+            DeepSeekHarnessMobile.MarkdownContent(source)
             Text("后文")
             Spacer()
-        }.padding(20).environment(\.locale, Locale(identifier: "zh_Hans")))
+        }.padding(20).frame(width: min(430, scene.coordinateSpace.bounds.width))
+            .environment(\.locale, Locale(identifier: "zh_Hans")))
         window.rootViewController = controller
         window.overrideUserInterfaceStyle = .light
         window.makeKeyAndVisible()

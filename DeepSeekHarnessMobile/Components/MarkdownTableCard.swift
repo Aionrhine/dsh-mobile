@@ -14,14 +14,18 @@ struct MarkdownTableModel {
         alignments = content.tableColumnAlignments
     }
 
-    func widths(fontSize: CGFloat) -> [CGFloat] {
+    func widths(fontSize: CGFloat, viewportWidth: CGFloat = 0) -> [CGFloat] {
         let font = UIFont.systemFont(ofSize: fontSize)
-        return alignments.indices.map { column in
+        let naturalWidths = alignments.indices.map { column in
             let natural = plainRows.flatMap { row in
                 (row.indices.contains(column) ? row[column] : "").components(separatedBy: .newlines)
             }.map { ($0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
             return min(260, max(96, ceil(natural) + 24))
         }
+        let total = naturalWidths.reduce(0, +)
+        // 少列表格按原列宽比例铺满容器；宽表保持原宽度，通过横向滚动浏览。
+        guard total > 0, viewportWidth.isFinite, viewportWidth > total else { return naturalWidths }
+        return naturalWidths.map { $0 * viewportWidth / total }
     }
 }
 
@@ -40,10 +44,7 @@ struct MarkdownTableCard: View {
     var body: some View {
         VStack(spacing: 0) {
             MarkdownTableActions(model: model, onExpand: { fullscreenModel = model; fullscreen = true })
-            ScrollView(.horizontal, showsIndicators: true) {
-                MarkdownTableGrid(model: model, fontSize: fontSize)
-            }
-            .fixedSize(horizontal: false, vertical: true)
+            MarkdownTableViewport(model: model, fontSize: fontSize)
         }
         .background { Rectangle().fill(DocumentPageAppearance.toolbar) }
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -64,10 +65,7 @@ struct MarkdownTablePage: View {
         VStack(spacing: 0) {
             MarkdownTableActions(model: model, onClose: { dismiss() }, onRotate: { rotationRequest += 1 })
             ScrollView(.vertical, showsIndicators: true) {
-                ScrollView(.horizontal, showsIndicators: true) {
-                    MarkdownTableGrid(model: model, fontSize: fontSize)
-                }
-                .fixedSize(horizontal: false, vertical: true)
+                MarkdownTableViewport(model: model, fontSize: fontSize)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -81,12 +79,40 @@ struct MarkdownTablePage: View {
     }
 }
 
+private struct MarkdownTableViewportWidth: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+/// 读取实际容器宽度，适配 iPad 分屏和侧栏；只测宽，不让 GeometryReader 占据正文高度。
+private struct MarkdownTableViewport: View {
+    let model: MarkdownTableModel
+    let fontSize: CGFloat
+    @State private var viewportWidth: CGFloat = 0
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: true) {
+            MarkdownTableGrid(model: model, fontSize: fontSize,
+                widths: model.widths(fontSize: fontSize, viewportWidth: viewportWidth))
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .background {
+            GeometryReader { geometry in
+                Color.clear.preference(key: MarkdownTableViewportWidth.self, value: geometry.size.width)
+            }
+        }
+        .onPreferenceChange(MarkdownTableViewportWidth.self) { width in
+            if width.isFinite, width > 0, abs(viewportWidth - width) > 0.5 { viewportWidth = width }
+        }
+    }
+}
+
 private struct MarkdownTableGrid: View {
     let model: MarkdownTableModel
     let fontSize: CGFloat
+    let widths: [CGFloat]
 
     var body: some View {
-        let widths = model.widths(fontSize: fontSize)
         Grid(horizontalSpacing: 0, verticalSpacing: 0) {
             ForEach(model.cells.indices, id: \.self) { row in
                 GridRow(alignment: .top) {

@@ -28,6 +28,10 @@ import com.clarklevis.dsh.android.localization.appText
 /** 全文快照放在独立窗口中选择，不改动聊天列表的分块、排版和滚动位置。 */
 @Composable
 internal fun DshMarkdownSelectionPage(markdown: String, onDismiss: () -> Unit) {
+    if (remember(markdown) { markdownHasSelectionTable(markdown) }) {
+        DshTableTextSelectionPage(markdown, onDismiss)
+        return
+    }
     val configuration = LocalConfiguration.current
     val dark = configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES
     val background = if (dark) Color.Black else Color.White

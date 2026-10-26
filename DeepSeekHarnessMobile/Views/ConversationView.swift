@@ -3,6 +3,7 @@ import MarkdownUI
 import PhotosUI
 import UniformTypeIdentifiers
 import UIKit
+import WebKit
 import DeepSeekHarnessShared
 
 struct SlashCommandComposerPresentation: Equatable {
@@ -4736,12 +4737,72 @@ struct MarkdownSelectionPage: View {
             DocumentPageHeader(title: "选择文字", closeIdentifier: "markdown-selection-close", onClose: { dismiss() }) {
                 EmptyView()
             }
-            MarkdownTextSelection(
-                document: ParsedMarkdownCache.document(for: document.text),
-                font: UIFont.systemFont(ofSize: document.fontSize)
-            )
+            let parsed = ParsedMarkdownCache.document(for: document.text)
+            if parsed.containsTable {
+                MarkdownTableTextSelection(document: parsed, fontSize: document.fontSize)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                MarkdownTextSelection(document: parsed, font: UIFont.systemFont(ofSize: document.fontSize))
+            }
         }
         .background(DocumentPageAppearance.background)
+    }
+}
+
+/// HTML 表格和周围正文处于同一个可选择文档，保留跨单元格与跨段落的原生选区。
+struct MarkdownTableTextSelection: UIViewRepresentable {
+    @Environment(\.colorScheme) private var colorScheme
+    let document: MarkdownUI.MarkdownContent
+    let fontSize: CGFloat
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeUIView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+        let view = WKWebView(frame: .zero, configuration: configuration)
+        view.isOpaque = false
+        view.backgroundColor = .clear
+        view.scrollView.backgroundColor = .clear
+        view.scrollView.contentInsetAdjustmentBehavior = .never
+        view.navigationDelegate = context.coordinator
+        view.accessibilityIdentifier = "markdown-table-text-selection"
+        return view
+    }
+
+    func updateUIView(_ view: WKWebView, context: Context) {
+        let body = document.renderSelectionHTML()
+        let appearance = "window.dshSetAppearance(\(fontSize),\(colorScheme == .dark ? "true" : "false"));"
+        let coordinator = context.coordinator
+        coordinator.appearance = appearance
+        if coordinator.body != body {
+            coordinator.body = body
+            view.loadHTMLString(MarkdownSelectionHtml.shared.document(body: body, fontSize: Double(fontSize),
+                dark: colorScheme == .dark, codeLabel: String(localized: "代码")), baseURL: nil)
+        } else {
+            view.evaluateJavaScript(appearance, completionHandler: nil)
+        }
+    }
+
+    static func dismantleUIView(_ view: WKWebView, coordinator: Coordinator) {
+        view.stopLoading()
+        view.navigationDelegate = nil
+    }
+
+    final class Coordinator: NSObject, WKNavigationDelegate {
+        var body: String?
+        var appearance = ""
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            webView.becomeFirstResponder()
+            webView.evaluateJavaScript(appearance + "window.dshSelectInitial();", completionHandler: nil)
+        }
+
+        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
+                     decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            decisionHandler(navigationAction.navigationType == .other && navigationAction.request.url?.scheme == "about" ? .allow : .cancel)
+        }
     }
 }
 
@@ -5414,12 +5475,21 @@ private struct TeamCachedMenuButton: UIViewRepresentable {
     }
 }
 
-private struct TeamMemberPopover: View {
+struct TeamMemberPopover: View {
     let members: [MobileTeamMember]
     let title: String
     let selectedID: String?
     let select: (MobileTeamMember) -> Void
     let showDetails: () -> Void
+    @AppStorage(AppFontScale.key) private var fontScale: Double = 1
+    @AppStorage(AppFontScale.followsSystemKey) private var followsSystemFont = false
+
+    private var memberListHeight: CGFloat {
+        let scale = TeamMemberRow.scale(fontScale: fontScale, followsSystemFont: followsSystemFont)
+        let rows = CGFloat(members.count) * TeamMemberRow.height * scale
+        let gaps = CGFloat(max(0, members.count - 1)) * 2
+        return min(300, rows + gaps)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -5433,7 +5503,8 @@ private struct TeamMemberPopover: View {
                         }
                     }
                 }
-                .frame(maxHeight: 300)
+                // ScrollView 不会按短列表收缩；直接复用固定行高，首帧即可得到正确尺寸。
+                .frame(height: memberListHeight)
                 .clipped()
                 Divider()
             }
@@ -5491,9 +5562,15 @@ private struct TeamMemberRow: View {
     @AppStorage(AppFontScale.key) private var fontScale: Double = 1
     @AppStorage(AppFontScale.followsSystemKey) private var followsSystemFont = false
 
-    private var rowScale: CGFloat {
+    static let height: CGFloat = 72
+
+    static func scale(fontScale: Double, followsSystemFont: Bool) -> CGFloat {
         CGFloat(AppFontScale.effective(fontScale, followsSystem: followsSystemFont))
             * max(1, UIFont.preferredFont(forTextStyle: .body).pointSize / 17)
+    }
+
+    private var rowScale: CGFloat {
+        Self.scale(fontScale: fontScale, followsSystemFont: followsSystemFont)
     }
 
     var body: some View {
@@ -5518,9 +5595,8 @@ private struct TeamMemberRow: View {
                     .frame(width: 18).opacity(selected ? 1 : 0).accessibilityHidden(!selected)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: 56 * rowScale)
+            .frame(height: Self.height * rowScale)
             .padding(.horizontal, 10)
-            .padding(.vertical, 8 * rowScale)
             .contentShape(Rectangle())
             .background(selected ? Color.blue.opacity(0.08) : Color.clear, in: RoundedRectangle(cornerRadius: 14))
         }
