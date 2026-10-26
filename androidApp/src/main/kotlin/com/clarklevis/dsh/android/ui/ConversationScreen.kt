@@ -589,7 +589,7 @@ private fun ConversationPage(
                     fontSize = 12.sp,
                     modifier = Modifier.weight(1f)
                 )
-                TextButton(onClick = stateHolder::returnToLatestCached) { Text("返回最新消息") }
+                TextButton(onClick = stateHolder::returnToLatestCached) { Text(appText("返回最新消息")) }
             }
         }
         val showInitialHistoryOverlay = shouldShowInitialHistoryOverlay(
@@ -1842,7 +1842,7 @@ private fun Composer(
                         Spacer(Modifier.weight(1f))
                     } else {
                         Text(
-                            "只读成员会话",
+                            appText("只读成员会话"),
                             Modifier.weight(1f),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant

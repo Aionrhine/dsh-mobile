@@ -498,7 +498,8 @@ data class GatewaySessionStats(
     val ttftMs: Double? = null,
     val ttftSteps: Int? = null,
     val decodeMs: Double? = null,
-    val decodeTokens: Int? = null,
+    // Host 的统计协议允许普通 number，不能限制为 32 位整数。
+    val decodeTokens: Double? = null,
     val lastTurn: Int? = null,
     // 运行中的投影携带步骤边界对象；同时兼容旧网关的步骤编号和已完成时的 null。
     val openStep: JsonValue? = null,

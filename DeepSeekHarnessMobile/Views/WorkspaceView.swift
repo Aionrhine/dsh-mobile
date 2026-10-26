@@ -562,7 +562,9 @@ struct WorkspaceView: View {
         }
         let ids = Set(store.searchResults.map(\.sessionId))
         let known = Set(workspaceSessions.map(\.id))
-        let missing = store.searchResults.filter { !known.contains($0.sessionId) }.map {
+        let missing = store.searchResults.filter {
+            !known.contains($0.sessionId) && !store.isSubagentSession($0.sessionId)
+        }.map {
             SessionSummary(id: $0.sessionId, title: "已缓存聊天", lastActivity: .distantPast, isRunning: false, hasUnread: false)
         }
         return (workspaceSessions + missing).filter { !store.archivedSessionIds.contains($0.id) && (ids.contains($0.id) || $0.title.localizedCaseInsensitiveContains(query) || $0.id.localizedCaseInsensitiveContains(query)) }

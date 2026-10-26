@@ -19,7 +19,7 @@ class SessionStatsFormatterTest {
             ttftMs = 1_941.0,
             ttftSteps = 3,
             decodeMs = 900.0,
-            decodeTokens = 100
+            decodeTokens = 100.0
         )
 
         assertEquals("2 轮 · 3 步", SessionStatsFormatter.turnsStepsLine(stats))

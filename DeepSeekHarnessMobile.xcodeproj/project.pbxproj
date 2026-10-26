@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		CF225000000000000000011 /* DocumentPageChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF225000000000000000012 /* DocumentPageChrome.swift */; };
+		CF225000000000000000001 /* MarkdownTableCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF225000000000000000002 /* MarkdownTableCard.swift */; };
 		CF206000000000000000001 /* FileUploadController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF206000000000000000002 /* FileUploadController.swift */; };
 		CF205000000000000000001 /* DebugHistoryScrollMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF205000000000000000002 /* DebugHistoryScrollMetrics.swift */; };
 		CF205000000000000000011 /* HistoryPresentationAdmission.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF205000000000000000012 /* HistoryPresentationAdmission.swift */; };
@@ -114,6 +116,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		CF225000000000000000012 /* DocumentPageChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentPageChrome.swift; sourceTree = "<group>"; };
+		CF225000000000000000002 /* MarkdownTableCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownTableCard.swift; sourceTree = "<group>"; };
 		CF206000000000000000002 /* FileUploadController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileUploadController.swift; sourceTree = "<group>"; };
 		CF205000000000000000002 /* DebugHistoryScrollMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugHistoryScrollMetrics.swift; sourceTree = "<group>"; };
 		CF205000000000000000012 /* HistoryPresentationAdmission.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryPresentationAdmission.swift; sourceTree = "<group>"; };
@@ -355,6 +359,8 @@
 		BB3B325B846637A6ED66C228 /* Components */ = {
 			isa = PBXGroup;
 			children = (
+				CF225000000000000000012 /* DocumentPageChrome.swift */,
+				CF225000000000000000002 /* MarkdownTableCard.swift */,
 				8B77DEC008C0209D814CD7BE /* VoiceRipplePanel.swift */,
 				FCF581253EBCFEB43865AB51 /* Glass.swift */,
 				AF17C0000000000000000002 /* FileTypeIcon.swift */,
@@ -682,6 +688,8 @@
 				AF19C0000000000000000001 /* WorkspaceLoadingLogo.swift in Sources */,
 				A0C0FFEE0000000000000001 /* ConversationViewport.swift in Sources */,
 				B0C0FFEE0000000000000001 /* HarnessAnimatedBackground.swift in Sources */,
+				CF225000000000000000001 /* MarkdownTableCard.swift in Sources */,
+				CF225000000000000000011 /* DocumentPageChrome.swift in Sources */,
 				605DCE79952E970820A95606 /* ConversationView.swift in Sources */,
 				605DCE79952E970820A95607 /* HumanQuestionView.swift in Sources */,
 				A1B2C3D4E5F60718293A4B5C /* ApprovalRequestView.swift in Sources */,
