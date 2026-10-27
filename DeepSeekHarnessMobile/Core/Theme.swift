@@ -142,8 +142,19 @@ enum DSHColor {
 }
 
 struct DeepOceanBackground: View {
+    var prefersOpenLightArcs = false
+
     var body: some View {
-        HarnessAnimatedBackground(style: UIDevice.current.userInterfaceIdiom == .pad ? .pad : .phone)
+        GeometryReader { geometry in
+            HarnessAnimatedBackground(
+                style: HarnessBackgroundStyle.resolve(
+                    size: geometry.size,
+                    isPad: UIDevice.current.userInterfaceIdiom == .pad
+                ),
+                prefersOpenLightArcs: prefersOpenLightArcs
+            )
+        }
+        .ignoresSafeArea()
     }
 }
 
@@ -154,7 +165,11 @@ enum AdaptiveLayout {
     static let workspaceWidth: CGFloat = 1_440
 
     static func workspaceUsesColumns(size: CGSize, accessibilityText: Bool = false) -> Bool {
-        size.width >= 900 && size.height >= 500 && !accessibilityText
+        guard !accessibilityText, size.height >= 500 else { return false }
+        // 900 是原来的分界（双栏每栏最少 300px）。iPhone Duo 展开横拿约 890×626，
+        // 差一点到 900，所以额外允许「横向且宽 ≥ 700」也分栏；
+        // 折叠（466×678）与展开竖拿（626×890）仍保持单栏。
+        return size.width >= 900 || (size.width >= 700 && size.width > size.height)
     }
 
     static func horizontalInset(width: CGFloat, maximumWidth: CGFloat) -> CGFloat {
@@ -179,11 +194,107 @@ private struct AdaptiveListWidth: ViewModifier {
 
     func body(content: Content) -> some View {
         GeometryReader { geometry in
-            content.contentMargins(
+            content.padding(
                 .horizontal,
-                AdaptiveLayout.horizontalInset(width: geometry.size.width, maximumWidth: maximumWidth),
-                for: .scrollContent
+                AdaptiveLayout.horizontalInset(width: geometry.size.width, maximumWidth: maximumWidth)
             )
         }
+    }
+}
+
+// MARK: - iOS 16.1 兼容层
+//
+// 上游最低支持 iOS 17，本文件提供 16.1 可用的等价实现：
+// 1. onChangeCompat：替代 iOS 17 的双参数 onChange(of:_:)。
+// 2. DshEmptyState：替代 iOS 17 的 ContentUnavailableView。
+
+extension View {
+    /// 与 iOS 17 `onChange(of:_:)` 双参数版本语义一致（首次渲染不触发，之后携带新旧值回调）。
+    func onChangeCompat<V: Equatable>(
+        of value: V,
+        _ action: @escaping (V, V) -> Void
+    ) -> some View {
+        modifier(OnChangeCompatModifier(value: value, action: action))
+    }
+}
+
+private struct OnChangeCompatModifier<V: Equatable>: ViewModifier {
+    let value: V
+    let action: (V, V) -> Void
+
+    @State private var previous: V?
+    @State private var hasPrevious = false
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear {
+                if !hasPrevious {
+                    previous = value
+                    hasPrevious = true
+                }
+            }
+            .onChange(of: value) { newValue in
+                let oldValue = previous ?? newValue
+                previous = newValue
+                hasPrevious = true
+                guard oldValue != newValue else { return }
+                action(oldValue, newValue)
+            }
+    }
+}
+
+/// `ContentUnavailableView` 的 iOS 16.1 替代实现，覆盖项目内用到的三种构造形式。
+struct DshEmptyState: View {
+    private let label: AnyView
+    private let message: AnyView?
+    private let actions: AnyView?
+
+    init<L: View, D: View, A: View>(
+        @ViewBuilder label: () -> L,
+        @ViewBuilder description: () -> D,
+        @ViewBuilder actions: () -> A
+    ) {
+        self.label = AnyView(label())
+        self.message = AnyView(description())
+        self.actions = AnyView(actions())
+    }
+
+    init<L: View, D: View>(
+        @ViewBuilder label: () -> L,
+        @ViewBuilder description: () -> D
+    ) {
+        self.label = AnyView(label())
+        self.message = AnyView(description())
+        self.actions = nil
+    }
+
+    init(_ title: String, systemImage: String, description: Text? = nil) {
+        self.label = AnyView(
+            VStack(spacing: 10) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 40, weight: .light))
+                Text(title)
+                    .font(.headline)
+                    .multilineTextAlignment(.center)
+            }
+        )
+        self.message = description.map { AnyView($0.font(.subheadline).multilineTextAlignment(.center)) }
+        self.actions = nil
+    }
+
+    var body: some View {
+        VStack(spacing: 12) {
+            label
+            if let message {
+                message
+            }
+            if let actions {
+                actions
+                    .padding(.top, 4)
+            }
+        }
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity)
+        .padding(24)
     }
 }

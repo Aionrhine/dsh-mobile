@@ -1,10 +1,16 @@
 import SwiftUI
 import UIKit
 
-/// 手机和平板分别使用各自的背景构图与粒子参数。
+/// 手机使用紧凑构图；平板和展开后的折叠屏共用宽幅构图与细密粒子。
 enum HarnessBackgroundStyle {
     case phone
     case pad
+
+    static func resolve(size: CGSize, isPad: Bool) -> HarnessBackgroundStyle {
+        // Duo 展开约 626×890，旋转后短边不变；普通手机横屏仍使用手机背景。
+        // iPad 的窄窗口保留原有平板背景，不随分屏切换风格。
+        isPad || min(size.width, size.height) >= 600 ? .pad : .phone
+    }
 }
 
 /// The native counterpart of the DeepSeek Harness landing-page background.
@@ -12,6 +18,7 @@ enum HarnessBackgroundStyle {
 /// independent, so each layer can be tuned or disabled without touching UI.
 struct HarnessAnimatedBackground: View {
     let style: HarnessBackgroundStyle
+    var prefersOpenLightArcs = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
 
@@ -26,7 +33,9 @@ struct HarnessAnimatedBackground: View {
                 : timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 4_096)
 
             ZStack {
-                HarnessFluidLayer(time: elapsed, style: style)
+                HarnessFluidLayer(
+                    time: elapsed, style: style, prefersOpenLightArcs: prefersOpenLightArcs
+                )
                 HarnessTechnicalGrid(style: style)
                 HarnessWhaleField(time: elapsed, isStatic: reduceMotion, style: style)
                     .blendMode(.screen)
@@ -72,19 +81,36 @@ struct HarnessBackgroundComposition {
 private struct HarnessFluidLayer: View {
     let time: TimeInterval
     let style: HarnessBackgroundStyle
+    let prefersOpenLightArcs: Bool
 
+    @ViewBuilder
     var body: some View {
-        Rectangle()
-            .fill(DSHColor.navy)
-            .visualEffect { content, proxy in
-                content.colorEffect(
-                    ShaderLibrary.harnessFluid(
-                        .float2(proxy.size),
-                        .float(Float(time)),
-                        .float(style == .pad ? 1 : 0)
+        if #available(iOS 17.0, *) {
+            // Metal 流体场依赖 iOS 17 的 ShaderLibrary 与 visualEffect。
+            Rectangle()
+                .fill(DSHColor.navy)
+                .visualEffect { content, proxy in
+                    content.colorEffect(
+                        ShaderLibrary.harnessFluid(
+                            .float2(proxy.size),
+                            .float(Float(time)),
+                            .float(style == .pad ? 1 : 0),
+                            .float(prefersOpenLightArcs ? 1 : 0)
+                        )
                     )
-                )
-            }
+                }
+        } else {
+            // iOS 16.1 兜底：用静态深色渐变替代流体场，其余图层（网格/鲸鱼粒子）不受影响。
+            LinearGradient(
+                colors: [
+                    DSHColor.navy,
+                    DSHColor.navy.opacity(0.82),
+                    Color.black.opacity(0.92)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
     }
 }
 

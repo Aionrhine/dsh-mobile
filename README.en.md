@@ -1,10 +1,10 @@
 <div align="center">
 
-[简体中文](README.md) · **English**
+**English** · [简体中文](README.zh-CN.md) · [日本語](Docs/readme/README.ja.md) · [한국어](Docs/readme/README.ko.md) · [Español](Docs/readme/README.es.md) · [Français](Docs/readme/README.fr.md) · [Deutsch](Docs/readme/README.de.md) · [Português (Brasil)](Docs/readme/README.pt-BR.md)
 
 <img src="Design/whale-girl-ios-app-promo-16x9-v3.png" alt="Whaleness iOS app showcase" width="100%">
 
-# Whaleness — An Unofficial Mobile Client for DeepSeek Harness
+# Whaleness — A Third-Party Mobile Client for DeepSeek Harness
 
 **Native Android and iOS apps with core business logic shared through Kotlin Multiplatform.**
 
@@ -20,7 +20,7 @@ Website: [Whaleness](https://clarklevis1995.github.io/dsh-mobile/)
 
 ![Kotlin Multiplatform](https://img.shields.io/badge/Kotlin-Multiplatform-7F52FF?logo=kotlin&logoColor=white)
 ![Android 7.0+](https://img.shields.io/badge/Android-7.0%2B-3DDC84?logo=android&logoColor=white)
-![iOS 17+](https://img.shields.io/badge/iOS-17.0%2B-111827?logo=apple&logoColor=white)
+![iOS 16.1+](https://img.shields.io/badge/iOS-16.1%2B-111827?logo=apple&logoColor=white)
 ![Jetpack Compose](https://img.shields.io/badge/Jetpack-Compose-4285F4?logo=jetpackcompose&logoColor=white)
 ![SwiftUI](https://img.shields.io/badge/iOS-SwiftUI-F05138?logo=swift&logoColor=white)
 ![WebSocket](https://img.shields.io/badge/WebSocket-Realtime-2563EB)
@@ -29,7 +29,7 @@ Website: [Whaleness](https://clarklevis1995.github.io/dsh-mobile/)
 
 ## Overview
 
-Whaleness is an independently developed, unofficial native mobile client for DeepSeek Harness. Both Android and iOS apps use Kotlin Multiplatform (KMP):
+Whaleness is an independently developed third-party native mobile client for DeepSeek Harness. Both Android and iOS apps use Kotlin Multiplatform (KMP):
 
 - `shared` is the source of truth for shared business state, including protocol handling, state machines, reducers, projections, and synchronization.
 - `androidApp` implements the Android app with Kotlin, Jetpack Compose, and OkHttp.
@@ -39,9 +39,9 @@ Both apps connect to Harness over WebSocket through [`dsh-plugin-mobile-gateway`
 
 ## Downloads and Prerequisites
 
-- **iOS**: [Join the TestFlight beta](https://testflight.apple.com/join/1Euwby6r). Supports iPhone and iPad running iOS / iPadOS 17.0 or later.
+- **iOS**: [Join the TestFlight beta](https://testflight.apple.com/join/1Euwby6r). Supports iPhone and iPad running iOS / iPadOS 16.1 or later.
 - **Android**: [Download an APK from GitHub Releases](https://github.com/Clarklevis1995/dsh-mobile/releases). Requires Android 7.0 (API 24) or later. In-app update checks prefer the accelerated download source and verify downloaded packages.
-- **Desktop host**: Run DeepSeek Harness with **`dsh-plugin-mobile-gateway` 0.10.3 or later** installed and enabled. [`AppRelease/release-info.json`](AppRelease/release-info.json) defines the required minimum version.
+- **Desktop host**: Run DeepSeek Harness with **`dsh-plugin-mobile-gateway` 0.11.1 or later** installed and enabled. [`AppRelease/release-info.json`](AppRelease/release-info.json) defines the required minimum version.
 - **Voice input**: Enable the official Voice Input plugin in the desktop host's Plugins section, finish model download and initialization, and grant microphone access on the mobile device.
 
 ## Beta Community
@@ -65,6 +65,16 @@ Join the Whaleness beta WeChat group to share feedback, discuss your experience,
 > Android and iOS each have their own native UI and platform integrations. Features and interactions are being aligned, while some system-level behavior differs between platforms.
 
 ## Features
+
+### Recent additions
+
+- **Agent teams**: View members, switch between the lead and member conversations, and inspect shared tasks with status, ownership, and links to the relevant conversation.
+- **File uploads**: Choose files in the conversation, follow upload progress, remove attachments, or retry a failed upload. Sent and generated files appear as cards that can be opened or downloaded.
+- **Text selection and tables**: Open a dedicated text-selection screen to select, select all, and copy without losing your conversation position. Read Markdown tables full screen, rotate them, copy them, or export CSV; narrow tables fit the available width and wide tables scroll horizontally.
+- **Chat history and storage**: Cache conversations locally and search common conversations offline. Review storage used by images, chat history, file previews, and temporary files, and clear local caches by category. Restore history when returning to a session and load earlier messages progressively.
+- **iPhone Duo and wide screens**: Adapt home-screen columns, safe areas, the composer, and the animated background to folding, unfolding, and rotation. Wide conversations provide a persistent sidebar with sessions grouped by workspace; navigation and task controls adapt to the available space.
+- **iOS 16.1 compatibility**: The deployment target is now iOS 16.1, with compatible interfaces for older systems. System-dependent effects and features remain subject to the iOS version and device capabilities.
+- **Refined native interactions**: Improve Android frosted-glass menus, session renaming, and swipe navigation, plus iOS background reconnection, file browsing, and image compatibility.
 
 ### Conversations and Agent Execution
 
@@ -93,7 +103,76 @@ Join the Whaleness beta WeChat group to share feedback, discuss your experience,
 
 ## Screenshots
 
-> Screenshots show the iOS app with Chinese UI; Android implements the corresponding information architecture and workflows with Jetpack Compose. The new voice, file, text-size, and iPad screenshots were captured on October 16, 2026, using version 1.7.6. See [screenshot sources](Docs/images/screenshots/2026-10/SOURCES.md).
+> Latest iOS product screenshots: the 1.7.10 image set was captured on October 22–23, 2026; the iPhone Duo set was captured on October 26, 2026. The interface shown is Chinese. [Product screenshot sources](Docs/images/screenshots/2026-10-23/SOURCES.md) · [Duo screenshot sources](Docs/images/screenshots/2026-10-26-duo/SOURCES.md).
+
+### iPhone Duo: Landscape, Portrait, and Navigation
+
+<table>
+  <tr>
+    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/landscape-home.webp"><img src="Docs/images/screenshots/2026-10-26-duo/landscape-home.webp" alt="Unfolded landscape home" width="100%"></a></td>
+    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/landscape-home-alt.webp"><img src="Docs/images/screenshots/2026-10-26-duo/landscape-home-alt.webp" alt="Landscape home background" width="100%"></a></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Unfolded landscape home</strong></td>
+    <td align="center"><strong>Landscape home background</strong></td>
+  </tr>
+  <tr>
+    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/landscape-settings.webp"><img src="Docs/images/screenshots/2026-10-26-duo/landscape-settings.webp" alt="Landscape settings" width="100%"></a></td>
+    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/landscape-conversation.webp"><img src="Docs/images/screenshots/2026-10-26-duo/landscape-conversation.webp" alt="Landscape conversation" width="100%"></a></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Landscape settings</strong></td>
+    <td align="center"><strong>Landscape conversation</strong></td>
+  </tr>
+  <tr>
+    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/landscape-navigation.webp"><img src="Docs/images/screenshots/2026-10-26-duo/landscape-navigation.webp" alt="Expanded navigation sidebar" width="100%"></a></td>
+    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/portrait-home.webp"><img src="Docs/images/screenshots/2026-10-26-duo/portrait-home.webp" alt="Unfolded portrait home" width="100%"></a></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Expanded navigation sidebar</strong></td>
+    <td align="center"><strong>Unfolded portrait home</strong></td>
+  </tr>
+</table>
+
+### Teams, Attachments, and Local Storage
+
+<table>
+  <tr>
+    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/team-members.webp"><img src="Docs/images/screenshots/2026-10-23/team-members.webp" alt="Agent team members" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/team-tasks.webp"><img src="Docs/images/screenshots/2026-10-23/team-tasks.webp" alt="Shared team tasks" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/attachment-picker.webp"><img src="Docs/images/screenshots/2026-10-23/attachment-picker.webp" alt="File and image picker" width="100%"></a></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Agent team members</strong></td>
+    <td align="center"><strong>Shared team tasks</strong></td>
+    <td align="center"><strong>File and image picker</strong></td>
+  </tr>
+  <tr>
+    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/text-selection.webp"><img src="Docs/images/screenshots/2026-10-23/text-selection.webp" alt="Dedicated text selection" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/conversation-files.webp"><img src="Docs/images/screenshots/2026-10-23/conversation-files.webp" alt="Files in a conversation" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/release-notes.webp"><img src="Docs/images/screenshots/2026-10-23/release-notes.webp" alt="Bundled release notes" width="100%"></a></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Dedicated text selection</strong></td>
+    <td align="center"><strong>Files in a conversation</strong></td>
+    <td align="center"><strong>Bundled release notes</strong></td>
+  </tr>
+  <tr>
+    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/storage.webp"><img src="Docs/images/screenshots/2026-10-23/storage.webp" alt="Local storage and cache categories" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/voice-input.webp"><img src="Docs/images/screenshots/2026-10-23/voice-input.webp" alt="Hold-to-talk input" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/file-upload.webp"><img src="Docs/images/screenshots/2026-10-23/file-upload.webp" alt="File attachment in the composer" width="100%"></a></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Local storage and cache categories</strong></td>
+    <td align="center"><strong>Hold-to-talk input</strong></td>
+    <td align="center"><strong>File attachment in the composer</strong></td>
+  </tr>
+</table>
+
+<details>
+<summary>Earlier screenshots: iPad, previews, settings, and pairing</summary>
+
+> Screenshots show the iOS app with Chinese UI; Android implements the corresponding information architecture and workflows with Jetpack Compose. The voice, file, text-size, and iPad screenshots were captured on October 16, 2026, using version 1.7.6. See [screenshot sources](Docs/images/screenshots/2026-10/SOURCES.md).
 
 ### Voice Input, File Previews, and Text Size
 
@@ -211,6 +290,8 @@ Join the Whaleness beta WeChat group to share feedback, discuss your experience,
 
 </details>
 
+</details>
+
 ## Cross-Platform Architecture
 
 ```text
@@ -274,7 +355,7 @@ Each platform handles secure storage, image processing, temporary files, system 
 ### Common
 
 - Java 17.
-- DeepSeek Harness with `dsh-plugin-mobile-gateway` 0.10.3+ enabled.
+- DeepSeek Harness with `dsh-plugin-mobile-gateway` 0.11.1+ enabled.
 - A simulator, emulator, or physical device that can reach Mobile Gateway.
 
 ### Android
@@ -285,8 +366,8 @@ Each platform handles secure storage, image processing, temporary files, system 
 
 ### iOS
 
-- macOS and Xcode 26+ with the iOS 26 SDK to compile APIs such as Liquid Glass. The app's deployment target remains iOS 17.0.
-- An iOS 17.0+ simulator or physical device.
+- macOS and Xcode 26+ with the iOS 26 SDK to compile APIs such as Liquid Glass. The app's deployment target is iOS 16.1.
+- An iOS 16.1+ simulator or physical device.
 - Android SDK: the Xcode build phase invokes Gradle to compile the KMP framework.
 - An available Metal toolchain, which the build phase locates automatically.
 
@@ -335,7 +416,7 @@ You do not need to build the framework manually first. To build only the Apple S
 
 ## Connection and Pairing
 
-1. Install or upgrade `dsh-plugin-mobile-gateway` in DeepSeek Harness (minimum 0.10.3), then fully exit and restart `dsh web`:
+1. Install or upgrade `dsh-plugin-mobile-gateway` in DeepSeek Harness (minimum 0.11.1), then fully exit and restart `dsh web`:
 
    ```bash
    dsh plugin --profile web add dsh-plugin-mobile-gateway@latest
@@ -404,7 +485,7 @@ The following documents record the KMP migration and Android implementation. For
 
 Whaleness is under active development. The KMP shared module and native Android and iOS apps are implemented. Protocol support, platform consistency, and the mobile experience continue to evolve alongside DeepSeek Harness and Mobile Gateway.
 
-This is a community client for DeepSeek Harness, not an official DeepSeek release.
+This is an independently developed third-party client for DeepSeek Harness.
 
 [![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/clarklevis1995/dsh-plugin-mobile-gateway)
 

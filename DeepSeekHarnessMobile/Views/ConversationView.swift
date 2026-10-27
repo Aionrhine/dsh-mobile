@@ -3,6 +3,7 @@ import MarkdownUI
 import PhotosUI
 import UniformTypeIdentifiers
 import UIKit
+import WebKit
 import DeepSeekHarnessShared
 
 struct SlashCommandComposerPresentation: Equatable {
@@ -251,6 +252,18 @@ final class CommandTextView: UITextView {
     private var renderedPresentation: SlashCommandComposerPresentation?
     private var renderedPlaceholder = ""
     private var renderedFontSize: CGFloat?
+    private var lastDrawnSize: CGSize = .zero
+
+    // 占位提示是在 draw(_:) 里自绘的。UIView 默认 contentMode 是 scaleToFill，
+    // 尺寸变化时系统只会拉伸旧的绘制结果而不会重绘：折叠屏从展开变为折叠后，
+    // 输入框变窄，提示文字就被横向压扁。尺寸一变就主动重绘。
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        if bounds.size != lastDrawnSize {
+            lastDrawnSize = bounds.size
+            setNeedsDisplay()
+        }
+    }
 
     func apply(text: String, presentation: SlashCommandComposerPresentation?, placeholder: String) {
         let fontChanged = renderedFontSize != font?.pointSize
@@ -434,12 +447,12 @@ struct ConversationView: View {
             WindowBottomSafeAreaReader(bottomInset: $bottomSafeAreaInset, windowHeight: $voiceWindowHeight)
         }
         .foregroundStyle(.primary)
-        .onChange(of: activeView) { _, view in
+        .onChangeCompat(of: activeView) { _, view in
             if view != 0 { composerIsFocused = false }
             showsSessionStatsPopover = false
             showsAgentPresetMenu = false
         }
-        .onChange(of: store.selectedSessionId) { _, _ in
+        .onChangeCompat(of: store.selectedSessionId) { _, _ in
             showsSessionStatsPopover = false
             showsAgentPresetMenu = false
             hasScrolledFromTop = false
@@ -766,18 +779,18 @@ struct ConversationView: View {
             guard height > 0, abs(height - composerHeight) > 0.5 else { return }
             composerHeight = height
         }
-        .onChange(of: composerIsFocused) { _, isFocused in
+        .onChangeCompat(of: composerIsFocused) { _, isFocused in
             store.voiceInput.keyboardChanged(isFocused)
             guard isFocused else { return }
             showsSessionStatsPopover = false
             viewportScrollToBottomToken &+= 1
         }
-        .onChange(of: store.selectedPendingQuestionRequest?.rpcId) { _, rpcId in
+        .onChangeCompat(of: store.selectedPendingQuestionRequest?.rpcId) { _, rpcId in
             guard rpcId != nil else { return }
             composerIsFocused = false
             if isPinnedToBottom { viewportScrollToBottomToken &+= 1 }
         }
-        .onChange(of: store.selectedPendingApprovalRequest?.rpcId) { _, rpcId in
+        .onChangeCompat(of: store.selectedPendingApprovalRequest?.rpcId) { _, rpcId in
             guard rpcId != nil else { return }
             composerIsFocused = false
             if isPinnedToBottom { viewportScrollToBottomToken &+= 1 }
@@ -794,7 +807,7 @@ struct ConversationView: View {
         } message: {
             Text("删除后，智能体不再持有这个持续目标。")
         }
-        .onChange(of: isLoadingSelectedHistory) { wasLoading, isLoading in
+        .onChangeCompat(of: isLoadingSelectedHistory) { wasLoading, isLoading in
             guard historyPresentationSessionID == store.selectedSessionId,
                   isPreparingHistoryPresentation,
                   wasLoading,
@@ -838,7 +851,7 @@ struct ConversationView: View {
             store.voiceInput.leave()
             store.leaveSessionAgentPreset()
         }
-        .onChange(of: store.selectedSessionId) { previous, current in
+        .onChangeCompat(of: store.selectedSessionId) { previous, current in
             if let previous {
                 memberDrafts[previous] = draft
                 memberImages[previous] = pendingImages
@@ -849,7 +862,7 @@ struct ConversationView: View {
             store.voiceInput.open(context: current ?? "new-session", draft: draft)
             if previous != nil && current == nil { dismissConversation() }
         }
-        .onChange(of: store.sessionAgentPreset.canSelect) { _, canSelect in
+        .onChangeCompat(of: store.sessionAgentPreset.canSelect) { _, canSelect in
             if !canSelect { showsAgentPresetMenu = false }
         }
         .task(id: store.selectedSessionId) {
@@ -1160,7 +1173,7 @@ struct ConversationView: View {
         // deep enough that instantiating this type overflows the main thread
         // stack in the Swift demangler (crash inside composerCard.getter).
         AnyView(composerCardChrome)
-        .onChange(of: store.messageAcceptedRevision) { _, _ in
+        .onChangeCompat(of: store.messageAcceptedRevision) { _, _ in
             guard let submitted = submittedQueueDraft else { return }
             defer { submittedQueueDraft = nil; submittedQueueImages = [] }
             if let target = submittedQueueSessionID, target != store.selectedSessionId {
@@ -1179,8 +1192,8 @@ struct ConversationView: View {
             composerIsFocused = false
             viewportScrollToBottomToken &+= 1
         }
-        .onChange(of: store.queueRevision) { _, _ in restoreQueuedDraft() }
-        .onChange(of: store.selectedSessionId) { _, _ in
+        .onChangeCompat(of: store.queueRevision) { _, _ in restoreQueuedDraft() }
+        .onChangeCompat(of: store.selectedSessionId) { _, _ in
             store.fileUploads.select(sessionID: store.selectedSessionId, allowed: !store.isViewingTeamMember)
             queueExpanded = false
             quotesExpanded = false
@@ -1192,12 +1205,12 @@ struct ConversationView: View {
             store.fileUploads.select(sessionID: store.selectedSessionId, allowed: !store.isViewingTeamMember)
             restoreQueuedDraft()
         }
-        .onChange(of: selectedPhotoItems) { _, items in
+        .onChangeCompat(of: selectedPhotoItems) { _, items in
             guard !items.isEmpty else { return }
             store.voiceInput.setVoiceMode(false)
             Task { await importPhotos(items, targetSessionID: store.selectedSessionId) }
         }
-        .onChange(of: draft) { _, value in
+        .onChangeCompat(of: draft) { _, value in
             store.voiceInput.draftChanged(value)
             store.updateSlashCommandInput(value)
         }
@@ -1320,7 +1333,6 @@ struct ConversationView: View {
                 .accessibilityLabel(String(localized: "a11y.context.percent", defaultValue: "上下文已用 \(Int(contextProgress * 100))%"))
                 .popover(isPresented: $showsContextUsage, arrowEdge: .bottom) {
                     ContextUsagePopover(snapshot: store.selectedContextSnapshot)
-                        .presentationCompactAdaptation(.popover)
                 }
 
                 Button {
@@ -1566,7 +1578,6 @@ struct ConversationView: View {
             }
             .clipped()
             // 让标题与背景使用同一份逐帧几何尺寸，避免父布局和内部位置分别插值。
-            .geometryGroup()
         }
     }
 
@@ -1820,7 +1831,7 @@ struct ConversationView: View {
                 }
                 let mediaType = Self.imageMediaType(for: data) ?? "image/heic"
                 let prepared = try await Task.detached(priority: .userInitiated) {
-                    try GatewayImagePreprocessor.prepare(data: data, mediaType: mediaType)
+                    try GatewayImagePreprocessor.prepare(data: data)
                 }.value
                 imported.append(GatewayOutgoingImage(mediaType: prepared.mediaType, data: prepared.data))
             } catch {
@@ -2042,7 +2053,7 @@ struct ConversationView: View {
             .appFont(.caption.weight(.medium))
             .foregroundStyle(.secondary)
             .lineLimit(1)
-            .frame(width: 92, alignment: .leading)
+            .frame(minWidth: 92, alignment: .leading)
             .accessibilityElement(children: .combine)
             .accessibilityLabel(String(localized: "a11y.defaults.permission", defaultValue: "新会话默认权限：\(store.permissionDefault.map(permissionTitle) ?? String(localized: "未读取"))"))
         } else {
@@ -2101,7 +2112,7 @@ struct ConversationView: View {
             }
             .appFont(.caption.weight(.medium))
             .foregroundStyle(.secondary)
-            .frame(width: 78, alignment: .leading)
+            .frame(minWidth: 78, alignment: .leading)
             .contentShape(Rectangle())
         }
         .disabled(permissionOptions.isEmpty)
@@ -3086,10 +3097,15 @@ private struct ContentSizedCommandScrollView<Content: View>: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0, content: content)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .onGeometryChange(for: CGFloat.self) { geometry in
-                    geometry.size.height
-                } action: { height in
-                    contentHeight = height
+                .background {
+                    // iOS 16.1 无 onGeometryChange，改用 GeometryReader 上报高度。
+                    GeometryReader { proxy in
+                        Color.clear
+                            .onAppear { contentHeight = proxy.size.height }
+                            .onChangeCompat(of: proxy.size.height) { _, height in
+                                contentHeight = height
+                            }
+                    }
                 }
         }
         .frame(height: min(contentHeight, 300))
@@ -3304,7 +3320,7 @@ private struct SessionStatsSheet: View {
                                 .foregroundStyle(.tertiary)
                         }
                     } else {
-                        ContentUnavailableView("正在读取会话统计", systemImage: "chart.bar.xaxis", description: Text("统计会在本轮结束后自动更新。"))
+                        DshEmptyState("正在读取会话统计", systemImage: "chart.bar.xaxis", description: Text("统计会在本轮结束后自动更新。"))
                             .frame(maxWidth: .infinity, minHeight: 220)
                     }
                 }
@@ -3319,7 +3335,7 @@ private struct SessionStatsSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
-        .presentationBackground(.regularMaterial)
+        .background(.regularMaterial)
     }
 
     @ViewBuilder
@@ -3439,9 +3455,16 @@ private struct ComposerPopoverOverlay<Content: View>: View {
 
                 ScrollView {
                     content
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+                        .background {
+                            GeometryReader { proxy in
+                                Color.clear
+                                    .onAppear { contentHeight = proxy.size.height }
+                                    .onChangeCompat(of: proxy.size.height) { _, height in
+                                        contentHeight = height
+                                    }
+                            }
+                        }
                 }
-                .scrollBounceBehavior(.basedOnSize)
                 .frame(width: width, height: height - arrowHeight)
                 .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                 .padding(displaysAbove ? .bottom : .top, arrowHeight)
@@ -3611,7 +3634,7 @@ private struct ContextUsagePopover: View {
         }
         .padding(18)
         .frame(width: 300)
-        .presentationBackground(.ultraThinMaterial)
+        .background(.ultraThinMaterial)
     }
 
     private func usageRow(_ title: String, value: Int?, color: Color) -> some View {
@@ -4761,7 +4784,6 @@ private struct ToolOutputView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(10)
                 }
-                .defaultScrollAnchor(.topLeading)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .frame(height: 280)
             } else {
@@ -5054,6 +5076,11 @@ private extension Theme {
                 .background(Color(uiColor: .secondarySystemFill))
                 .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                 .markdownMargin(top: 2, bottom: compact ? 6 : 10)
+            }
+            .table { configuration in
+                MarkdownTableCard(content: configuration.content,
+                    fontSize: UIFontMetrics.default.scaledValue(for: compact ? 13 : 17) * scale)
+                    .markdownMargin(top: 2, bottom: compact ? 6 : 10)
             }
             .thematicBreak {
                 Rectangle()
@@ -5381,11 +5408,20 @@ private struct TeamMemberPopover: View {
     let selectedID: String?
     let select: (MobileTeamMember) -> Void
     let showDetails: () -> Void
+    @AppStorage(AppFontScale.key) private var fontScale: Double = 1
+    @AppStorage(AppFontScale.followsSystemKey) private var followsSystemFont = false
+
+    private var memberListHeight: CGFloat {
+        let scale = TeamMemberRow.scale(fontScale: fontScale, followsSystemFont: followsSystemFont)
+        let rows = CGFloat(members.count) * TeamMemberRow.height * scale
+        let gaps = CGFloat(max(0, members.count - 1)) * 2
+        return min(300, rows + gaps)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title).appFont(.caption).foregroundStyle(.secondary).lineLimit(2).padding(.horizontal, 12)
-            Text("成员 \(members.count)").appFont(.headline).padding(.horizontal, 12)
+            Text("成员 \(String(members.count))").appFont(.headline).padding(.horizontal, 12)
             VStack(spacing: 0) {
                 ScrollView {
                     VStack(spacing: 2) {
@@ -5394,7 +5430,8 @@ private struct TeamMemberPopover: View {
                         }
                     }
                 }
-                .frame(maxHeight: 300)
+                // ScrollView 不会按短列表收缩；直接复用固定行高，首帧即可得到正确尺寸。
+                .frame(height: memberListHeight)
                 .clipped()
                 Divider()
             }
@@ -5452,9 +5489,15 @@ private struct TeamMemberRow: View {
     @AppStorage(AppFontScale.key) private var fontScale: Double = 1
     @AppStorage(AppFontScale.followsSystemKey) private var followsSystemFont = false
 
-    private var rowScale: CGFloat {
+    static let height: CGFloat = 72
+
+    static func scale(fontScale: Double, followsSystemFont: Bool) -> CGFloat {
         CGFloat(AppFontScale.effective(fontScale, followsSystem: followsSystemFont))
             * max(1, UIFont.preferredFont(forTextStyle: .body).pointSize / 17)
+    }
+
+    private var rowScale: CGFloat {
+        Self.scale(fontScale: fontScale, followsSystemFont: followsSystemFont)
     }
 
     var body: some View {
@@ -5479,9 +5522,8 @@ private struct TeamMemberRow: View {
                     .frame(width: 18).opacity(selected ? 1 : 0).accessibilityHidden(!selected)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: 56 * rowScale)
+            .frame(height: Self.height * rowScale)
             .padding(.horizontal, 10)
-            .padding(.vertical, 8 * rowScale)
             .contentShape(Rectangle())
             .background(selected ? Color.blue.opacity(0.08) : Color.clear, in: RoundedRectangle(cornerRadius: 14))
         }
@@ -5520,12 +5562,12 @@ struct TeamContentSheet: View {
                     if let error = store.teamSnapshot.error { Text(error).foregroundStyle(.orange).appFont(.callout) }
                     if store.teamSnapshot.state != "ready" {
                         HStack {
-                            Text(store.teamSnapshot.state == "migration-required" ? "团队数据待刷新，请在桌面端确认会话格式" : "团队数据暂不可用")
+                            Text(store.teamSnapshot.state == "migration-required" ? String(localized: "团队数据待刷新，请在桌面端确认会话格式") : String(localized: "团队数据暂不可用"))
                             Spacer()
                             Button("重试") { store.refreshTeam() }
                         }.appFont(.callout).foregroundStyle(.secondary)
                     }
-                    Text("成员 \(store.teamSnapshot.members.count)").appFont(.headline)
+                    Text("成员 \(String(store.teamSnapshot.members.count))").appFont(.headline)
                     LazyVStack(spacing: 2) {
                         ForEach(store.teamSnapshot.members) { member in
                             TeamMemberRow(member: member, selected: member.id == store.selectedSessionId) {
@@ -5534,17 +5576,17 @@ struct TeamContentSheet: View {
                         }
                     }
                     Text(store.teamSnapshot.state == "ready" || !store.teamSnapshot.tasks.isEmpty
-                         ? "共享任务 \(store.teamSnapshot.tasks.count)" : "共享任务 · 待同步").appFont(.headline)
+                         ? String(format: String(localized: "共享任务 %@"), String(store.teamSnapshot.tasks.count)) : String(localized: "共享任务 · 待同步")).appFont(.headline)
                     Picker("任务筛选", selection: $filter) {
                         Text("全部").tag("all")
                         Text("当前成员").tag("current")
                         Text("未分配").tag("unassigned")
                     }.pickerStyle(.segmented)
                     if tasks.isEmpty {
-                        Text(store.teamSnapshot.state != "ready" ? "共享任务尚未同步，请重试"
-                             : !store.teamSnapshot.tasks.isEmpty ? "当前筛选下暂无共享任务"
-                             : store.teamSnapshot.isTeam ? "当前团队尚未创建共享任务"
-                             : "此会话尚无团队共享任务；普通子智能体的内部待办显示在各自会话中。")
+                        Text(store.teamSnapshot.state != "ready" ? String(localized: "共享任务尚未同步，请重试")
+                             : !store.teamSnapshot.tasks.isEmpty ? String(localized: "当前筛选下暂无共享任务")
+                             : store.teamSnapshot.isTeam ? String(localized: "当前团队尚未创建共享任务")
+                             : String(localized: "此会话尚无团队共享任务；普通子智能体的内部待办显示在各自会话中。"))
                             .foregroundStyle(.secondary).padding(.vertical)
                     }
                     ForEach(tasks) { task in taskCard(task) }
@@ -5552,7 +5594,7 @@ struct TeamContentSheet: View {
                 .padding(20)
                 .readableContentWidth()
             }
-            .navigationTitle(store.teamSnapshot.isTeam ? "智能体团队" : "子智能体")
+            .navigationTitle(store.teamSnapshot.isTeam ? String(localized: "智能体团队") : String(localized: "子智能体"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
         }
@@ -5590,7 +5632,7 @@ struct TeamContentSheet: View {
                 Spacer()
                 Button(action: toggleDetails) {
                     HStack(spacing: 4) {
-                        Text(isExpanded ? "收起" : "展开").appFont(.caption)
+                        Text(isExpanded ? String(localized: "收起") : String(localized: "展开")).appFont(.caption)
                         Image(systemName: isExpanded ? "chevron.up" : "chevron.down").appFont(.caption2)
                     }
                     .foregroundStyle(.secondary)
@@ -5598,7 +5640,7 @@ struct TeamContentSheet: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(isExpanded ? "收起任务详情" : "展开任务详情")
+                .accessibilityLabel(isExpanded ? String(localized: "收起任务详情") : String(localized: "展开任务详情"))
                 .accessibilityIdentifier("team-task-toggle-\(task.id)")
             }
             Button(action: openOwner) {
@@ -5608,7 +5650,7 @@ struct TeamContentSheet: View {
                     } else {
                         Image(systemName: "person.crop.circle").frame(width: 20, height: 20).accessibilityHidden(true)
                     }
-                    Text("负责人：\(task.ownerName ?? "未分配")")
+                    Text("负责人：\(task.ownerName ?? String(localized: "未分配"))")
                 }
                 .appFont(.caption).foregroundStyle(owner?.canOpen == true ? Color.blue : Color.secondary)
             }
@@ -5616,18 +5658,18 @@ struct TeamContentSheet: View {
             .disabled(owner?.canOpen != true)
             .accessibilityIdentifier("team-task-owner-\(task.id)")
             if !task.writeScopes.isEmpty {
-                Text("写入范围：\(task.writeScopes.joined(separator: "、"))").appFont(.caption).foregroundStyle(.secondary)
+                Text("写入范围：\(task.writeScopes.joined(separator: String(localized: "、")))").appFont(.caption).foregroundStyle(.secondary)
                     .allowsHitTesting(false)
             }
             if isExpanded {
                 Group {
-                    Text("版本：\(task.revision)").appFont(.caption).foregroundStyle(.secondary)
+                    Text("版本：\(String(task.revision))").appFont(.caption).foregroundStyle(.secondary)
                     if !task.blockedBy.isEmpty {
-                        Text("依赖：" + task.blockedBy.map { id in store.teamSnapshot.tasks.first { $0.id == id }?.subject ?? id }.joined(separator: "、"))
+                        Text(String(localized: "依赖：") + task.blockedBy.map { id in store.teamSnapshot.tasks.first { $0.id == id }?.subject ?? id }.joined(separator: String(localized: "、")))
                             .appFont(.caption).foregroundStyle(.secondary)
                     }
                     if task.status == "pending" {
-                        Text(task.ready ? "可领取" : "等待前置任务完成").appFont(.caption).foregroundStyle(.secondary)
+                        Text(task.ready ? String(localized: "可领取") : String(localized: "等待前置任务完成")).appFont(.caption).foregroundStyle(.secondary)
                     }
                     ForEach(task.writeScopeWarnings, id: \.self) { Text($0).appFont(.caption).foregroundStyle(.orange) }
                 }.allowsHitTesting(false)
@@ -5640,7 +5682,7 @@ struct TeamContentSheet: View {
                 RoundedRectangle(cornerRadius: 18).fill(Color(uiColor: .secondarySystemGroupedBackground))
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("任务：\(task.subject)，\(isExpanded ? "收起任务详情" : "展开任务详情")")
+            .accessibilityLabel("任务：\(task.subject)，\(isExpanded ? String(localized: "收起任务详情") : String(localized: "展开任务详情"))")
             .accessibilityIdentifier("team-task-body-\(task.id)")
         }
         .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.primary.opacity(0.08), lineWidth: 0.7).allowsHitTesting(false))
