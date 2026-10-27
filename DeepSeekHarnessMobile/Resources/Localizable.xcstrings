@@ -1,207 +1,8 @@
 {
   "sourceLanguage" : "zh-Hans",
   "strings" : {
-    "在当前工作区新建会话" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Creates a new session in this workspace"
-          }
-        }
-      }
-    },
-    "已展开" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Expanded"
-          }
-        }
-      }
-    },
-    "已收起" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Collapsed"
-          }
-        }
-      }
-    },
-    "工作区" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Workspaces"
-          }
-        }
-      }
-    },
-    "收起侧边栏" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hide sidebar"
-          }
-        }
-      }
-    },
-    "展开侧边栏" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Show sidebar"
-          }
-        }
-      }
-    },
-    "新会话" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "New session"
-          }
-        }
-      }
-    },
-    "暂无会话" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No sessions yet"
-          }
-        }
-      }
-    },
-    "未命名会话" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Untitled session"
-          }
-        }
-      }
-    },
-    "表格": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Table"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "表格"
-          }
-        }
-      }
-    },
-    "复制表格": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Copy table"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "复制表格"
-          }
-        }
-      }
-    },
-    "下载 CSV": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Download CSV"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "下载 CSV"
-          }
-        }
-      }
-    },
-    "旋转屏幕": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Rotate screen"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "旋转屏幕"
-          }
-        }
-      }
-    },
-    "全屏浏览表格": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "View table in full screen"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "全屏浏览表格"
-          }
-        }
-      }
-    },
-    "已保存": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Saved"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已保存"
-          }
-        }
-      }
-    },
-    "保存失败": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Save failed"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "保存失败"
-          }
-        }
-      }
+    " " : {
+
     },
     " 等工具" : {
       "extractionState" : "stale",
@@ -210,6 +11,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : " and more"
+          }
+        }
+      }
+    },
+    "、" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : ", "
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "、"
           }
         }
       }
@@ -1327,6 +1145,7 @@
       }
     },
     "Deepseek Harness预览版" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1340,8 +1159,7 @@
             "value" : "Deepseek Harness预览版"
           }
         }
-      },
-      "extractionState" : "manual"
+      }
     },
     "defaults.effort.suffix" : {
       "extractionState" : "manual",
@@ -3945,6 +3763,23 @@
         }
       }
     },
+    "下载 CSV" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download CSV"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下载 CSV"
+          }
+        }
+      }
+    },
     "下载文件的本地大小校验失败" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4129,6 +3964,23 @@
         }
       }
     },
+    "任务：%@，%@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Task: %@, %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任务：%@，%@"
+          }
+        }
+      }
+    },
     "任务内容" : {
       "localizations" : {
         "en" : {
@@ -4146,6 +3998,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Task title"
+          }
+        }
+      }
+    },
+    "任务筛选" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Task filter"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任务筛选"
           }
         }
       }
@@ -4237,6 +4106,23 @@
         }
       }
     },
+    "依赖：" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dependencies: "
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "依赖："
+          }
+        }
+      }
+    },
     "保存" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4244,6 +4130,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Save"
+          }
+        }
+      }
+    },
+    "保存失败" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save failed"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存失败"
           }
         }
       }
@@ -4388,6 +4291,23 @@
         }
       }
     },
+    "全屏浏览表格" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "View table in full screen"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全屏浏览表格"
+          }
+        }
+      }
+    },
     "全选" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4428,6 +4348,57 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "共 %1$@ 个 · %2$@ 运行中"
+          }
+        }
+      }
+    },
+    "共享任务 · 待同步" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shared tasks · Awaiting sync"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共享任务 · 待同步"
+          }
+        }
+      }
+    },
+    "共享任务 %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shared tasks: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共享任务 %@"
+          }
+        }
+      }
+    },
+    "共享任务尚未同步，请重试" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shared tasks have not synced yet. Try again."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共享任务尚未同步，请重试"
           }
         }
       }
@@ -4536,6 +4507,7 @@
       }
     },
     "写入范围：%@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4549,8 +4521,7 @@
             "value" : "写入范围：%@"
           }
         }
-      },
-      "extractionState" : "manual"
+      }
     },
     "准备中" : {
       "extractionState" : "manual",
@@ -4638,6 +4609,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Create"
+          }
+        }
+      }
+    },
+    "创建失败" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Creation failed"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "创建失败"
           }
         }
       }
@@ -4836,6 +4824,17 @@
         }
       }
     },
+    "即将达到录音上限 · 松手转文字" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recording limit approaching · Release to transcribe"
+          }
+        }
+      }
+    },
     "历史记录刷新超时" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4955,6 +4954,23 @@
         }
       }
     },
+    "受阻" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Blocked"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "受阻"
+          }
+        }
+      }
+    },
     "只读" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4962,6 +4978,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Read-only"
+          }
+        }
+      }
+    },
+    "只读 · 单次执行" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Read-only · One-shot"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只读 · 单次执行"
+          }
+        }
+      }
+    },
+    "只读 · 身份待确认" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Read-only · Identity unconfirmed"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只读 · 身份待确认"
           }
         }
       }
@@ -4990,6 +5040,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "可发送"
+          }
+        }
+      }
+    },
+    "可领取" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ready to claim"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可领取"
           }
         }
       }
@@ -5109,6 +5176,40 @@
         }
       }
     },
+    "团队数据待刷新，请在桌面端确认会话格式" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Team data needs to be refreshed. Check the conversation format on your desktop."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "团队数据待刷新，请在桌面端确认会话格式"
+          }
+        }
+      }
+    },
+    "团队数据暂不可用" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Team data is temporarily unavailable"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "团队数据暂不可用"
+          }
+        }
+      }
+    },
     "图片" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5137,6 +5238,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scheduled tasks created in conversations appear here."
+          }
+        }
+      }
+    },
+    "在当前工作区新建会话" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Creates a new session in this workspace"
           }
         }
       }
@@ -5223,12 +5335,46 @@
         }
       }
     },
+    "复制表格" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy table"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制表格"
+          }
+        }
+      }
+    },
     "外观" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Appearance"
+          }
+        }
+      }
+    },
+    "外部智能体" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "External agent"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "外部智能体"
           }
         }
       }
@@ -5265,6 +5411,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "OK"
+          }
+        }
+      }
+    },
+    "子智能体" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Subagents"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "子智能体"
           }
         }
       }
@@ -5538,6 +5701,23 @@
         }
       }
     },
+    "展开" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expand"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "展开"
+          }
+        }
+      }
+    },
     "展开任务详情" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5549,6 +5729,17 @@
         }
       }
     },
+    "展开侧边栏" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show sidebar"
+          }
+        }
+      }
+    },
     "展开审批卡片" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5556,6 +5747,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Expand approval card"
+          }
+        }
+      }
+    },
+    "工作区" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Workspaces"
           }
         }
       }
@@ -5665,6 +5866,23 @@
         }
       }
     },
+    "已保存" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saved"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已保存"
+          }
+        }
+      }
+    },
     "已保留本地内容并继续接收实时事件" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -5688,7 +5906,6 @@
       }
     },
     "已复制" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5705,6 +5922,33 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Installed"
+          }
+        }
+      }
+    },
+    "已完成" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Completed"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已完成"
+          }
+        }
+      }
+    },
+    "已展开" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expanded"
           }
         }
       }
@@ -5759,6 +6003,16 @@
         }
       }
     },
+    "已收起" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Collapsed"
+          }
+        }
+      }
+    },
     "已有文件正在下载，请稍后再试。" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5805,6 +6059,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Skipped"
+          }
+        }
+      }
+    },
+    "已达到录音上限，正在转文字" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recording limit reached. Transcribing…"
           }
         }
       }
@@ -5915,6 +6180,7 @@
       }
     },
     "当前会话" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5928,10 +6194,10 @@
             "value" : "当前会话"
           }
         }
-      },
-      "extractionState" : "manual"
+      }
     },
     "当前会话使用普通子智能体" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5945,8 +6211,7 @@
             "value" : "当前会话使用普通子智能体"
           }
         }
-      },
-      "extractionState" : "manual"
+      }
     },
     "当前使用" : {
       "localizations" : {
@@ -5991,6 +6256,23 @@
         }
       }
     },
+    "当前团队尚未创建共享任务" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This team has not created any shared tasks yet"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前团队尚未创建共享任务"
+          }
+        }
+      }
+    },
     "当前填写的答案不会提交。" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -6003,6 +6285,7 @@
       }
     },
     "当前成员" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6016,8 +6299,7 @@
             "value" : "当前成员"
           }
         }
-      },
-      "extractionState" : "manual"
+      }
     },
     "当前目录" : {
       "localizations" : {
@@ -6036,6 +6318,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The current camera does not support QR metadata detection."
+          }
+        }
+      }
+    },
+    "当前筛选下暂无共享任务" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No shared tasks match the current filter"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前筛选下暂无共享任务"
           }
         }
       }
@@ -6150,6 +6449,23 @@
         }
       }
     },
+    "待处理" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pending"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "待处理"
+          }
+        }
+      }
+    },
     "待审批操作已恢复" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6211,6 +6527,7 @@
       }
     },
     "成员 %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6224,8 +6541,7 @@
             "value" : "成员 %@"
           }
         }
-      },
-      "extractionState" : "manual"
+      }
     },
     "我的主机" : {
       "localizations" : {
@@ -6749,6 +7065,23 @@
         }
       }
     },
+    "收起" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Collapse"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收起"
+          }
+        }
+      }
+    },
     "收起任务详情" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6756,6 +7089,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Collapse task details"
+          }
+        }
+      }
+    },
+    "收起侧边栏" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hide sidebar"
           }
         }
       }
@@ -7100,6 +7444,17 @@
         }
       }
     },
+    "新会话" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New session"
+          }
+        }
+      }
+    },
     "新会话默认配置" : {
       "localizations" : {
         "en" : {
@@ -7138,6 +7493,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "New folder"
+          }
+        }
+      }
+    },
+    "旋转屏幕" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rotate screen"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "旋转屏幕"
           }
         }
       }
@@ -7263,6 +7635,33 @@
         }
       }
     },
+    "智能体团队" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent team"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "智能体团队"
+          }
+        }
+      }
+    },
+    "暂无会话" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No sessions yet"
+          }
+        }
+      }
+    },
     "暂无可用模型" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -7313,6 +7712,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No delivery history"
+          }
+        }
+      }
+    },
+    "更多" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "More"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更多"
           }
         }
       }
@@ -7427,6 +7843,7 @@
       }
     },
     "未分配" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7440,8 +7857,18 @@
             "value" : "未分配"
           }
         }
-      },
-      "extractionState" : "manual"
+      }
+    },
+    "未命名会话" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Untitled session"
+          }
+        }
+      }
     },
     "未知网关响应" : {
       "extractionState" : "stale",
@@ -7503,6 +7930,23 @@
         }
       }
     },
+    "未运行" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not running"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未运行"
+          }
+        }
+      }
+    },
     "未连接" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -7554,6 +7998,7 @@
       }
     },
     "本地缓存片段" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7567,8 +8012,7 @@
             "value" : "本地缓存片段"
           }
         }
-      },
-      "extractionState" : "manual"
+      }
     },
     "本机缓存" : {
       "localizations" : {
@@ -7704,6 +8148,7 @@
       }
     },
     "查看完整团队内容" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7717,8 +8162,7 @@
             "value" : "查看完整团队内容"
           }
         }
-      },
-      "extractionState" : "manual"
+      }
     },
     "查看完整统计" : {
       "localizations" : {
@@ -7892,6 +8336,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在准备语音模型"
+          }
+        }
+      }
+    },
+    "正在创建" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Creating"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在创建"
           }
         }
       }
@@ -8206,6 +8667,23 @@
         }
       }
     },
+    "此会话尚无团队共享任务；普通子智能体的内部待办显示在各自会话中。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This conversation has no shared team tasks yet. Regular subagents show their own tasks in their conversations."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此会话尚无团队共享任务；普通子智能体的内部待办显示在各自会话中。"
+          }
+        }
+      }
+    },
     "此命令不支持图片" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8516,6 +8994,7 @@
       }
     },
     "版本：%@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8529,8 +9008,7 @@
             "value" : "版本：%@"
           }
         }
-      },
-      "extractionState" : "manual"
+      }
     },
     "状态" : {
       "extractionState" : "manual",
@@ -8539,6 +9017,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Status"
+          }
+        }
+      }
+    },
+    "状态同步中" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Syncing status"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "状态同步中"
           }
         }
       }
@@ -8742,6 +9237,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "等待上传"
+          }
+        }
+      }
+    },
+    "等待前置任务完成" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Waiting for dependencies"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待前置任务完成"
           }
         }
       }
@@ -9079,6 +9591,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "草稿已更改，请确认插入识别文字"
+          }
+        }
+      }
+    },
+    "表格" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Table"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "表格"
           }
         }
       }
@@ -9525,6 +10053,7 @@
       }
     },
     "负责人：%@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9538,8 +10067,7 @@
             "value" : "负责人：%@"
           }
         }
-      },
-      "extractionState" : "manual"
+      }
     },
     "跟随系统" : {
       "extractionState" : "stale",
@@ -9736,6 +10264,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Up one level"
+          }
+        }
+      }
+    },
+    "返回最新消息" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Return to latest messages"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "返回最新消息"
+          }
+        }
+      }
+    },
+    "进行中" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In progress"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "进行中"
           }
         }
       }
@@ -10272,533 +10834,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Failed to update default settings"
-          }
-        }
-      }
-    },
-    "返回最新消息" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Return to latest messages"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "返回最新消息"
-          }
-        }
-      }
-    },
-    "任务筛选" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Task filter"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "任务筛选"
-          }
-        }
-      }
-    },
-    "依赖：" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dependencies: "
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "依赖："
-          }
-        }
-      }
-    },
-    "更多" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "More"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "更多"
-          }
-        }
-      }
-    },
-    "共享任务 %@" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Shared tasks: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "共享任务 %@"
-          }
-        }
-      }
-    },
-    "、" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : ", "
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "、"
-          }
-        }
-      }
-    },
-    "任务：%@，%@" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Task: %@, %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "任务：%@，%@"
-          }
-        }
-      }
-    },
-    "团队数据待刷新，请在桌面端确认会话格式" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Team data needs to be refreshed. Check the conversation format on your desktop."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "团队数据待刷新，请在桌面端确认会话格式"
-          }
-        }
-      }
-    },
-    "团队数据暂不可用" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Team data is temporarily unavailable"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "团队数据暂不可用"
-          }
-        }
-      }
-    },
-    "共享任务 · 待同步" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Shared tasks · Awaiting sync"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "共享任务 · 待同步"
-          }
-        }
-      }
-    },
-    "共享任务尚未同步，请重试" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Shared tasks have not synced yet. Try again."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "共享任务尚未同步，请重试"
-          }
-        }
-      }
-    },
-    "当前筛选下暂无共享任务" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No shared tasks match the current filter"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "当前筛选下暂无共享任务"
-          }
-        }
-      }
-    },
-    "当前团队尚未创建共享任务" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "This team has not created any shared tasks yet"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "当前团队尚未创建共享任务"
-          }
-        }
-      }
-    },
-    "此会话尚无团队共享任务；普通子智能体的内部待办显示在各自会话中。" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "This conversation has no shared team tasks yet. Regular subagents show their own tasks in their conversations."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此会话尚无团队共享任务；普通子智能体的内部待办显示在各自会话中。"
-          }
-        }
-      }
-    },
-    "智能体团队" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Agent team"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "智能体团队"
-          }
-        }
-      }
-    },
-    "子智能体" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Subagents"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "子智能体"
-          }
-        }
-      }
-    },
-    "收起" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Collapse"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "收起"
-          }
-        }
-      }
-    },
-    "展开" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Expand"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "展开"
-          }
-        }
-      }
-    },
-    "可领取" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ready to claim"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "可领取"
-          }
-        }
-      }
-    },
-    "等待前置任务完成" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Waiting for dependencies"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "等待前置任务完成"
-          }
-        }
-      }
-    },
-    "正在创建" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Creating"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在创建"
-          }
-        }
-      }
-    },
-    "创建失败" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Creation failed"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "创建失败"
-          }
-        }
-      }
-    },
-    "外部智能体" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "External agent"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "外部智能体"
-          }
-        }
-      }
-    },
-    "只读 · 单次执行" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Read-only · One-shot"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "只读 · 单次执行"
-          }
-        }
-      }
-    },
-    "只读 · 身份待确认" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Read-only · Identity unconfirmed"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "只读 · 身份待确认"
-          }
-        }
-      }
-    },
-    "未运行" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Not running"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未运行"
-          }
-        }
-      }
-    },
-    "状态同步中" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Syncing status"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "状态同步中"
-          }
-        }
-      }
-    },
-    "进行中" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "In progress"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "进行中"
-          }
-        }
-      }
-    },
-    "待处理" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pending"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "待处理"
-          }
-        }
-      }
-    },
-    "受阻" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Blocked"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "受阻"
-          }
-        }
-      }
-    },
-    "已完成" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Completed"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已完成"
           }
         }
       }

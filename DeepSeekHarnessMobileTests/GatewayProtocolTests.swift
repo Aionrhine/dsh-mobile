@@ -3073,6 +3073,100 @@ final class GatewayProtocolTests: XCTestCase {
     }
 
     @MainActor
+    func testAuthoritativeAppendSkipsHistoryWorkerAndStillAcceptsRevisions() async throws {
+        let (store, session) = try await makeRc2HistoryLoadingStore()
+        defer { store.deactivateGateway() }
+        try await deliverHistoryLoadingFrame(store,
+            #"{"kind":"subscribed","sessionId":"mask-session","subscriptionId":"sub","assistantStream":true}"#)
+        try sendStaticHistorySnapshot(store, texts: ["one"])
+        await store.awaitConversationProjectionForTesting(sessionID: session.id, expectedText: "one")
+        store.conversationHistoryPreparationForTesting = { _ in
+            XCTFail("仅追加的快照不能重新准备完整历史")
+            throw NSError(domain: "unexpected-rebuild", code: 1)
+        }
+        try sendStaticHistorySnapshot(store, texts: ["one", "two"])
+        await store.awaitPendingKMPEventDeliveriesForTesting()
+        await store.awaitConversationProjectionForTesting(sessionID: session.id, expectedText: "two")
+        XCTAssertEqual(store.renderedConversationItems[session.id]?.map(\.text), ["one", "two"])
+        XCTAssertEqual(store.conversationHistoryWorkerCountForTesting, 0)
+        XCTAssertFalse(store.isPreparingConversation(session.id))
+        store.conversationHistoryPreparationForTesting = nil
+        try sendStaticHistorySnapshot(store, texts: ["修订后的正文"])
+        await store.awaitPendingKMPEventDeliveriesForTesting()
+        await store.awaitConversationProjectionForTesting(sessionID: session.id, expectedText: "修订后的正文")
+        XCTAssertEqual(store.renderedConversationItems[session.id]?.map(\.text), ["修订后的正文"])
+        XCTAssertNil(store.lastError)
+    }
+
+    @MainActor
+    func testCoveredCachedWorkerIsReusedWhenAuthoritativeWindowArrivesBeforeCommit() async throws {
+        let (store, session) = try await makeRc2HistoryLoadingStore()
+        defer { store.deactivateGateway() }
+        try await deliverHistoryLoadingFrame(store,
+            #"{"kind":"subscribed","sessionId":"mask-session","subscriptionId":"sub","assistantStream":true}"#)
+        let entered = expectation(description: "缓存投影等待提交")
+        let gate = ConversationHistoryPreparationGate(entered: entered)
+        store.conversationHistoryPreparationForTesting = { input in
+            await gate.pause()
+            return try KMPConversationStoreAdapter.prepareHistory(input)
+        }
+        func deliver(_ range: ClosedRange<Int>) throws {
+            let records: [[String: Any]] = range.map { seq in
+                ["type": "user/message", "seq": seq, "time": seq,
+                 "data": ["content": [["type": "text", "text": "正文 \(seq)"]]]]
+            }
+            store.gateway.onFrame?(try GatewayWireDecoder.decode(JSONSerialization.data(withJSONObject: [
+                "kind": "session-snapshot", "sessionId": session.id, "subscriptionId": "sub", "streamId": "stream",
+                "historyFormatVersion": 3, "cursor": range.upperBound, "events": records, "hasMore": false
+            ])))
+        }
+        try deliver(2...81)
+        await fulfillment(of: [entered], timeout: 3)
+        try deliver(1...81)
+        await store.awaitPendingKMPEventDeliveriesForTesting(includingHistoryPreparation: false)
+        store.conversationHistoryPreparationForTesting = nil
+        await gate.release()
+        await store.awaitPendingKMPEventDeliveriesForTesting()
+        await store.awaitConversationProjectionForTesting(sessionID: session.id, expectedText: "正文 81")
+        XCTAssertEqual(store.conversationHistoryReusedPreparationCountForTesting, 1)
+        XCTAssertEqual(store.renderedConversationItems[session.id]?.count, 81)
+        XCTAssertEqual(store.renderedConversationItems[session.id]?.first?.text, "正文 1")
+        XCTAssertNil(store.lastError)
+    }
+
+    @MainActor
+    func testSupersededWorkerCannotReuseCorrectedOrDeletedHistory() async throws {
+        for authoritative in [[], ["修订正文"]] as [[String]] {
+            let (store, session) = try await makeRc2HistoryLoadingStore()
+            try await deliverHistoryLoadingFrame(store,
+                #"{"kind":"subscribed","sessionId":"mask-session","subscriptionId":"sub","assistantStream":true}"#)
+            let entered = expectation(description: "旧投影等待提交")
+            let gate = ConversationHistoryPreparationGate(entered: entered)
+            store.conversationHistoryPreparationForTesting = { input in
+                await gate.pause()
+                return try KMPConversationStoreAdapter.prepareHistory(input)
+            }
+            try sendStaticHistorySnapshot(store, texts: ["不得复活的旧正文"])
+            await fulfillment(of: [entered], timeout: 3)
+            try sendStaticHistorySnapshot(store, texts: authoritative)
+            await store.awaitPendingKMPEventDeliveriesForTesting(includingHistoryPreparation: false)
+            store.conversationHistoryPreparationForTesting = nil
+            await gate.release()
+            await store.awaitPendingKMPEventDeliveriesForTesting()
+            for _ in 0..<200 where store.isPreparingConversation(session.id) {
+                try await Task.sleep(for: .milliseconds(5))
+            }
+            if let text = authoritative.last {
+                await store.awaitConversationProjectionForTesting(sessionID: session.id, expectedText: text)
+            }
+            XCTAssertEqual(store.conversationHistoryReusedPreparationCountForTesting, 0)
+            XCTAssertEqual(store.renderedConversationItems[session.id, default: []].map(\.text), authoritative)
+            XCTAssertNil(store.lastError)
+            store.deactivateGateway()
+        }
+    }
+
+    @MainActor
     private func makeReadingWindowFixture() async throws -> (AppStore, SessionSummary, UUID, HistoryReadingProbe) {
         let (store, session) = try await makeRc2HistoryLoadingStore()
         try await deliverHistoryLoadingFrame(store,
@@ -12218,6 +12312,115 @@ final class HistoryReadingBatchTests: XCTestCase {
         XCTAssertEqual(batch.stopReason(window: .init(), earliestSequence: 99, hasMore: true, now: 0.1), "round-budget")
         batch.rounds = 1
         XCTAssertEqual(batch.stopReason(window: .init(characters: 1048576), earliestSequence: 99, hasMore: true, now: 0.1), "content-budget")
+    }
+}
+
+@MainActor
+final class GatewaySubscriptionLifecycleTests: XCTestCase {
+    func testTimedOutOldSubscriptionDrainsExitOrNewSelectionWithoutAlert() async throws {
+        for latest: String? in [nil, "greeting"] {
+            let gateway = GatewayClient(subscriptionTimeoutInterval: .milliseconds(100))
+            defer { gateway.disconnect() }
+            var errors: [GatewayFrame] = []
+            var requests: [[String: Any]] = []
+            let forwarded = expectation(description: "旧订阅超时后执行最新导航意图")
+            gateway.onFrame = { if $0.code == "subscription-timeout" { errors.append($0) } }
+            gateway.installConnectedTransportForTesting { payload in
+                let request = (try? JSONSerialization.jsonObject(with: Data(payload.utf8))) as? [String: Any] ?? [:]
+                requests.append(request)
+                if (latest == nil && request["type"] as? String == "unsubscribe") ||
+                    (latest != nil && request["sessionId"] as? String == latest) { forwarded.fulfill() }
+            }
+            gateway.subscribe(sessionId: "child")
+            gateway.subscribe(sessionId: nil)
+            if let latest { gateway.subscribe(sessionId: latest) }
+            XCTAssertEqual(requests.count, 1)
+            await fulfillment(of: [forwarded], timeout: 2)
+            XCTAssertTrue(errors.isEmpty, "旧成员会话不能对退出后的页面弹错")
+            XCTAssertEqual(requests.count, 2, "排队中的退出或新会话订阅不能丢失")
+            XCTAssertFalse(gateway.acceptSubscriptionAck(sessionID: "child"), "旧订阅的迟到确认不能覆盖新意图")
+            XCTAssertTrue(gateway.acceptSubscriptionAck(sessionID: latest))
+            try await Task.sleep(for: .milliseconds(150))
+            XCTAssertTrue(errors.isEmpty)
+        }
+    }
+
+    func testCurrentSessionStillReportsTimeoutWithCorrectMessage() async throws {
+        for child in [false, true] {
+            let gateway = GatewayClient(subscriptionTimeoutInterval: .milliseconds(30))
+            defer { gateway.disconnect() }
+            gateway.installConnectedTransportForTesting()
+            if child {
+                gateway.conversationTarget = { MobileConversationTarget(sessionId: $0, parentSessionId: "lead", subagentMode: "continuable") }
+            }
+            let timedOut = expectation(description: "当前会话确实超时仍应报告")
+            var error: GatewayFrame?
+            gateway.onFrame = { error = $0; timedOut.fulfill() }
+            gateway.subscribe(sessionId: "current")
+            await fulfillment(of: [timedOut], timeout: 2)
+            XCTAssertEqual(error?.code, "subscription-timeout")
+            XCTAssertEqual(error?.sessionId, "current")
+            XCTAssertEqual(error?.message?.contains("Lead"), child)
+            XCTAssertEqual(error?.message?.contains("成员会话"), child)
+        }
+    }
+
+    func testUnsubscribeTimeoutDoesNotReportAnErrorOrBlockNextSelection() async throws {
+        let gateway = GatewayClient(subscriptionTimeoutInterval: .milliseconds(30))
+        defer { gateway.disconnect() }
+        var errors: [GatewayFrame] = []
+        var requests: [String] = []
+        gateway.onFrame = { errors.append($0) }
+        gateway.installConnectedTransportForTesting { requests.append($0) }
+        gateway.subscribe(sessionId: nil)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(errors.isEmpty)
+        gateway.subscribe(sessionId: "next")
+        XCTAssertEqual(requests.count, 2)
+        XCTAssertTrue(gateway.acceptSubscriptionAck(sessionID: "next"))
+    }
+
+    func testConnectionFailureCancelsOldSubscriptionTimer() async throws {
+        let server = try LocalRecoveryGateway(repliesToPing: { _ in true })
+        let gateway = GatewayClient(credentials: RecoveryTestCredentials(), subscriptionTimeoutInterval: .milliseconds(200))
+        defer { gateway.disconnect(); server.stop() }
+        let endpoint = try await server.start()
+        var errors: [GatewayFrame] = []
+        gateway.onFrame = { if $0.code == "subscription-timeout" { errors.append($0) } }
+        let connected = expectation(description: "本机 WebSocket 连接成功")
+        let connectedObserver = gateway.$state.sink { if $0.isConnected { connected.fulfill() } }
+        gateway.connect(to: endpoint)
+        await fulfillment(of: [connected], timeout: 3)
+        connectedObserver.cancel()
+        gateway.subscribe(sessionId: "child")
+        let failed = expectation(description: "真实连接断开")
+        let failedObserver = gateway.$state.sink { if case .failed = $0 { failed.fulfill() } }
+        server.dropConnections(nextGreeting: .silent)
+        await fulfillment(of: [failed], timeout: 3)
+        failedObserver.cancel()
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertTrue(errors.isEmpty, "断线已进入恢复流程，旧订阅计时器不能继续弹错")
+    }
+
+    func testTimeoutForClosedOrDifferentConversationDoesNotInterruptCurrentPage() async throws {
+        let session = SessionSummary(id: "current", title: "当前会话", lastActivity: .now, isRunning: false, hasUnread: false)
+        let gateway = GatewayClient()
+        let store = AppStore(preferences: AppPreferencesSpy(endpoint: "", selectedWorkspaceID: nil, sessions: [session]),
+                             gatewayClient: gateway, chatHistoryCache: nil)
+        defer { store.deactivateGateway() }
+        gateway.installConnectedTransportForTesting()
+        _ = await store.prepareConversation(for: session)
+        let error = GatewayFrame(kind: "error", sessionId: "old-child", code: "subscription-timeout",
+                                 message: "old subscription timed out", requestType: "subscribe")
+        gateway.onFrame?(error)
+        await store.awaitPendingKMPEventDeliveriesForTesting()
+        XCTAssertNil(store.lastError)
+        store.resumeWorkspace()
+        var closedError = error
+        closedError.sessionId = "current"
+        gateway.onFrame?(closedError)
+        await store.awaitPendingKMPEventDeliveriesForTesting()
+        XCTAssertNil(store.lastError, "即使仍保留选中会话，退出页面后也不能弹出旧订阅超时")
     }
 }
 

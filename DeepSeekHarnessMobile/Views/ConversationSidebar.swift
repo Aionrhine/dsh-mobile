@@ -92,6 +92,7 @@ struct ConversationSidebar: View {
                 ? Color(red: 28.0 / 255, green: 28.0 / 255, blue: 30.0 / 255)
                 : Color(white: 0.96))
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("conversation-sidebar")
         .onAppear {
             expandedKeys = Set(expandedStorage.split(separator: ",").map(String.init))

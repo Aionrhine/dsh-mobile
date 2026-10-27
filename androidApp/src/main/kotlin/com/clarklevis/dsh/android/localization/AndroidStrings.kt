@@ -53,6 +53,12 @@ internal object AndroidStrings {
     )
 
     internal val english: Map<String, String> = mapOf(
+        "展开侧边栏" to "Open sidebar",
+        "工作区" to "Workspaces",
+        "暂无会话" to "No conversations",
+        "未命名会话" to "Untitled conversation",
+        "已展开" to "Expanded",
+        "已收起" to "Collapsed",
         "表格" to "Table",
         "复制表格" to "Copy table",
         "下载 CSV" to "Download CSV",
@@ -188,6 +194,8 @@ internal object AndroidStrings {
         "语音识别失败，请重试" to "Voice recognition failed. Try again.",
         "语音服务暂不可用" to "Voice service unavailable",
         "未识别到人声" to "No speech detected",
+        "即将达到录音上限 · 松手转文字" to "Recording limit approaching · Release to transcribe",
+        "已达到录音上限，正在转文字" to "Recording limit reached. Transcribing…",
         "请在 DSH 插件管理中启用官方语音输入" to "Enable the official Voice Input plugin in DSH plugin settings",
         "服务端未接受队列操作" to "The server did not accept the queue action",
         "队列操作失败" to "Queue action failed",

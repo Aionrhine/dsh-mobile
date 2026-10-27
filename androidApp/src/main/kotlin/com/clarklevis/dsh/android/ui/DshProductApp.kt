@@ -185,7 +185,12 @@ internal fun DshProductApp(
             )
         }
         composable(ROUTE_CONVERSATION) {
-            ConversationScreen(stateHolder, onPickImage, navController::popBackStack, onPickFile)
+            ConversationScreen(
+                stateHolder, onPickImage, navController::popBackStack, onPickFile,
+                onPlugins = { navController.navigate(ROUTE_PLUGINS) { launchSingleTop = true } },
+                onScheduledTasks = { navController.navigate(ROUTE_SCHEDULED_TASKS) { launchSingleTop = true } },
+                onSettings = { navController.navigate(ROUTE_SETTINGS) { launchSingleTop = true } }
+            )
         }
         composable(ROUTE_SETTINGS) {
             SettingsScreen(

@@ -1,217 +1,298 @@
 <div align="center">
 
-**简体中文** · [English](README.en.md)
+**English** · [简体中文](README.zh-CN.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Español](README.es.md) · [Français](README.fr.md) · [Deutsch](README.de.md) · [Português (Brasil)](README.pt-BR.md)
 
-<img src="Design/whale-girl-ios-app-promo-16x9-v3.png" alt="Whaleness iOS 应用展示" width="100%">
+<img src="Design/whale-girl-ios-app-promo-16x9-v3.png" alt="Whaleness iOS app showcase" width="100%">
 
-# Whaleness（DeepSeek Harness 的第三方移动端应用）
+# Whaleness — An Unofficial Mobile Client for DeepSeek Harness
 
-**使用 Kotlin Multiplatform 共享核心逻辑，为 Android 与 iOS 提供原生移动端体验。**
+**Native Android and iOS apps with core business logic shared through Kotlin Multiplatform.**
 
-通过 Mobile Gateway 在手机、平板和折叠屏设备上访问 DeepSeek Harness 的工作区、实时对话、Agent 轨迹、插件、定时任务与文件。
+Connect to DeepSeek Harness through Mobile Gateway to access workspaces, live conversations, Agent traces, plugins, scheduled tasks, and files from your phone, tablet, or foldable.
 
-官方网站：[Whaleness](https://clarklevis1995.github.io/dsh-mobile/)
+Website: [Whaleness](https://clarklevis1995.github.io/dsh-mobile/)
 
 <p>
-  <a href="https://testflight.apple.com/join/1Euwby6r"><img src="Docs/images/badges/testflight.svg" alt="加入 iOS TestFlight 公测" width="180" height="60"></a>
+  <a href="https://testflight.apple.com/join/1Euwby6r"><img src="Docs/images/badges/testflight.svg" alt="Join the iOS TestFlight beta" width="180" height="60"></a>
   &nbsp;&nbsp;
-  <a href="https://github.com/Clarklevis1995/dsh-mobile/releases"><img src="Docs/images/badges/android-github.svg" alt="从 GitHub Releases 下载 Android APK" width="180" height="60"></a>
+  <a href="https://github.com/Clarklevis1995/dsh-mobile/releases"><img src="Docs/images/badges/android-github.svg" alt="Download the Android APK from GitHub Releases" width="180" height="60"></a>
 </p>
 
 ![Kotlin Multiplatform](https://img.shields.io/badge/Kotlin-Multiplatform-7F52FF?logo=kotlin&logoColor=white)
 ![Android 7.0+](https://img.shields.io/badge/Android-7.0%2B-3DDC84?logo=android&logoColor=white)
-![iOS 17+](https://img.shields.io/badge/iOS-17.0%2B-111827?logo=apple&logoColor=white)
+![iOS 16.1+](https://img.shields.io/badge/iOS-16.1%2B-111827?logo=apple&logoColor=white)
 ![Jetpack Compose](https://img.shields.io/badge/Jetpack-Compose-4285F4?logo=jetpackcompose&logoColor=white)
 ![SwiftUI](https://img.shields.io/badge/iOS-SwiftUI-F05138?logo=swift&logoColor=white)
 ![WebSocket](https://img.shields.io/badge/WebSocket-Realtime-2563EB)
 
 </div>
 
-## 项目简介
+## Overview
 
-Whaleness 是独立开发的 DeepSeek Harness 第三方原生移动客户端。项目已完成 Kotlin Multiplatform（KMP）架构改造，并同时提供可运行的 Android 与 iOS 应用：
+Whaleness is an independently developed, unofficial native mobile client for DeepSeek Harness. Both Android and iOS apps use Kotlin Multiplatform (KMP):
 
-- `shared` 负责跨端协议、状态机、Reducer、投影和同步逻辑，是共享业务状态的唯一来源。
-- `androidApp` 使用 Kotlin、Jetpack Compose 和 OkHttp 实现 Android 产品能力。
-- `DeepSeekHarnessMobile` 使用 SwiftUI/UIKit 构建 iOS 界面，并通过 Kotlin/Native framework 接入共享逻辑。
+- `shared` is the source of truth for shared business state, including protocol handling, state machines, reducers, projections, and synchronization.
+- `androidApp` implements the Android app with Kotlin, Jetpack Compose, and OkHttp.
+- `DeepSeekHarnessMobile` builds the iOS interface with SwiftUI/UIKit and accesses shared logic through a Kotlin/Native framework.
 
-两端均通过 [`dsh-plugin-mobile-gateway`](https://github.com/Clarklevis1995/dsh-plugin-mobile-gateway) 与 Harness 建立 WebSocket 连接。网络、安全存储、文件、图片、生命周期和后台任务由各平台原生实现，业务规则则尽可能收敛到 `shared/commonMain`。
+Both apps connect to Harness over WebSocket through [`dsh-plugin-mobile-gateway`](https://github.com/Clarklevis1995/dsh-plugin-mobile-gateway). Networking, secure storage, files, images, lifecycle handling, and background execution use native platform APIs. Business rules are consolidated in `shared/commonMain` wherever practical.
 
-## 下载与前置条件
+## Downloads and Prerequisites
 
-- **iOS**：[加入 TestFlight 公测](https://testflight.apple.com/join/1Euwby6r)，支持 iPhone 与 iPad，要求 iOS / iPadOS 17.0 或更高版本。
-- **Android**：[从 GitHub Releases 下载 APK](https://github.com/Clarklevis1995/dsh-mobile/releases)，要求 Android 7.0（API 24）或更高版本。应用内检查更新优先使用加速下载源，并校验安装包。
-- **桌面端**：需要运行 DeepSeek Harness，并安装、启用 **`dsh-plugin-mobile-gateway` 0.10.3 或更高版本**。最低版本以 [`AppRelease/release-info.json`](AppRelease/release-info.json) 为准。
-- **语音输入**：另需在桌面端的“插件”模块启用官方“语音输入”插件，完成模型下载和初始化，并授予移动端麦克风权限。
+- **iOS**: [Join the TestFlight beta](https://testflight.apple.com/join/1Euwby6r). Supports iPhone and iPad running iOS / iPadOS 16.1 or later.
+- **Android**: [Download an APK from GitHub Releases](https://github.com/Clarklevis1995/dsh-mobile/releases). Requires Android 7.0 (API 24) or later. In-app update checks prefer the accelerated download source and verify downloaded packages.
+- **Desktop host**: Run DeepSeek Harness with **`dsh-plugin-mobile-gateway` 0.11.1 or later** installed and enabled. [`AppRelease/release-info.json`](AppRelease/release-info.json) defines the required minimum version.
+- **Voice input**: Enable the official Voice Input plugin in the desktop host's Plugins section, finish model download and initialization, and grant microphone access on the mobile device.
 
-## 公测用户群
+## Beta Community
 
-欢迎加入 Whaleness 公测用户群，交流使用体验、反馈问题并获取支持。使用微信扫码，或保存图片后在微信中识别。
+Join the Whaleness beta WeChat group to share feedback, discuss your experience, and get support. Scan with WeChat, or save the image and recognize it in WeChat.
 
 <p align="center">
-  <a href="website/assets/support-wechat-2026-10-23.png"><img src="website/assets/support-wechat-2026-10-23.png" alt="Whaleness 公测用户群微信二维码，2026 年 10 月 30 日前有效" width="320"></a>
+  <a href="website/assets/support-wechat-2026-10-23.png"><img src="website/assets/support-wechat-2026-10-23.png" alt="Whaleness beta WeChat group QR code, valid before October 30, 2026" width="320"></a>
 </p>
 
-> 当前二维码于 2026 年 10 月 23 日更新，原图注明 2026 年 10 月 30 日前有效。若已过期，请查看[产品页面](https://clarklevis1995.github.io/dsh-mobile/)中的最新群码。
+> Updated on October 23, 2026. The original image states that the code is valid before October 30, 2026. If it has expired, check the [product page](https://clarklevis1995.github.io/dsh-mobile/) for the latest group QR code.
 
-## 当前平台状态
+## Platform Status
 
-| 平台/模块 | 当前状态 | 主要实现 |
+| Platform / module | Status | Main components |
 | --- | --- | --- |
-| KMP `shared` | 已接入 Android 与 iOS | Gateway 协议、Store/Reducer、Conversation/Trajectory 投影、History 同步、Question/Approval、Session Control、工作区文件状态与代码预览支持 |
-| Android | 已实现原生客户端 | Jetpack Compose、OkHttp WebSocket、DataStore（非敏感配置）、Keystore（凭据）、CameraX/ML Kit 扫码、前台服务、附件缓存、文件下载与预览 |
-| iOS | 已实现原生客户端 | SwiftUI/UIKit、URLSession WebSocket、UserDefaults（非敏感配置）、Keychain（凭据）、二维码配对、后台执行、附件与工作区文件 |
+| KMP `shared` | Used by Android and iOS | Gateway protocol, stores/reducers, conversation and trace projections, history synchronization, questions/approvals, session control, workspace file state, and code preview support |
+| Android | Native client available | Jetpack Compose, OkHttp WebSocket, DataStore for non-sensitive settings, Keystore for credentials, CameraX/ML Kit QR scanning, foreground service, attachment cache, file downloads, and previews |
+| iOS | Native client available | SwiftUI/UIKit, URLSession WebSocket, UserDefaults for non-sensitive settings, Keychain for credentials, QR pairing, background execution, attachments, and workspace files |
 
-> Android 与 iOS 使用各自的原生 UI 和平台能力，并不是共享 UI。功能和交互会持续对齐，但个别系统级行为可能因平台限制而不同。
+> Android and iOS each have their own native UI and platform integrations. Features and interactions are being aligned, while some system-level behavior differs between platforms.
 
-## 功能亮点
+## Features
 
-### 对话与 Agent 执行
+### Recent additions
 
-- **原生实时对话**：处理 WebSocket 增量事件，展示 Markdown、代码、思考过程、工具调用、工具结果与图片附件。
-- **语音与文字输入**：切换到独立的“按住说话”区域，松手转写为可编辑草稿，上滑取消；语音转写通过主机上的语音输入能力完成。
-- **历史、队列与命令**：分页加载历史记录时合并实时尾部并去重；查看和编辑排队消息，通过斜杠命令调用主机提供的能力。iOS 加载更早记录时保留当前阅读位置。
-- **完整 Agent 轨迹**：查看 User、Assistant、Tool 等事件，以及调用参数、结果、Schema、Token 和耗时信息。
-- **交互式 Agent 流程**：支持 Human Question 与工具审批请求，可提交、取消、拒绝或单次允许。
+- **Agent teams**: View members, switch between the lead and member conversations, and inspect shared tasks with status, ownership, and links to the relevant conversation.
+- **File uploads**: Choose files in the conversation, follow upload progress, remove attachments, or retry a failed upload. Sent and generated files appear as cards that can be opened or downloaded.
+- **Text selection and tables**: Open a dedicated text-selection screen to select, select all, and copy without losing your conversation position. Read Markdown tables full screen, rotate them, copy them, or export CSV; narrow tables fit the available width and wide tables scroll horizontally.
+- **Chat history and storage**: Cache conversations locally and search common conversations offline. Review storage used by images, chat history, file previews, and temporary files, and clear local caches by category. Restore history when returning to a session and load earlier messages progressively.
+- **iPhone Duo and wide screens**: Adapt home-screen columns, safe areas, the composer, and the animated background to folding, unfolding, and rotation. Wide conversations provide a persistent sidebar with sessions grouped by workspace; navigation and task controls adapt to the available space.
+- **iOS 16.1 compatibility**: The deployment target is now iOS 16.1, with compatible interfaces for older systems. System-dependent effects and features remain subject to the iOS version and device capabilities.
+- **Refined native interactions**: Improve Android frosted-glass menus, session renaming, and swipe navigation, plus iOS background reconnection, file browsing, and image compatibility.
 
-### 主机、工作区与扩展
+### Conversations and Agent Execution
 
-- **多主机与会话管理**：保存并切换多个 Gateway 主机，分别管理认证信息；浏览、创建和切换工作区，搜索、创建、切换及归档会话。
-- **文件卡片与预览**：直接打开对话中的文件卡片，浏览远端目录，分块下载并校验完整性；预览 PDF、图片和代码，或交给系统分享与打开。
-- **Markdown 源码 / 预览**：代码预览支持语法高亮、行号和长行横向滚动；Markdown 文件可切换源码与渲染视图，并保留各自的阅读位置。
-- **插件管理**：查看官方及已安装插件、详情和运行状态，按主机支持的能力安装、启用、停用和配置插件。
-- **定时任务**：查看会话创建的定时任务，搜索和筛选任务，展开查看规则、下次执行时间及投递记录，并编辑或删除任务。
-- **会话和默认配置**：管理 Agent 预设、Provider/模型、思考等级与 `read-only`、`workspace-write`、`danger-full-access` Harness Agent 权限；这些不是手机本地文件系统权限。
+- **Live native conversations**: Stream WebSocket events with Markdown, code, reasoning, tool calls, tool results, and image attachments.
+- **Voice and text input**: Switch to a dedicated hold-to-talk area, release to transcribe into an editable draft, or slide up to cancel. Transcription uses the voice input capability on the host.
+- **History, queues, and commands**: Merge paginated history with the live tail and deduplicate events. View and edit queued messages, and use slash commands provided by the host. On iOS, loading older messages preserves the current reading position.
+- **Agent traces**: Inspect User, Assistant, and Tool events, including arguments, results, schemas, token usage, and timing.
+- **Interactive Agent workflows**: Respond to Human Questions and tool approval requests, including submission, cancellation, rejection, and one-time approval.
 
-### 原生设备体验
+### Hosts, Workspaces, and Extensions
 
-- **大屏与折叠屏适配**：iPad、Android 平板和折叠屏根据可用窗口尺寸调整布局；宽屏首页使用分栏，会话保持合适的阅读宽度，文件预览随窗口伸缩。Android 布局会考虑折叠铰链占用的区域。
-- **主题与字体大小**：浅色、深色主题，以及跟随系统或手动调整的应用字体大小；保留 Harness 的深海、网格与鲸鱼视觉语言。
-- **iOS 实时活动与通知**：在锁屏和支持的灵动岛设备上查看任务进展、审批与完成状态，重要进展可通过系统通知提醒。
-- **安全设备配对**：扫描 WebUI 二维码或手动输入配对信息；长期凭据保存到平台安全存储。
-- **移动端生命周期**：两端进入后台均不主动关闭健康连接，断线后回到前台自动恢复；手动断开不自动重连。Android 仅在 Agent 回合执行期间使用前台服务，空闲连接不启动前台服务；iOS 使用系统授予的有限后台执行时间管理活动任务，不保证无限期维持 WebSocket。
+- **Multiple hosts and sessions**: Save and switch between Gateway hosts with separate credentials. Browse, create, and switch workspaces; search, create, switch, and archive sessions.
+- **File cards and previews**: Open file cards directly from conversations, browse remote directories, and download files in verified chunks. Preview PDFs, images, and code, or share and open files with system apps.
+- **Markdown source / preview**: Browse code with syntax highlighting, line numbers, and horizontal scrolling for long lines. Switch Markdown files between source and rendered views, retaining each view's reading position.
+- **Plugin management**: Browse official and installed plugins, details, and runtime status. Install, enable, disable, and configure plugins where supported by the host.
+- **Scheduled tasks**: Browse tasks created in conversations, search and filter them, expand their rules, next execution time, and delivery information, and edit or delete tasks.
+- **Session and default settings**: Manage Agent presets, providers/models, reasoning effort, and Harness Agent permissions: `read-only`, `workspace-write`, and `danger-full-access`. These control the Agent on the host, not the phone's local filesystem.
 
-## 界面预览
+### Native Device Experience
 
-> 截图来自 iOS 版本；Android 使用 Jetpack Compose 实现相应的信息架构和核心流程。新增的语音、文件、字体及 iPad 截图拍摄于 2026 年 10 月 16 日（1.7.6），素材来源见[截图说明](Docs/images/screenshots/2026-10/SOURCES.md)。
+- **Tablets and foldables**: Layouts adapt to the available window size on iPad, Android tablets, and foldables. Wide home screens use columns, conversations retain a comfortable reading width, and file previews resize with the window. Android layouts account for the folding hinge area.
+- **Themes and text size**: Light and dark appearances, plus system or manually adjusted app text size, with Harness's ocean, grid, and whale visual identity.
+- **iOS Live Activities and notifications**: Follow task progress, approvals, and completion on the Lock Screen and supported Dynamic Island devices, with system notifications for important updates.
+- **Secure device pairing**: Scan a WebUI QR code or enter pairing details manually. Long-lived credentials are stored in platform secure storage.
+- **Mobile lifecycle handling**: Neither app intentionally closes a healthy connection when backgrounded. Connections recover on returning to the foreground after a disconnect; manual disconnects do not trigger automatic reconnection. Android runs a foreground service only during active Agent turns. iOS uses the limited background execution time granted by the system and does not guarantee an indefinitely open WebSocket.
 
-### 语音输入、文件预览与字体
+## Screenshots
+
+> Latest iOS product screenshots: the 1.7.10 image set was captured on October 22–23, 2026; the iPhone Duo set was captured on October 26, 2026. The interface shown is Chinese. [Product screenshot sources](Docs/images/screenshots/2026-10-23/SOURCES.md) · [Duo screenshot sources](Docs/images/screenshots/2026-10-26-duo/SOURCES.md).
+
+### iPhone Duo: Landscape, Portrait, and Navigation
 
 <table>
   <tr>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/2026-10/voice-input.png" alt="iPhone 按住说话时的语音录入浮层" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/2026-10/pdf-preview.png" alt="从对话文件卡片打开 PDF 预览" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/2026-10/font-size.png" alt="应用字体大小预览与滑块设置" width="100%"></td>
+    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/landscape-home.webp"><img src="Docs/images/screenshots/2026-10-26-duo/landscape-home.webp" alt="Unfolded landscape home" width="100%"></a></td>
+    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/landscape-home-alt.webp"><img src="Docs/images/screenshots/2026-10-26-duo/landscape-home-alt.webp" alt="Landscape home background" width="100%"></a></td>
   </tr>
   <tr>
-    <td align="center"><strong>按住说话</strong><br>松手转写，上滑取消</td>
-    <td align="center"><strong>PDF 预览</strong><br>从对话直接查看文件</td>
-    <td align="center"><strong>字体大小</strong><br>跟随系统或手动调整</td>
+    <td align="center"><strong>Unfolded landscape home</strong></td>
+    <td align="center"><strong>Landscape home background</strong></td>
+  </tr>
+  <tr>
+    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/landscape-settings.webp"><img src="Docs/images/screenshots/2026-10-26-duo/landscape-settings.webp" alt="Landscape settings" width="100%"></a></td>
+    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/landscape-conversation.webp"><img src="Docs/images/screenshots/2026-10-26-duo/landscape-conversation.webp" alt="Landscape conversation" width="100%"></a></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Landscape settings</strong></td>
+    <td align="center"><strong>Landscape conversation</strong></td>
+  </tr>
+  <tr>
+    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/landscape-navigation.webp"><img src="Docs/images/screenshots/2026-10-26-duo/landscape-navigation.webp" alt="Expanded navigation sidebar" width="100%"></a></td>
+    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/portrait-home.webp"><img src="Docs/images/screenshots/2026-10-26-duo/portrait-home.webp" alt="Unfolded portrait home" width="100%"></a></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Expanded navigation sidebar</strong></td>
+    <td align="center"><strong>Unfolded portrait home</strong></td>
   </tr>
 </table>
 
-[查看上滑取消状态](Docs/images/screenshots/2026-10/voice-cancel.png)
-
-### iPad 与大屏
+### Teams, Attachments, and Local Storage
 
 <table>
   <tr>
-    <td width="50%" align="center"><img src="Docs/images/screenshots/2026-10/ipad-home.png" alt="iPad 首页的工作区与最近会话双栏布局" width="100%"></td>
-    <td width="50%" align="center"><img src="Docs/images/screenshots/2026-10/ipad-conversation.png" alt="iPad 横屏对话和文件卡片" width="100%"></td>
+    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/team-members.webp"><img src="Docs/images/screenshots/2026-10-23/team-members.webp" alt="Agent team members" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/team-tasks.webp"><img src="Docs/images/screenshots/2026-10-23/team-tasks.webp" alt="Shared team tasks" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/attachment-picker.webp"><img src="Docs/images/screenshots/2026-10-23/attachment-picker.webp" alt="File and image picker" width="100%"></a></td>
   </tr>
   <tr>
-    <td align="center"><strong>宽屏首页</strong><br>工作区与会话分栏展示</td>
-    <td align="center"><strong>大屏对话</strong><br>舒适的内容宽度与输入区域</td>
+    <td align="center"><strong>Agent team members</strong></td>
+    <td align="center"><strong>Shared team tasks</strong></td>
+    <td align="center"><strong>File and image picker</strong></td>
   </tr>
   <tr>
-    <td align="center"><img src="Docs/images/screenshots/2026-10/ipad-pdf-preview.png" alt="iPad 对话中的 PDF 预览窗口" width="100%"></td>
-    <td align="center"><img src="Docs/images/screenshots/2026-10/ipad-voice-input.png" alt="适配 iPad 横屏的语音输入浮层" width="100%"></td>
+    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/text-selection.webp"><img src="Docs/images/screenshots/2026-10-23/text-selection.webp" alt="Dedicated text selection" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/conversation-files.webp"><img src="Docs/images/screenshots/2026-10-23/conversation-files.webp" alt="Files in a conversation" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/release-notes.webp"><img src="Docs/images/screenshots/2026-10-23/release-notes.webp" alt="Bundled release notes" width="100%"></a></td>
   </tr>
   <tr>
-    <td align="center"><strong>文件预览</strong><br>保留对话上下文</td>
-    <td align="center"><strong>大屏语音输入</strong><br>录音反馈随窗口尺寸适配</td>
-  </tr>
-</table>
-
-### 核心体验
-
-<table>
-  <tr>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/home.png" alt="iOS 工作区首页" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/2026-10/file-card.png" alt="iOS 对话中的文件卡片与执行统计入口" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/trajectory-light.png" alt="iOS 浅色模式轨迹" width="100%"></td>
+    <td align="center"><strong>Dedicated text selection</strong></td>
+    <td align="center"><strong>Files in a conversation</strong></td>
+    <td align="center"><strong>Bundled release notes</strong></td>
   </tr>
   <tr>
-    <td align="center"><strong>工作区首页</strong><br>工作区与最近会话</td>
-    <td align="center"><strong>对话</strong><br>Markdown、代码与工具结果</td>
-    <td align="center"><strong>轨迹</strong><br>时间概览与事件时间线</td>
-  </tr>
-</table>
-
-### 默认配置
-
-<table>
-  <tr>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/settings.png" alt="iOS 应用设置" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/agent-presets.png" alt="iOS Agent 预设" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/default-model.png" alt="iOS 默认模型" width="100%"></td>
+    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/storage.webp"><img src="Docs/images/screenshots/2026-10-23/storage.webp" alt="Local storage and cache categories" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/voice-input.webp"><img src="Docs/images/screenshots/2026-10-23/voice-input.webp" alt="Hold-to-talk input" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/file-upload.webp"><img src="Docs/images/screenshots/2026-10-23/file-upload.webp" alt="File attachment in the composer" width="100%"></a></td>
   </tr>
   <tr>
-    <td align="center"><strong>设置</strong><br>部署默认值与 Gateway 状态</td>
-    <td align="center"><strong>Agent 预设</strong><br>工具、提示词与能力组合</td>
-    <td align="center"><strong>默认模型</strong><br>Provider、模型与思考等级</td>
-  </tr>
-</table>
-
-### 插件与定时任务
-
-<table>
-  <tr>
-    <td width="50%" align="center"><img src="website/assets/plugins.webp" alt="iOS 官方与已安装插件列表" width="100%"></td>
-    <td width="50%" align="center"><img src="website/assets/tasks.webp" alt="iOS 定时任务规则与详情" width="100%"></td>
-  </tr>
-  <tr>
-    <td align="center"><strong>插件管理</strong><br>查看详情与启用状态</td>
-    <td align="center"><strong>定时任务</strong><br>查看计划与执行情况</td>
+    <td align="center"><strong>Local storage and cache categories</strong></td>
+    <td align="center"><strong>Hold-to-talk input</strong></td>
+    <td align="center"><strong>File attachment in the composer</strong></td>
   </tr>
 </table>
 
 <details>
-<summary>更多界面：工作区、轨迹详情与设备配对</summary>
+<summary>Earlier screenshots: iPad, previews, settings, and pairing</summary>
 
-### 工作区操作与轨迹详情
+> Screenshots show the iOS app with Chinese UI; Android implements the corresponding information architecture and workflows with Jetpack Compose. The voice, file, text-size, and iPad screenshots were captured on October 16, 2026, using version 1.7.6. See [screenshot sources](Docs/images/screenshots/2026-10/SOURCES.md).
+
+### Voice Input, File Previews, and Text Size
 
 <table>
   <tr>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/workspace-switcher.png" alt="iOS 切换工作区" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/workspace-directory-picker.png" alt="iOS 选择工作区目录" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/trajectory-detail-light.png" alt="iOS 轨迹详情面板" width="100%"></td>
+    <td width="33.33%" align="center"><img src="Docs/images/screenshots/2026-10/voice-input.png" alt="Hold-to-talk voice recording overlay on iPhone" width="100%"></td>
+    <td width="33.33%" align="center"><img src="Docs/images/screenshots/2026-10/pdf-preview.png" alt="PDF preview opened from a conversation file card" width="100%"></td>
+    <td width="33.33%" align="center"><img src="Docs/images/screenshots/2026-10/font-size.png" alt="App text size preview and slider" width="100%"></td>
   </tr>
   <tr>
-    <td align="center"><strong>切换工作区</strong><br>快速访问不同项目</td>
-    <td align="center"><strong>目录选择</strong><br>浏览并创建工作区</td>
-    <td align="center"><strong>轨迹详情</strong><br>摘要、Token 与内容预览</td>
+    <td align="center"><strong>Hold to talk</strong><br>Release to transcribe, slide up to cancel</td>
+    <td align="center"><strong>PDF preview</strong><br>Open files directly from a conversation</td>
+    <td align="center"><strong>Text size</strong><br>Follow the system or adjust manually</td>
   </tr>
 </table>
 
-### 浅色、深色与设备配对
+[View the slide-up-to-cancel state](Docs/images/screenshots/2026-10/voice-cancel.png)
+
+### iPad and Larger Screens
 
 <table>
   <tr>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/pairing-light.png" alt="iOS 浅色模式设备认证" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/pairing-dark.png" alt="iOS 深色模式设备认证" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/conversation-dark.png" alt="iOS 深色模式对话" width="100%"></td>
+    <td width="50%" align="center"><img src="Docs/images/screenshots/2026-10/ipad-home.png" alt="Two-column iPad home screen with workspace and recent sessions" width="100%"></td>
+    <td width="50%" align="center"><img src="Docs/images/screenshots/2026-10/ipad-conversation.png" alt="Landscape iPad conversation with a file card" width="100%"></td>
   </tr>
   <tr>
-    <td align="center"><strong>浅色配对</strong><br>扫码或手动输入</td>
-    <td align="center"><strong>深色配对</strong><br>完整深色模式适配</td>
-    <td align="center"><strong>深色对话</strong><br>阅读、代码与输入面板</td>
+    <td align="center"><strong>Wide home screen</strong><br>Workspaces and sessions side by side</td>
+    <td align="center"><strong>Tablet conversations</strong><br>Comfortable content width and composer</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="Docs/images/screenshots/2026-10/ipad-pdf-preview.png" alt="PDF preview window over an iPad conversation" width="100%"></td>
+    <td align="center"><img src="Docs/images/screenshots/2026-10/ipad-voice-input.png" alt="Voice recording overlay adapted to a landscape iPad" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>File previews</strong><br>Keep the conversation in context</td>
+    <td align="center"><strong>Voice input on iPad</strong><br>Recording feedback adapts to the window</td>
+  </tr>
+</table>
+
+### Core Workflows
+
+<table>
+  <tr>
+    <td width="33.33%" align="center"><img src="Docs/images/screenshots/home.png" alt="iOS workspace home screen" width="100%"></td>
+    <td width="33.33%" align="center"><img src="Docs/images/screenshots/2026-10/file-card.png" alt="iOS conversation with a file card and execution statistics control" width="100%"></td>
+    <td width="33.33%" align="center"><img src="Docs/images/screenshots/trajectory-light.png" alt="iOS Agent trace in light mode" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Home</strong><br>Workspaces and recent sessions</td>
+    <td align="center"><strong>Conversation</strong><br>Markdown, code, and tool results</td>
+    <td align="center"><strong>Agent trace</strong><br>Timing overview and event timeline</td>
+  </tr>
+</table>
+
+### Default Settings
+
+<table>
+  <tr>
+    <td width="33.33%" align="center"><img src="Docs/images/screenshots/settings.png" alt="iOS app settings" width="100%"></td>
+    <td width="33.33%" align="center"><img src="Docs/images/screenshots/agent-presets.png" alt="iOS Agent presets" width="100%"></td>
+    <td width="33.33%" align="center"><img src="Docs/images/screenshots/default-model.png" alt="iOS default model settings" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Settings</strong><br>Deployment defaults and Gateway status</td>
+    <td align="center"><strong>Agent presets</strong><br>Tools, prompts, and capabilities</td>
+    <td align="center"><strong>Default model</strong><br>Provider, model, and reasoning effort</td>
+  </tr>
+</table>
+
+### Plugins and Scheduled Tasks
+
+<table>
+  <tr>
+    <td width="50%" align="center"><img src="website/assets/plugins.webp" alt="iOS list of official and installed plugins" width="100%"></td>
+    <td width="50%" align="center"><img src="website/assets/tasks.webp" alt="iOS scheduled task rules and details" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Plugin management</strong><br>Browse details and enabled state</td>
+    <td align="center"><strong>Scheduled tasks</strong><br>Inspect schedules and execution status</td>
+  </tr>
+</table>
+
+<details>
+<summary>More screens: workspaces, trace details, and device pairing</summary>
+
+### Workspace Actions and Trace Details
+
+<table>
+  <tr>
+    <td width="33.33%" align="center"><img src="Docs/images/screenshots/workspace-switcher.png" alt="iOS workspace switcher" width="100%"></td>
+    <td width="33.33%" align="center"><img src="Docs/images/screenshots/workspace-directory-picker.png" alt="iOS workspace directory picker" width="100%"></td>
+    <td width="33.33%" align="center"><img src="Docs/images/screenshots/trajectory-detail-light.png" alt="iOS trace details panel" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Switch workspaces</strong><br>Access different projects</td>
+    <td align="center"><strong>Choose a directory</strong><br>Browse and create workspaces</td>
+    <td align="center"><strong>Trace details</strong><br>Summary, tokens, and content preview</td>
+  </tr>
+</table>
+
+### Light Mode, Dark Mode, and Pairing
+
+<table>
+  <tr>
+    <td width="33.33%" align="center"><img src="Docs/images/screenshots/pairing-light.png" alt="iOS device pairing in light mode" width="100%"></td>
+    <td width="33.33%" align="center"><img src="Docs/images/screenshots/pairing-dark.png" alt="iOS device pairing in dark mode" width="100%"></td>
+    <td width="33.33%" align="center"><img src="Docs/images/screenshots/conversation-dark.png" alt="iOS conversation in dark mode" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Light-mode pairing</strong><br>Scan a QR code or enter details</td>
+    <td align="center"><strong>Dark-mode pairing</strong><br>Native dark appearance</td>
+    <td align="center"><strong>Dark-mode conversation</strong><br>Reading, code, and composer</td>
   </tr>
 </table>
 
 </details>
 
-## 跨端架构
+</details>
+
+## Cross-Platform Architecture
 
 ```text
                          DeepSeek Harness
@@ -236,134 +317,134 @@ Whaleness 是独立开发的 DeepSeek Harness 第三方原生移动客户端。�
           Android UI                          iOS UI
 ```
 
-### 共享层职责
+### Shared Module Responsibilities
 
-- `protocol/`：Gateway DTO、JSON 表示与 wire decoder。
-- `gateway/`：平台传输接口，以及配对、鉴权、请求关联、重连与事件背压策略。Android 使用完整共享 Runtime，OkHttp 只实现底层传输。
-- `domain/`：Session、Question、Approval 和 Session Control 的 Reducer。
-- `projection/`：Conversation 与 Trajectory 的增量投影。
-- `sync/`：History 分页、实时尾部合并和去重。
-- `facade/`：面向 Swift/Kotlin 平台层的粗粒度 Store、Intent、Event，以及工作区路径、分块顺序、进度与 SHA-256 校验逻辑。
+- `protocol/`: Gateway DTOs, JSON representations, and wire decoding.
+- `gateway/`: Platform transport interfaces, pairing, authentication, request correlation, reconnection, and event backpressure. Android uses the full shared runtime, with OkHttp providing the underlying transport.
+- `domain/`: Reducers for sessions, questions, approvals, and session control.
+- `projection/`: Incremental conversation and trace projections.
+- `sync/`: History pagination, live-tail merging, and deduplication.
+- `facade/`: Coarse-grained stores, intents, and events for Swift/Kotlin adapters, plus workspace paths, chunk ordering, progress, and SHA-256 verification.
 
-共享层不依赖 Compose、SwiftUI、Android Framework 或 Apple UI Framework。iOS 复用共享 Store、Reducer、Projection 和文件状态机，但当前仍由 Swift `GatewayClient` 负责 WebSocket、连接与重连，再通过 Adapter 将事件送入共享层；它尚未接入完整的 KMP Gateway Runtime。
+The shared module does not depend on Compose, SwiftUI, Android Framework, or Apple UI frameworks. iOS reuses shared stores, reducers, projections, and file state machines. Its Swift `GatewayClient` still owns WebSocket connections and reconnection, forwarding events into the shared module through an adapter; iOS does not yet use the full KMP Gateway Runtime.
 
-Android 和 iOS 均在平台侧负责安全存储、图片处理、临时文件落盘、系统分享/打开以及应用生命周期。共享层负责远端文件协议、状态流转、分块一致性和完整性校验，不直接操作平台文件系统。
+Each platform handles secure storage, image processing, temporary files, system sharing/opening, and application lifecycle. The shared module owns the remote file protocol, state transitions, chunk consistency, and integrity checks without accessing platform filesystems directly.
 
-## 项目结构
+## Repository Layout
 
 ```text
 .
-├── shared/                         # Kotlin Multiplatform 共享业务模块
+├── shared/                         # Kotlin Multiplatform business logic
 │   └── src/
-│       ├── commonMain/             # 协议、状态机、投影、同步与 facade
-│       └── commonTest/             # 跨平台单元测试
-├── androidApp/                     # Android 原生应用（Jetpack Compose）
+│       ├── commonMain/             # Protocol, state machines, projections, sync, facades
+│       └── commonTest/             # Cross-platform unit tests
+├── androidApp/                     # Native Android app (Jetpack Compose)
 │   └── src/
-│       ├── main/                   # 产品代码与平台实现
-│       ├── test/                   # JVM 测试
-│       └── androidTest/            # 设备测试
-├── DeepSeekHarnessMobile/          # iOS 原生应用（SwiftUI/UIKit）
-├── DeepSeekHarnessMobileTests/     # iOS XCTest
+│       ├── main/                   # App code and platform integrations
+│       ├── test/                   # JVM tests
+│       └── androidTest/            # Device tests
+├── DeepSeekHarnessMobile/          # Native iOS app (SwiftUI/UIKit)
+├── DeepSeekHarnessMobileTests/     # iOS XCTest tests
 ├── DeepSeekHarnessMobile.xcodeproj
-├── Docs/                           # 调研、KMP 迁移与验证文档
-└── Design/                         # 设计规范与展示素材
+├── Docs/                           # Research, KMP migration, and validation
+└── Design/                         # Design specifications and artwork
 ```
 
-## 环境要求
+## Development Requirements
 
-### 通用
+### Common
 
-- Java 17
-- 已启用 `dsh-plugin-mobile-gateway` 0.10.3+ 的 DeepSeek Harness
-- 能够访问 Mobile Gateway 的模拟器或真机
+- Java 17.
+- DeepSeek Harness with `dsh-plugin-mobile-gateway` 0.11.1+ enabled.
+- A simulator, emulator, or physical device that can reach Mobile Gateway.
 
 ### Android
 
-- Android Studio 或 Android SDK Command-line Tools
-- Android SDK Platform 36（`compileSdk` / `targetSdk`）
-- Android 7.0（API 24）及以上设备或模拟器
+- Android Studio or Android SDK Command-line Tools.
+- Android SDK Platform 36 (`compileSdk` / `targetSdk`).
+- An Android 7.0 (API 24) or later device or emulator.
 
 ### iOS
 
-- macOS 与 Xcode 26+（包含 iOS 26 SDK，以编译 Liquid Glass 等系统 API；应用部署目标仍为 iOS 17.0）
-- iOS 17.0+ 模拟器或真机
-- Android SDK（Xcode 构建阶段会通过 Gradle 编译 KMP framework）
-- 可用的 Metal 工具链（构建阶段会自动查找）
+- macOS and Xcode 26+ with the iOS 26 SDK to compile APIs such as Liquid Glass. The app's deployment target is iOS 16.1.
+- An iOS 16.1+ simulator or physical device.
+- Android SDK: the Xcode build phase invokes Gradle to compile the KMP framework.
+- An available Metal toolchain, which the build phase locates automatically.
 
-## 运行 Android
+## Run Android
 
-1. 配置 Java 17，并确保 `ANDROID_HOME` 或 `ANDROID_SDK_ROOT` 指向 Android SDK。
-2. 在仓库根目录构建 Debug APK：
+1. Set up Java 17 and point `ANDROID_HOME` or `ANDROID_SDK_ROOT` to your Android SDK.
+2. Build a Debug APK from the repository root:
 
    ```bash
    ./gradlew :androidApp:assembleDebug
    ```
 
-3. 安装到已连接的设备或模拟器：
+3. Install it on a connected device or emulator:
 
    ```bash
    ./gradlew :androidApp:installDebug
    ```
 
-4. 启动 `DshMobile`，扫描 WebUI 生成的配对二维码，或手动输入配对信息。
+4. Launch `DshMobile` and scan the pairing QR code from WebUI, or enter pairing details manually.
 
-Debug APK 位于：
+The Debug APK is generated at:
 
 ```text
 androidApp/build/outputs/apk/debug/androidApp-debug.apk
 ```
 
-当 Android Emulator 需要访问宿主机的 `127.0.0.1:3080` 时，可以先执行：
+To let an Android emulator access the host's `127.0.0.1:3080`, first run:
 
 ```bash
 adb reverse tcp:3080 tcp:3080
 ```
 
-## 运行 iOS
+## Run iOS
 
-1. 配置 Java 17 和 Android SDK。
-2. 使用 Xcode 打开 `DeepSeekHarnessMobile.xcodeproj`。
-3. 选择 `DeepSeekHarnessMobile` Scheme 与目标设备。
-4. 构建并运行。Xcode 中的 `Build KMP Framework` 阶段会自动选择并编译对应的 Kotlin/Native framework。
-5. 在应用中扫描 WebUI 配对二维码，或手动输入配对信息。
+1. Set up Java 17 and the Android SDK.
+2. Open `DeepSeekHarnessMobile.xcodeproj` in Xcode.
+3. Select the `DeepSeekHarnessMobile` scheme and your target device.
+4. Build and run. The `Build KMP Framework` phase automatically selects and compiles the matching Kotlin/Native framework.
+5. Scan the WebUI pairing QR code in the app, or enter pairing details manually.
 
-无需提前手工构建 framework；如需单独生成 Apple Silicon iOS Simulator framework，可执行：
+You do not need to build the framework manually first. To build only the Apple Silicon iOS Simulator framework:
 
 ```bash
 ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64
 ```
 
-## 连接与配对
+## Connection and Pairing
 
-1. 在 DeepSeek Harness 中安装或升级 `dsh-plugin-mobile-gateway`（最低 0.10.3），完整退出并重新启动 `dsh web`：
+1. Install or upgrade `dsh-plugin-mobile-gateway` in DeepSeek Harness (minimum 0.11.1), then fully exit and restart `dsh web`:
 
    ```bash
    dsh plugin --profile web add dsh-plugin-mobile-gateway@latest
    ```
 
-2. 打开 WebUI 的“移动设备”面板，启用移动设备连接与设备鉴权。
-3. 确认 WebSocket 地址能被手机或模拟器访问。
-4. 生成一次性配对二维码/Token，并在 Android 或 iOS 客户端中完成认证。
-5. 返回首页，确认 Gateway 状态已连接，然后选择工作区和会话。
+2. Open the Mobile Devices panel in WebUI and enable mobile connections and device authentication.
+3. Make sure the WebSocket endpoint is reachable from your mobile device or simulator.
+4. Generate a one-time pairing QR code/token and authenticate in the Android or iOS app.
+5. Return to the home screen, confirm that Gateway is connected, then choose a workspace and session.
 
-常见地址：
+Common endpoints:
 
-| 场景 | 地址 |
+| Environment | Endpoint |
 | --- | --- |
 | iOS Simulator | `ws://127.0.0.1:3080/ws/mobile` |
-| Android Emulator + `adb reverse` | `ws://127.0.0.1:3080/ws/mobile` |
-| 同一局域网内的真机 | `ws://<HOST-LAN-IP>:3081/ws/mobile` |
-| 公网部署 | `wss://<your-domain>/ws/mobile` |
+| Android Emulator with `adb reverse` | `ws://127.0.0.1:3080/ws/mobile` |
+| Physical device on the same LAN | `ws://<HOST-LAN-IP>:3081/ws/mobile` |
+| Public deployment | `wss://<your-domain>/ws/mobile` |
 
 > [!IMPORTANT]
-> 真机不能使用 `127.0.0.1` 访问电脑。表中的 `ws://` 仅用于受信任的本地开发环境；公网或不可信网络必须使用 `wss://` 并正确配置 TLS 与设备鉴权。一次性配对 Token 不应写入日志、Issue 或聊天记录。
+> A physical phone cannot reach your computer through `127.0.0.1`. The `ws://` examples are for trusted local development only. Use `wss://` with correctly configured TLS and device authentication on public or untrusted networks. Do not include one-time pairing tokens in logs, issues, or chat messages.
 
 > [!NOTE]
-> 局域网真机走的是 `dsh-plugin-mobile-gateway` 独立监听的 `3081` 端口，该端口只提供经过鉴权的 `/ws/mobile`，其余路径返回 404。`3080` 是 DSH WebUI 自身的端口且仅监听回环，真机无法通过它连接。
+> Physical devices on a LAN use the separate port `3081` listener provided by `dsh-plugin-mobile-gateway`. It serves only authenticated `/ws/mobile` requests; other paths return 404. Port `3080` belongs to DSH WebUI and listens on loopback only, so physical devices cannot connect through it.
 
-## 构建与测试
+## Build and Test
 
-执行 Android 单元测试、Lint 和 APK 构建：
+Run Android unit tests, lint, and the APK build:
 
 ```bash
 ./gradlew \
@@ -372,58 +453,60 @@ adb reverse tcp:3080 tcp:3080
   :androidApp:assembleDebug
 ```
 
-在 Apple Silicon macOS 上执行共享层 Kotlin/Native 测试：
+Run the shared Kotlin/Native tests on Apple Silicon macOS:
 
 ```bash
 ./gradlew :shared:iosSimulatorArm64Test
 ```
 
-有可用 Android 设备或模拟器时，可继续执行：
+With an Android device or emulator available, run device tests:
 
 ```bash
 ./gradlew :androidApp:connectedDebugAndroidTest
 ```
 
-iOS 测试可在 Xcode 中选择 `DeepSeekHarnessMobile` Scheme 后执行 **Product → Test**。构建阶段会自动链接对应架构的 `DeepSeekHarnessShared.framework`。
+For iOS tests, select the `DeepSeekHarnessMobile` scheme in Xcode and choose **Product → Test**. The build phase links `DeepSeekHarnessShared.framework` for the selected architecture automatically.
 
-## 相关文档
+## Related Documentation
 
-- [Harness / WebUI 功能与协议调研](Docs/exploration.md)
-- [移动端设计规范](Design/design-spec.md)
-- [第三方许可证说明](Docs/third-party-notices.md)
+Some linked technical documents are currently available in Chinese.
 
-以下文档记录 KMP 迁移和 Android 落地过程，阶段性状态以本文档和当前代码为准：
+- [Harness / WebUI features and protocol research](Docs/exploration.md)
+- [Mobile design specification](Design/design-spec.md)
+- [Third-party notices](Docs/third-party-notices.md)
 
-- [KMP 开发说明](Docs/kmp-development.md)
-- [Android Gateway 阶段 12 验证记录](Docs/kmp-stage12-android-gateway-verification.md)
-- [Android UI 阶段 13 验证记录](Docs/kmp-stage13-android-ui-verification.md)
+The following documents record the KMP migration and Android implementation. For the current state, refer to this README and the source code:
 
-## 当前状态
+- [KMP development guide](Docs/kmp-development.md)
+- [Android Gateway stage 12 validation](Docs/kmp-stage12-android-gateway-verification.md)
+- [Android UI stage 13 validation](Docs/kmp-stage13-android-ui-verification.md)
 
-项目处于持续开发阶段。KMP 共享层、Android 原生应用和 iOS 原生应用均已落地，协议、跨端一致性和移动端体验仍会随 DeepSeek Harness 与 Mobile Gateway 持续演进。
+## Project Status
 
-本项目是面向 DeepSeek Harness 的社区客户端，不代表 DeepSeek 官方发布。
+Whaleness is under active development. The KMP shared module and native Android and iOS apps are implemented. Protocol support, platform consistency, and the mobile experience continue to evolve alongside DeepSeek Harness and Mobile Gateway.
+
+This is a community client for DeepSeek Harness, not an official DeepSeek release.
 
 [![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/clarklevis1995/dsh-plugin-mobile-gateway)
 
-### 应用内发布说明资源
+### Bundled Release Notes
 
-Android 和 iOS 的“关于”页共用 `AppRelease/release-info.json` 与 `AppRelease/release-notes.md`。JSON 中的 `version` 必须与 App 版本一致，`minimumGatewayVersion` 表示必需的移动网关插件最低版本。Markdown 保存本版本发布说明；应用启动时从本地打包资源读取，不依赖网络获取正文。
+Both apps' About screens use `AppRelease/release-info.json` and `AppRelease/release-notes.md`. The JSON `version` must match the app version; `minimumGatewayVersion` specifies the required minimum Mobile Gateway plugin version. Markdown contains the release notes for that version. Apps load these bundled resources locally without fetching the text over the network.
 
-KMM 双端打包技能会在编译前写入经过整理的最终发布说明并同步资源版本，校验 APK、AAB 和 iOS Bundle 内资源与源文件完全一致；打包失败会恢复资源和版本文件。更新说明后需要重新构建应用，不能只修改打包输出目录中的说明文件。
+The KMM dual-release skill writes reviewed release notes and synchronizes the resource version before compilation. It verifies that the resources in the APK, AAB, and iOS bundle match the source files, and restores resources and version files if packaging fails. Changes to release notes require rebuilding the apps; editing only the release output directory does not update bundled content.
 
-### Android Studio 的 iOS Metal 编译
+### iOS Metal Compilation from Android Studio
 
-项目通过 `Build Metal Library` 阶段执行 `scripts/build_metal_library.sh`，自动查找已安装的 Metal 工具链，并把 `default.metallib` 写入应用 Bundle。该阶段只在子进程中清除 Android Studio 注入的 `TOOLCHAINS` 与 `SDKROOT`，编译时仍明确使用当前 iOS SDK 和部署目标，避免强制 `XcodeDefault` 导致误报缺少 Metal Toolchain。
+The `Build Metal Library` phase runs `scripts/build_metal_library.sh`, locates an installed Metal toolchain, and writes `default.metallib` into the app bundle. It clears Android Studio's injected `TOOLCHAINS` and `SDKROOT` only in its subprocess, while explicitly preserving the current iOS SDK and deployment target. This avoids false missing-Metal-toolchain errors caused by forcing `XcodeDefault`.
 
-### Android 更新下载源
+### Android Update Sources
 
-Android 优先读取 `https://download.whaleness.cc/latest.json`，请求失败或配置无效时回退 GitHub Releases。配置格式为 `schemaVersion: 1`，包含 `version`、`versionCode`、`packageName`、`downloadUrl`、`size`、`sha256`，可包含 `githubDownloadUrl` 与 `releaseNotes`。下载仅接受配置中的可信加速域名和本项目 GitHub 地址；加速源失败时切换备用地址，仍按同一份配置校验安装包大小、SHA-256、版本、包名和签名。
+Android checks `https://download.whaleness.cc/latest.json` first and falls back to GitHub Releases if the request fails or the configuration is invalid. The `schemaVersion: 1` configuration includes `version`, `versionCode`, `packageName`, `downloadUrl`, `size`, and `sha256`, with optional `githubDownloadUrl` and `releaseNotes`. Downloads accept only configured trusted accelerated-download domains and this project's GitHub URLs. If the accelerated source fails, the app switches to the fallback while verifying package size, SHA-256, version, package name, and signature against the same configuration.
 
-发布时先上传不可覆盖的版本 APK，再更新根目录的 `latest.json`。更新配置应绕过 CDN 缓存；APK 可缓存。未发现新构建时不请求 GitHub，启动检查保持静默，设置页手动检查显示结果。
+Publishing uploads an immutable versioned APK before updating the root `latest.json`. Update manifests should bypass CDN caching; APK files may be cached. When no newer build is found, no GitHub request is made. Startup checks remain silent, while manual checks in Settings display their result.
 
-### R2 自动发布
+### Automatic R2 Publishing
 
-先运行 `python3 scripts/configure_r2_release.py`，将指定桶的 S3 对象读写凭据保存在 `~/.config/whaleness/r2-release.json`（权限 600）。执行 `sh scripts/r2_release.sh --check` 仅验证连接。执行 `sh scripts/r2_release.sh --prepare <发布目录>` 生成清单；`--publish <发布目录>` 才进行远程发布。S3 SDK 隔离安装在 `build/r2-tools`。
+Run `python3 scripts/configure_r2_release.py` to save S3 object read/write credentials for the configured bucket in `~/.config/whaleness/r2-release.json` with permissions `600`. `sh scripts/r2_release.sh --check` only verifies connectivity. `sh scripts/r2_release.sh --prepare <release-directory>` generates a manifest; `--publish <release-directory>` performs the remote publication. The S3 SDK is installed in the isolated `build/r2-tools` environment.
 
-KMM 双端打包技能在本机存在配置时自动发布：先校验本地包，再上传带构建号的不可变 APK，验证远程对象及公开下载内容，最后条件更新 `latest.json`。上传失败可用同一发布目录重试，不需要重新打包。只需本地打包时设 `R2_UPLOAD=0`。完整上传测试可能产生 R2 读取请求；首次连接验证不会修改远程对象。
+When local configuration exists, the KMM dual-release skill publishes automatically: validate local packages, upload an immutable APK whose filename includes the build number, verify both the remote object and public download, then conditionally update `latest.json`. A failed upload can be retried with the same release directory without rebuilding. Set `R2_UPLOAD=0` for local packaging only. Full upload tests may generate R2 read requests; the initial connection check does not modify remote objects.

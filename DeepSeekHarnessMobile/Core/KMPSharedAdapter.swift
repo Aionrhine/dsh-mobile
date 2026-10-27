@@ -123,6 +123,7 @@ private enum KMPConversationIntent {
     case transient(sessionID: String)
     case event(sessionID: String, sequence: Int)
     case replace(sessionID: String, lastSequence: Int)
+    case history(sessionID: String, lastSequence: Int)
     case clear(sessionID: String)
 }
 
@@ -247,6 +248,24 @@ final class KMPConversationStoreAdapter {
         store.hasProjection(sessionId: sessionID)
     }
 
+    func hasAssistantChunks(sessionID: String) -> Bool {
+        (store as? SharedConversationStore)?.hasAssistantChunks(sessionId: sessionID) == true
+    }
+
+    func appendHistory(sessionID: String, snapshot: SharedHistoryProjectionSnapshot, lastSequence: Int) throws -> Bool {
+        guard let shared = store as? SharedConversationStore else { return false }
+        var appended = false
+        try dispatch(.history(sessionID: sessionID, lastSequence: lastSequence)) {
+            guard let result = shared.appendHistorySnapshot(sessionId: sessionID, snapshot: snapshot) else {
+                return SharedMviDispatchResult(accepted: true, transactionId: nil, eventSequence: nil,
+                    errorCode: nil, errorMessage: nil)
+            }
+            appended = true
+            return result
+        }
+        return appended
+    }
+
     func replace(sessionID: String, events: [SessionEvent], historySnapshot: SharedHistoryProjectionSnapshot? = nil) throws {
         let lastSequence = events.map(\.seq).max() ?? -1
         try dispatch(.replace(sessionID: sessionID, lastSequence: lastSequence)) {
@@ -272,7 +291,7 @@ final class KMPConversationStoreAdapter {
             throw KMPConversationStoreError.invalidEvent("prepared history session mismatch")
         }
         var committed = false
-        try dispatch(.replace(sessionID: sessionID, lastSequence: lastSequence)) {
+        try dispatch(.history(sessionID: sessionID, lastSequence: lastSequence)) {
             guard let result = shared.commitPreparedHistory(prepared: prepared.value) else {
                 return SharedMviDispatchResult(accepted: true, transactionId: nil, eventSequence: nil,
                     errorCode: nil, errorMessage: nil)
@@ -405,6 +424,11 @@ final class KMPConversationStoreAdapter {
                   patch.operations.isEmpty else {
                 throw KMPConversationStoreError.invalidEvent("replace patch 与当前 intent 不一致")
             }
+        case .history(let sessionID, let lastSequence):
+            guard patch.sessionId == sessionID, patch.lastSequence == lastSequence,
+                  (patch.replacesAll ? (patch.replacementItems != nil && patch.operations.isEmpty) : patch.replacementItems == nil) else {
+                throw KMPConversationStoreError.invalidEvent("history patch 与当前 intent 不一致")
+            }
         case .clear(let sessionID):
             guard patch.sessionId == sessionID,
                   patch.lastSequence == -1,
@@ -444,6 +468,15 @@ final class KMPConversationStoreAdapter {
                         throw KMPConversationStoreError.invalidEvent("insert operation 无效")
                     }
                     next.append(item)
+                case "insert-before":
+                    guard let item = insertedItem,
+                          let anchor = operation.itemId,
+                          operation.delta == nil, operation.epochSeconds == nil,
+                          !next.contains(where: { $0.id == item.id }),
+                          let index = next.firstIndex(where: { $0.id == anchor }) else {
+                        throw KMPConversationStoreError.invalidEvent("insert-before operation 无效")
+                    }
+                    next.insert(item, at: index)
                 case "append-text":
                     guard operation.item == nil,
                           let itemID = operation.itemId, !itemID.isEmpty,

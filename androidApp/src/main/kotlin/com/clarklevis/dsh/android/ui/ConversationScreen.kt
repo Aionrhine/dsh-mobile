@@ -203,7 +203,10 @@ internal fun ConversationScreen(
     stateHolder: AndroidSharedStateHolder,
     onPickImage: () -> Unit,
     onBack: () -> Unit,
-    onPickFile: () -> Unit = {}
+    onPickFile: () -> Unit = {},
+    onPlugins: () -> Unit = {},
+    onScheduledTasks: () -> Unit = {},
+    onSettings: () -> Unit = {}
 ) {
     val session = stateHolder.snapshot.sessions.firstOrNull { it.id == stateHolder.snapshot.selectedSessionId }
     val title = stateHolder.teamSnapshot.members.firstOrNull { it.id == stateHolder.snapshot.selectedSessionId && it.role != "lead" }?.name ?: session?.title ?: if (stateHolder.snapshot.selectedSessionId != null) "已缓存会话" else appText("新建 DeepSeek Harness")
@@ -215,6 +218,8 @@ internal fun ConversationScreen(
         ?.name
     val pagerState = rememberPagerState(pageCount = { 2 })
     val scope = rememberCoroutineScope()
+    val window = adaptiveWindowSize()
+    val showsSidebar = AdaptiveLayout.conversationSidebarAvailable(window.width.value, window.height.value)
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val dismissInput: () -> Unit = remember(focusManager, keyboardController) {
@@ -276,15 +281,32 @@ internal fun ConversationScreen(
                         )
                     },
                     navigationIcon = {
-                        TopBarCircleButton(
-                            iconRes = R.drawable.ic_back_chevron,
-                            description = appText("返回"),
-                            onClick = {
-                                dismissInput()
-                                onBack()
-                            },
-                            modifier = Modifier.padding(start = 8.dp, end = 14.dp)
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TopBarCircleButton(
+                                iconRes = R.drawable.ic_back_chevron,
+                                description = appText("返回"),
+                                onClick = {
+                                    dismissInput()
+                                    onBack()
+                                },
+                                modifier = Modifier.padding(start = 8.dp, end = if (showsSidebar) 8.dp else 14.dp)
+                            )
+                            if (showsSidebar) {
+                                ConversationSidebarButton(
+                                    workspaces = stateHolder.snapshot.workspaces,
+                                    sessions = stateHolder.snapshot.sessions,
+                                    selectedSessionId = stateHolder.snapshot.selectedSessionId,
+                                    onOpen = dismissInput,
+                                    onSelectSession = { id ->
+                                        if (id != stateHolder.snapshot.selectedSessionId) stateHolder.selectSession(id)
+                                    },
+                                    onPlugins = onPlugins,
+                                    onScheduledTasks = onScheduledTasks,
+                                    onSettings = onSettings
+                                )
+                                Spacer(Modifier.width(14.dp))
+                            }
+                        }
                     },
                     actions = {
                         Row(
