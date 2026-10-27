@@ -1,10 +1,10 @@
 <div align="center">
 
-**English** · [简体中文](README.zh-CN.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Español](README.es.md) · [Français](README.fr.md) · [Deutsch](README.de.md) · [Português (Brasil)](README.pt-BR.md)
+**English** · [简体中文](README.zh-CN.md) · [日本語](Docs/readme/README.ja.md) · [한국어](Docs/readme/README.ko.md) · [Español](Docs/readme/README.es.md) · [Français](Docs/readme/README.fr.md) · [Deutsch](Docs/readme/README.de.md) · [Português (Brasil)](Docs/readme/README.pt-BR.md)
 
 <img src="Design/whale-girl-ios-app-promo-16x9-v3.png" alt="Whaleness iOS app showcase" width="100%">
 
-# Whaleness — An Unofficial Mobile Client for DeepSeek Harness
+# Whaleness — A Third-Party Mobile Client for DeepSeek Harness
 
 **Native Android and iOS apps with core business logic shared through Kotlin Multiplatform.**
 
@@ -29,7 +29,7 @@ Website: [Whaleness](https://clarklevis1995.github.io/dsh-mobile/)
 
 ## Overview
 
-Whaleness is an independently developed, unofficial native mobile client for DeepSeek Harness. Both Android and iOS apps use Kotlin Multiplatform (KMP):
+Whaleness is an independently developed third-party native mobile client for DeepSeek Harness. Both Android and iOS apps use Kotlin Multiplatform (KMP):
 
 - `shared` is the source of truth for shared business state, including protocol handling, state machines, reducers, projections, and synchronization.
 - `androidApp` implements the Android app with Kotlin, Jetpack Compose, and OkHttp.
@@ -485,7 +485,7 @@ The following documents record the KMP migration and Android implementation. For
 
 Whaleness is under active development. The KMP shared module and native Android and iOS apps are implemented. Protocol support, platform consistency, and the mobile experience continue to evolve alongside DeepSeek Harness and Mobile Gateway.
 
-This is a community client for DeepSeek Harness, not an official DeepSeek release.
+This is an independently developed third-party client for DeepSeek Harness.
 
 [![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/clarklevis1995/dsh-plugin-mobile-gateway)
 

@@ -1,6 +1,6 @@
 <div align="center">
 
-[English](README.md) · **简体中文** · [日本語](README.ja.md) · [한국어](README.ko.md) · [Español](README.es.md) · [Français](README.fr.md) · [Deutsch](README.de.md) · [Português (Brasil)](README.pt-BR.md)
+[English](README.md) · **简体中文** · [日本語](Docs/readme/README.ja.md) · [한국어](Docs/readme/README.ko.md) · [Español](Docs/readme/README.es.md) · [Français](Docs/readme/README.fr.md) · [Deutsch](Docs/readme/README.de.md) · [Português (Brasil)](Docs/readme/README.pt-BR.md)
 
 <img src="Design/whale-girl-ios-app-promo-16x9-v3.png" alt="Whaleness iOS 应用展示" width="100%">
 
@@ -483,7 +483,7 @@ iOS 测试可在 Xcode 中选择 `DeepSeekHarnessMobile` Scheme 后执行 **Prod
 
 项目处于持续开发阶段。KMP 共享层、Android 原生应用和 iOS 原生应用均已落地，协议、跨端一致性和移动端体验仍会随 DeepSeek Harness 与 Mobile Gateway 持续演进。
 
-本项目是面向 DeepSeek Harness 的社区客户端，不代表 DeepSeek 官方发布。
+本项目是独立开发的 DeepSeek Harness 第三方客户端。
 
 [![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/clarklevis1995/dsh-plugin-mobile-gateway)
 

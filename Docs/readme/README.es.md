@@ -1,10 +1,10 @@
 <div align="center">
 
-[English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · **Español** · [Français](README.fr.md) · [Deutsch](README.de.md) · [Português (Brasil)](README.pt-BR.md)
+[English](../../README.md) · [简体中文](../../README.zh-CN.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · **Español** · [Français](README.fr.md) · [Deutsch](README.de.md) · [Português (Brasil)](README.pt-BR.md)
 
-<img src="Design/whale-girl-ios-app-promo-16x9-v3.png" alt="Presentación de la aplicación Whaleness para iOS" width="100%">
+<img src="../../Design/whale-girl-ios-app-promo-16x9-v3.png" alt="Presentación de la aplicación Whaleness para iOS" width="100%">
 
-# Whaleness — Cliente móvil no oficial para DeepSeek Harness
+# Whaleness — Cliente móvil de terceros para DeepSeek Harness
 
 **Aplicaciones nativas para Android e iOS con lógica principal compartida mediante Kotlin Multiplatform.**
 
@@ -13,9 +13,9 @@ Conéctate a DeepSeek Harness mediante Mobile Gateway para acceder a espacios de
 Sitio web: [Whaleness](https://clarklevis1995.github.io/dsh-mobile/)
 
 <p>
-  <a href="https://testflight.apple.com/join/1Euwby6r"><img src="Docs/images/badges/testflight.svg" alt="Participar en la beta de iOS en TestFlight" width="180" height="60"></a>
+  <a href="https://testflight.apple.com/join/1Euwby6r"><img src="../images/badges/testflight.svg" alt="Participar en la beta de iOS en TestFlight" width="180" height="60"></a>
   &nbsp;&nbsp;
-  <a href="https://github.com/Clarklevis1995/dsh-mobile/releases"><img src="Docs/images/badges/android-github.svg" alt="Descargar el APK de Android desde GitHub Releases" width="180" height="60"></a>
+  <a href="https://github.com/Clarklevis1995/dsh-mobile/releases"><img src="../images/badges/android-github.svg" alt="Descargar el APK de Android desde GitHub Releases" width="180" height="60"></a>
 </p>
 
 ![Kotlin Multiplatform](https://img.shields.io/badge/Kotlin-Multiplatform-7F52FF?logo=kotlin&logoColor=white)
@@ -29,7 +29,7 @@ Sitio web: [Whaleness](https://clarklevis1995.github.io/dsh-mobile/)
 
 ## Descripción general
 
-Whaleness es un cliente móvil nativo no oficial para DeepSeek Harness, desarrollado de forma independiente. Las aplicaciones de Android e iOS utilizan Kotlin Multiplatform (KMP):
+Whaleness es un cliente móvil nativo de terceros para DeepSeek Harness, desarrollado de forma independiente. Las aplicaciones de Android e iOS utilizan Kotlin Multiplatform (KMP):
 
 - `shared` es la única fuente de verdad del estado de negocio compartido: protocolos, máquinas de estados, reductores, proyecciones y sincronización.
 - `androidApp` implementa la aplicación Android con Kotlin, Jetpack Compose y OkHttp.
@@ -41,7 +41,7 @@ Ambas aplicaciones se conectan a Harness por WebSocket a través de [`dsh-plugin
 
 - **iOS**: [Participar en la beta de TestFlight](https://testflight.apple.com/join/1Euwby6r). Compatible con iPhone y iPad con iOS / iPadOS 16.1 o posterior.
 - **Android**: [Descargar un APK desde GitHub Releases](https://github.com/Clarklevis1995/dsh-mobile/releases). Requiere Android 7.0 (API 24) o posterior. La búsqueda de actualizaciones prioriza la fuente de descarga acelerada y verifica los paquetes descargados.
-- **Host de escritorio**: ejecuta DeepSeek Harness con **`dsh-plugin-mobile-gateway` 0.11.1 o posterior** instalado y habilitado. [`AppRelease/release-info.json`](AppRelease/release-info.json) define la versión mínima requerida.
+- **Host de escritorio**: ejecuta DeepSeek Harness con **`dsh-plugin-mobile-gateway` 0.11.1 o posterior** instalado y habilitado. [`AppRelease/release-info.json`](../../AppRelease/release-info.json) define la versión mínima requerida.
 - **Entrada de voz**: habilita el plugin oficial de entrada de voz en la sección de plugins del host, completa la descarga e inicialización del modelo y concede acceso al micrófono en el dispositivo móvil.
 
 ## Comunidad de la beta
@@ -49,7 +49,7 @@ Ambas aplicaciones se conectan a Harness por WebSocket a través de [`dsh-plugin
 Únete al grupo de WeChat de la beta de Whaleness para compartir experiencias, enviar comentarios y obtener ayuda. Escanea con WeChat o guarda la imagen para reconocerla en WeChat.
 
 <p align="center">
-  <a href="website/assets/support-wechat-2026-10-23.png"><img src="website/assets/support-wechat-2026-10-23.png" alt="Código QR del grupo de WeChat de la beta de Whaleness, válido antes del 30 de octubre de 2026" width="320"></a>
+  <a href="../../website/assets/support-wechat-2026-10-23.png"><img src="../../website/assets/support-wechat-2026-10-23.png" alt="Código QR del grupo de WeChat de la beta de Whaleness, válido antes del 30 de octubre de 2026" width="320"></a>
 </p>
 
 > Actualizado el 23 de octubre de 2026. La imagen original indica que el código es válido antes del 30 de octubre de 2026. Si ha caducado, consulta el código más reciente en la [página del producto](https://clarklevis1995.github.io/dsh-mobile/).
@@ -103,30 +103,30 @@ Ambas aplicaciones se conectan a Harness por WebSocket a través de [`dsh-plugin
 
 ## Capturas de pantalla
 
-> Capturas recientes de iOS: las imágenes de 1.7.10 se tomaron el 22–23 de octubre de 2026; las de iPhone Duo, el 26 de octubre de 2026. La interfaz está en chino. [Fuentes del producto](Docs/images/screenshots/2026-10-23/SOURCES.md) · [Fuentes de Duo](Docs/images/screenshots/2026-10-26-duo/SOURCES.md).
+> Capturas recientes de iOS: las imágenes de 1.7.10 se tomaron el 22–23 de octubre de 2026; las de iPhone Duo, el 26 de octubre de 2026. La interfaz está en chino. [Fuentes del producto](../images/screenshots/2026-10-23/SOURCES.md) · [Fuentes de Duo](../images/screenshots/2026-10-26-duo/SOURCES.md).
 
 ### iPhone Duo: orientación y navegación adaptables
 
 <table>
   <tr>
-    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/landscape-home.webp"><img src="Docs/images/screenshots/2026-10-26-duo/landscape-home.webp" alt="Inicio desplegado en horizontal" width="100%"></a></td>
-    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/landscape-home-alt.webp"><img src="Docs/images/screenshots/2026-10-26-duo/landscape-home-alt.webp" alt="Fondo del inicio horizontal" width="100%"></a></td>
+    <td width="50.00%" align="center"><a href="../images/screenshots/2026-10-26-duo/landscape-home.webp"><img src="../images/screenshots/2026-10-26-duo/landscape-home.webp" alt="Inicio desplegado en horizontal" width="100%"></a></td>
+    <td width="50.00%" align="center"><a href="../images/screenshots/2026-10-26-duo/landscape-home-alt.webp"><img src="../images/screenshots/2026-10-26-duo/landscape-home-alt.webp" alt="Fondo del inicio horizontal" width="100%"></a></td>
   </tr>
   <tr>
     <td align="center"><strong>Inicio desplegado en horizontal</strong></td>
     <td align="center"><strong>Fondo del inicio horizontal</strong></td>
   </tr>
   <tr>
-    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/landscape-settings.webp"><img src="Docs/images/screenshots/2026-10-26-duo/landscape-settings.webp" alt="Ajustes en horizontal" width="100%"></a></td>
-    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/landscape-conversation.webp"><img src="Docs/images/screenshots/2026-10-26-duo/landscape-conversation.webp" alt="Conversación en horizontal" width="100%"></a></td>
+    <td width="50.00%" align="center"><a href="../images/screenshots/2026-10-26-duo/landscape-settings.webp"><img src="../images/screenshots/2026-10-26-duo/landscape-settings.webp" alt="Ajustes en horizontal" width="100%"></a></td>
+    <td width="50.00%" align="center"><a href="../images/screenshots/2026-10-26-duo/landscape-conversation.webp"><img src="../images/screenshots/2026-10-26-duo/landscape-conversation.webp" alt="Conversación en horizontal" width="100%"></a></td>
   </tr>
   <tr>
     <td align="center"><strong>Ajustes en horizontal</strong></td>
     <td align="center"><strong>Conversación en horizontal</strong></td>
   </tr>
   <tr>
-    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/landscape-navigation.webp"><img src="Docs/images/screenshots/2026-10-26-duo/landscape-navigation.webp" alt="Barra lateral de navegación abierta" width="100%"></a></td>
-    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/portrait-home.webp"><img src="Docs/images/screenshots/2026-10-26-duo/portrait-home.webp" alt="Inicio desplegado en vertical" width="100%"></a></td>
+    <td width="50.00%" align="center"><a href="../images/screenshots/2026-10-26-duo/landscape-navigation.webp"><img src="../images/screenshots/2026-10-26-duo/landscape-navigation.webp" alt="Barra lateral de navegación abierta" width="100%"></a></td>
+    <td width="50.00%" align="center"><a href="../images/screenshots/2026-10-26-duo/portrait-home.webp"><img src="../images/screenshots/2026-10-26-duo/portrait-home.webp" alt="Inicio desplegado en vertical" width="100%"></a></td>
   </tr>
   <tr>
     <td align="center"><strong>Barra lateral de navegación abierta</strong></td>
@@ -138,9 +138,9 @@ Ambas aplicaciones se conectan a Harness por WebSocket a través de [`dsh-plugin
 
 <table>
   <tr>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/team-members.webp"><img src="Docs/images/screenshots/2026-10-23/team-members.webp" alt="Miembros del equipo de Agents" width="100%"></a></td>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/team-tasks.webp"><img src="Docs/images/screenshots/2026-10-23/team-tasks.webp" alt="Tareas compartidas del equipo" width="100%"></a></td>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/attachment-picker.webp"><img src="Docs/images/screenshots/2026-10-23/attachment-picker.webp" alt="Selector de archivos e imágenes" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/team-members.webp"><img src="../images/screenshots/2026-10-23/team-members.webp" alt="Miembros del equipo de Agents" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/team-tasks.webp"><img src="../images/screenshots/2026-10-23/team-tasks.webp" alt="Tareas compartidas del equipo" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/attachment-picker.webp"><img src="../images/screenshots/2026-10-23/attachment-picker.webp" alt="Selector de archivos e imágenes" width="100%"></a></td>
   </tr>
   <tr>
     <td align="center"><strong>Miembros del equipo de Agents</strong></td>
@@ -148,9 +148,9 @@ Ambas aplicaciones se conectan a Harness por WebSocket a través de [`dsh-plugin
     <td align="center"><strong>Selector de archivos e imágenes</strong></td>
   </tr>
   <tr>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/text-selection.webp"><img src="Docs/images/screenshots/2026-10-23/text-selection.webp" alt="Selección de texto independiente" width="100%"></a></td>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/conversation-files.webp"><img src="Docs/images/screenshots/2026-10-23/conversation-files.webp" alt="Archivos en una conversación" width="100%"></a></td>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/release-notes.webp"><img src="Docs/images/screenshots/2026-10-23/release-notes.webp" alt="Notas de versión incluidas" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/text-selection.webp"><img src="../images/screenshots/2026-10-23/text-selection.webp" alt="Selección de texto independiente" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/conversation-files.webp"><img src="../images/screenshots/2026-10-23/conversation-files.webp" alt="Archivos en una conversación" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/release-notes.webp"><img src="../images/screenshots/2026-10-23/release-notes.webp" alt="Notas de versión incluidas" width="100%"></a></td>
   </tr>
   <tr>
     <td align="center"><strong>Selección de texto independiente</strong></td>
@@ -158,9 +158,9 @@ Ambas aplicaciones se conectan a Harness por WebSocket a través de [`dsh-plugin
     <td align="center"><strong>Notas de versión incluidas</strong></td>
   </tr>
   <tr>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/storage.webp"><img src="Docs/images/screenshots/2026-10-23/storage.webp" alt="Almacenamiento local y categorías de caché" width="100%"></a></td>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/voice-input.webp"><img src="Docs/images/screenshots/2026-10-23/voice-input.webp" alt="Entrada de voz al mantener pulsado" width="100%"></a></td>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/file-upload.webp"><img src="Docs/images/screenshots/2026-10-23/file-upload.webp" alt="Archivo adjunto en el editor" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/storage.webp"><img src="../images/screenshots/2026-10-23/storage.webp" alt="Almacenamiento local y categorías de caché" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/voice-input.webp"><img src="../images/screenshots/2026-10-23/voice-input.webp" alt="Entrada de voz al mantener pulsado" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/file-upload.webp"><img src="../images/screenshots/2026-10-23/file-upload.webp" alt="Archivo adjunto en el editor" width="100%"></a></td>
   </tr>
   <tr>
     <td align="center"><strong>Almacenamiento local y categorías de caché</strong></td>
@@ -172,15 +172,15 @@ Ambas aplicaciones se conectan a Harness por WebSocket a través de [`dsh-plugin
 <details>
 <summary>Capturas anteriores: iPad, vistas previas, ajustes y emparejamiento</summary>
 
-> Las capturas muestran la aplicación iOS con interfaz en chino; Android implementa la estructura y los flujos correspondientes con Jetpack Compose. Las capturas de voz, archivos, tamaño de texto e iPad se tomaron el 16 de octubre de 2026 con la versión 1.7.6. Consulta las [fuentes de las capturas](Docs/images/screenshots/2026-10/SOURCES.md).
+> Las capturas muestran la aplicación iOS con interfaz en chino; Android implementa la estructura y los flujos correspondientes con Jetpack Compose. Las capturas de voz, archivos, tamaño de texto e iPad se tomaron el 16 de octubre de 2026 con la versión 1.7.6. Consulta las [fuentes de las capturas](../images/screenshots/2026-10/SOURCES.md).
 
 ### Entrada de voz, vistas previas y tamaño del texto
 
 <table>
   <tr>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/2026-10/voice-input.png" alt="Superposición de grabación al mantener pulsado en iPhone" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/2026-10/pdf-preview.png" alt="Vista previa de PDF abierta desde una tarjeta de archivo de la conversación" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/2026-10/font-size.png" alt="Vista previa del tamaño de texto y control deslizante" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/2026-10/voice-input.png" alt="Superposición de grabación al mantener pulsado en iPhone" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/2026-10/pdf-preview.png" alt="Vista previa de PDF abierta desde una tarjeta de archivo de la conversación" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/2026-10/font-size.png" alt="Vista previa del tamaño de texto y control deslizante" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>Mantener pulsado para hablar</strong><br>Soltar para transcribir, deslizar arriba para cancelar</td>
@@ -189,22 +189,22 @@ Ambas aplicaciones se conectan a Harness por WebSocket a través de [`dsh-plugin
   </tr>
 </table>
 
-[Ver el estado al deslizar hacia arriba para cancelar](Docs/images/screenshots/2026-10/voice-cancel.png)
+[Ver el estado al deslizar hacia arriba para cancelar](../images/screenshots/2026-10/voice-cancel.png)
 
 ### iPad y pantallas grandes
 
 <table>
   <tr>
-    <td width="50%" align="center"><img src="Docs/images/screenshots/2026-10/ipad-home.png" alt="Inicio de iPad en dos columnas con espacios de trabajo y sesiones recientes" width="100%"></td>
-    <td width="50%" align="center"><img src="Docs/images/screenshots/2026-10/ipad-conversation.png" alt="Conversación en iPad horizontal con tarjeta de archivo" width="100%"></td>
+    <td width="50%" align="center"><img src="../images/screenshots/2026-10/ipad-home.png" alt="Inicio de iPad en dos columnas con espacios de trabajo y sesiones recientes" width="100%"></td>
+    <td width="50%" align="center"><img src="../images/screenshots/2026-10/ipad-conversation.png" alt="Conversación en iPad horizontal con tarjeta de archivo" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>Inicio en pantalla ancha</strong><br>Espacios de trabajo y sesiones en paralelo</td>
     <td align="center"><strong>Conversaciones en tableta</strong><br>Ancho de lectura y área de escritura cómodos</td>
   </tr>
   <tr>
-    <td align="center"><img src="Docs/images/screenshots/2026-10/ipad-pdf-preview.png" alt="Ventana de vista previa de PDF sobre una conversación en iPad" width="100%"></td>
-    <td align="center"><img src="Docs/images/screenshots/2026-10/ipad-voice-input.png" alt="Superposición de grabación adaptada al iPad horizontal" width="100%"></td>
+    <td align="center"><img src="../images/screenshots/2026-10/ipad-pdf-preview.png" alt="Ventana de vista previa de PDF sobre una conversación en iPad" width="100%"></td>
+    <td align="center"><img src="../images/screenshots/2026-10/ipad-voice-input.png" alt="Superposición de grabación adaptada al iPad horizontal" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>Vistas previas de archivos</strong><br>Consultar archivos sin perder el contexto</td>
@@ -216,9 +216,9 @@ Ambas aplicaciones se conectan a Harness por WebSocket a través de [`dsh-plugin
 
 <table>
   <tr>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/home.png" alt="Inicio de espacios de trabajo en iOS" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/2026-10/file-card.png" alt="Conversación iOS con tarjeta de archivo y control de estadísticas de ejecución" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/trajectory-light.png" alt="Traza del Agent en iOS con tema claro" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/home.png" alt="Inicio de espacios de trabajo en iOS" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/2026-10/file-card.png" alt="Conversación iOS con tarjeta de archivo y control de estadísticas de ejecución" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/trajectory-light.png" alt="Traza del Agent en iOS con tema claro" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>Inicio</strong><br>Espacios de trabajo y sesiones recientes</td>
@@ -231,9 +231,9 @@ Ambas aplicaciones se conectan a Harness por WebSocket a través de [`dsh-plugin
 
 <table>
   <tr>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/settings.png" alt="Ajustes de la aplicación iOS" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/agent-presets.png" alt="Preajustes del Agent en iOS" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/default-model.png" alt="Ajustes del modelo predeterminado en iOS" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/settings.png" alt="Ajustes de la aplicación iOS" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/agent-presets.png" alt="Preajustes del Agent en iOS" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/default-model.png" alt="Ajustes del modelo predeterminado en iOS" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>Ajustes</strong><br>Valores de despliegue y estado de Gateway</td>
@@ -246,8 +246,8 @@ Ambas aplicaciones se conectan a Harness por WebSocket a través de [`dsh-plugin
 
 <table>
   <tr>
-    <td width="50%" align="center"><img src="website/assets/plugins.webp" alt="Lista de plugins oficiales e instalados en iOS" width="100%"></td>
-    <td width="50%" align="center"><img src="website/assets/tasks.webp" alt="Reglas y detalles de tareas programadas en iOS" width="100%"></td>
+    <td width="50%" align="center"><img src="../../website/assets/plugins.webp" alt="Lista de plugins oficiales e instalados en iOS" width="100%"></td>
+    <td width="50%" align="center"><img src="../../website/assets/tasks.webp" alt="Reglas y detalles de tareas programadas en iOS" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>Gestión de plugins</strong><br>Consultar detalles y estado de habilitación</td>
@@ -262,9 +262,9 @@ Ambas aplicaciones se conectan a Harness por WebSocket a través de [`dsh-plugin
 
 <table>
   <tr>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/workspace-switcher.png" alt="Selector de espacios de trabajo en iOS" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/workspace-directory-picker.png" alt="Selector de directorios del espacio de trabajo en iOS" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/trajectory-detail-light.png" alt="Panel de detalles de trazas en iOS" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/workspace-switcher.png" alt="Selector de espacios de trabajo en iOS" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/workspace-directory-picker.png" alt="Selector de directorios del espacio de trabajo en iOS" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/trajectory-detail-light.png" alt="Panel de detalles de trazas en iOS" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>Cambiar de espacio de trabajo</strong><br>Acceder a distintos proyectos</td>
@@ -277,9 +277,9 @@ Ambas aplicaciones se conectan a Harness por WebSocket a través de [`dsh-plugin
 
 <table>
   <tr>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/pairing-light.png" alt="Emparejamiento de dispositivos en iOS con tema claro" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/pairing-dark.png" alt="Emparejamiento de dispositivos en iOS con tema oscuro" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/conversation-dark.png" alt="Conversación en iOS con tema oscuro" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/pairing-light.png" alt="Emparejamiento de dispositivos en iOS con tema claro" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/pairing-dark.png" alt="Emparejamiento de dispositivos en iOS con tema oscuro" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/conversation-dark.png" alt="Conversación en iOS con tema oscuro" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>Emparejamiento con tema claro</strong><br>Escanear un QR o introducir los datos</td>
@@ -471,21 +471,21 @@ Para probar iOS, selecciona el esquema `DeepSeekHarnessMobile` en Xcode y **Prod
 
 Algunos documentos técnicos enlazados solo están disponibles en chino por el momento.
 
-- [Investigación de funciones y protocolo de Harness / WebUI](Docs/exploration.md)
-- [Especificación del diseño móvil](Design/design-spec.md)
-- [Avisos de terceros](Docs/third-party-notices.md)
+- [Investigación de funciones y protocolo de Harness / WebUI](../exploration.md)
+- [Especificación del diseño móvil](../../Design/design-spec.md)
+- [Avisos de terceros](../third-party-notices.md)
 
 Los siguientes documentos describen la migración a KMP y la implementación Android. Para conocer el estado actual, consulta este README y el código fuente:
 
-- [Guía de desarrollo KMP](Docs/kmp-development.md)
-- [Validación de Android Gateway, fase 12](Docs/kmp-stage12-android-gateway-verification.md)
-- [Validación de Android UI, fase 13](Docs/kmp-stage13-android-ui-verification.md)
+- [Guía de desarrollo KMP](../kmp-development.md)
+- [Validación de Android Gateway, fase 12](../kmp-stage12-android-gateway-verification.md)
+- [Validación de Android UI, fase 13](../kmp-stage13-android-ui-verification.md)
 
 ## Estado del proyecto
 
 Whaleness está en desarrollo activo. El módulo compartido KMP y las aplicaciones nativas Android e iOS están implementados. El soporte del protocolo, la coherencia entre plataformas y la experiencia móvil siguen evolucionando junto con DeepSeek Harness y Mobile Gateway.
 
-Este es un cliente comunitario para DeepSeek Harness, no una publicación oficial de DeepSeek.
+Este es un cliente de terceros para DeepSeek Harness, desarrollado de forma independiente.
 
 [![Incluido en dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/clarklevis1995/dsh-plugin-mobile-gateway)
 

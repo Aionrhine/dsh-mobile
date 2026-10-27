@@ -1,10 +1,10 @@
 <div align="center">
 
-[English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md) · **한국어** · [Español](README.es.md) · [Français](README.fr.md) · [Deutsch](README.de.md) · [Português (Brasil)](README.pt-BR.md)
+[English](../../README.md) · [简体中文](../../README.zh-CN.md) · [日本語](README.ja.md) · **한국어** · [Español](README.es.md) · [Français](README.fr.md) · [Deutsch](README.de.md) · [Português (Brasil)](README.pt-BR.md)
 
-<img src="Design/whale-girl-ios-app-promo-16x9-v3.png" alt="Whaleness iOS 앱 소개" width="100%">
+<img src="../../Design/whale-girl-ios-app-promo-16x9-v3.png" alt="Whaleness iOS 앱 소개" width="100%">
 
-# Whaleness — DeepSeek Harness 비공식 모바일 클라이언트
+# Whaleness — DeepSeek Harness 서드파티 모바일 클라이언트
 
 **Kotlin Multiplatform으로 핵심 로직을 공유하는 Android 및 iOS 네이티브 앱입니다.**
 
@@ -13,9 +13,9 @@ Mobile Gateway를 통해 DeepSeek Harness에 연결하여 휴대전화, 태블�
 웹사이트: [Whaleness](https://clarklevis1995.github.io/dsh-mobile/)
 
 <p>
-  <a href="https://testflight.apple.com/join/1Euwby6r"><img src="Docs/images/badges/testflight.svg" alt="iOS TestFlight 베타 참여" width="180" height="60"></a>
+  <a href="https://testflight.apple.com/join/1Euwby6r"><img src="../images/badges/testflight.svg" alt="iOS TestFlight 베타 참여" width="180" height="60"></a>
   &nbsp;&nbsp;
-  <a href="https://github.com/Clarklevis1995/dsh-mobile/releases"><img src="Docs/images/badges/android-github.svg" alt="GitHub Releases에서 Android APK 다운로드" width="180" height="60"></a>
+  <a href="https://github.com/Clarklevis1995/dsh-mobile/releases"><img src="../images/badges/android-github.svg" alt="GitHub Releases에서 Android APK 다운로드" width="180" height="60"></a>
 </p>
 
 ![Kotlin Multiplatform](https://img.shields.io/badge/Kotlin-Multiplatform-7F52FF?logo=kotlin&logoColor=white)
@@ -29,7 +29,7 @@ Mobile Gateway를 통해 DeepSeek Harness에 연결하여 휴대전화, 태블�
 
 ## 개요
 
-Whaleness는 독립적으로 개발된 DeepSeek Harness 비공식 네이티브 모바일 클라이언트입니다. Android와 iOS 앱 모두 Kotlin Multiplatform(KMP)을 사용합니다.
+Whaleness는 독립적으로 개발된 DeepSeek Harness 서드파티 네이티브 모바일 클라이언트입니다. Android와 iOS 앱 모두 Kotlin Multiplatform(KMP)을 사용합니다.
 
 - `shared`는 공유 비즈니스 상태의 단일 진실 공급원으로, 프로토콜 처리, 상태 머신, 리듀서, 프로젝션, 동기화를 담당합니다.
 - `androidApp`은 Kotlin, Jetpack Compose, OkHttp로 Android 앱을 구현합니다.
@@ -41,7 +41,7 @@ Whaleness는 독립적으로 개발된 DeepSeek Harness 비공식 네이티브 �
 
 - **iOS**: [TestFlight 베타 참여](https://testflight.apple.com/join/1Euwby6r). iOS / iPadOS 16.1 이상을 실행하는 iPhone과 iPad를 지원합니다.
 - **Android**: [GitHub Releases에서 APK 다운로드](https://github.com/Clarklevis1995/dsh-mobile/releases). Android 7.0(API 24) 이상이 필요합니다. 앱 내 업데이트 확인은 가속 다운로드 소스를 우선 사용하며 다운로드한 패키지를 검증합니다.
-- **데스크톱 호스트**: DeepSeek Harness를 실행하고 **`dsh-plugin-mobile-gateway` 0.11.1 이상**을 설치하여 활성화하세요. 최소 버전은 [`AppRelease/release-info.json`](AppRelease/release-info.json)에 정의되어 있습니다.
+- **데스크톱 호스트**: DeepSeek Harness를 실행하고 **`dsh-plugin-mobile-gateway` 0.11.1 이상**을 설치하여 활성화하세요. 최소 버전은 [`AppRelease/release-info.json`](../../AppRelease/release-info.json)에 정의되어 있습니다.
 - **음성 입력**: 호스트의 플러그인 화면에서 공식 음성 입력 플러그인을 활성화하고 모델 다운로드와 초기화를 완료한 후 모바일 기기의 마이크 접근을 허용하세요.
 
 ## 베타 커뮤니티
@@ -49,7 +49,7 @@ Whaleness는 독립적으로 개발된 DeepSeek Harness 비공식 네이티브 �
 Whaleness WeChat 베타 그룹에서 사용 경험을 나누고 문제를 제보하며 지원을 받을 수 있습니다. WeChat으로 스캔하거나 이미지를 저장한 뒤 WeChat에서 인식하세요.
 
 <p align="center">
-  <a href="website/assets/support-wechat-2026-10-23.png"><img src="website/assets/support-wechat-2026-10-23.png" alt="Whaleness 베타 WeChat 그룹 QR 코드, 원본에 2026년 10월 30일 이전까지 유효하다고 표시됨" width="320"></a>
+  <a href="../../website/assets/support-wechat-2026-10-23.png"><img src="../../website/assets/support-wechat-2026-10-23.png" alt="Whaleness 베타 WeChat 그룹 QR 코드, 원본에 2026년 10월 30일 이전까지 유효하다고 표시됨" width="320"></a>
 </p>
 
 > 2026년 10월 23일에 갱신되었습니다. 원본 이미지에는 2026년 10월 30일 이전까지 유효하다고 명시되어 있습니다. 만료되었다면 [제품 페이지](https://clarklevis1995.github.io/dsh-mobile/)에서 최신 그룹 QR 코드를 확인하세요.
@@ -103,30 +103,30 @@ Whaleness WeChat 베타 그룹에서 사용 경험을 나누고 문제를 제보
 
 ## 스크린샷
 
-> 최신 iOS 제품 이미지: 1.7.10 자료는 2026년 10월 22~23일, iPhone Duo 이미지는 2026년 10월 26일 촬영했습니다. UI는 중국어입니다. [제품 이미지 출처](Docs/images/screenshots/2026-10-23/SOURCES.md) · [Duo 이미지 출처](Docs/images/screenshots/2026-10-26-duo/SOURCES.md).
+> 최신 iOS 제품 이미지: 1.7.10 자료는 2026년 10월 22~23일, iPhone Duo 이미지는 2026년 10월 26일 촬영했습니다. UI는 중국어입니다. [제품 이미지 출처](../images/screenshots/2026-10-23/SOURCES.md) · [Duo 이미지 출처](../images/screenshots/2026-10-26-duo/SOURCES.md).
 
 ### iPhone Duo: 가로, 세로, 탐색 레이아웃
 
 <table>
   <tr>
-    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/landscape-home.webp"><img src="Docs/images/screenshots/2026-10-26-duo/landscape-home.webp" alt="펼친 가로 모드 홈" width="100%"></a></td>
-    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/landscape-home-alt.webp"><img src="Docs/images/screenshots/2026-10-26-duo/landscape-home-alt.webp" alt="가로 모드 홈 배경" width="100%"></a></td>
+    <td width="50.00%" align="center"><a href="../images/screenshots/2026-10-26-duo/landscape-home.webp"><img src="../images/screenshots/2026-10-26-duo/landscape-home.webp" alt="펼친 가로 모드 홈" width="100%"></a></td>
+    <td width="50.00%" align="center"><a href="../images/screenshots/2026-10-26-duo/landscape-home-alt.webp"><img src="../images/screenshots/2026-10-26-duo/landscape-home-alt.webp" alt="가로 모드 홈 배경" width="100%"></a></td>
   </tr>
   <tr>
     <td align="center"><strong>펼친 가로 모드 홈</strong></td>
     <td align="center"><strong>가로 모드 홈 배경</strong></td>
   </tr>
   <tr>
-    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/landscape-settings.webp"><img src="Docs/images/screenshots/2026-10-26-duo/landscape-settings.webp" alt="가로 모드 설정" width="100%"></a></td>
-    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/landscape-conversation.webp"><img src="Docs/images/screenshots/2026-10-26-duo/landscape-conversation.webp" alt="가로 모드 대화" width="100%"></a></td>
+    <td width="50.00%" align="center"><a href="../images/screenshots/2026-10-26-duo/landscape-settings.webp"><img src="../images/screenshots/2026-10-26-duo/landscape-settings.webp" alt="가로 모드 설정" width="100%"></a></td>
+    <td width="50.00%" align="center"><a href="../images/screenshots/2026-10-26-duo/landscape-conversation.webp"><img src="../images/screenshots/2026-10-26-duo/landscape-conversation.webp" alt="가로 모드 대화" width="100%"></a></td>
   </tr>
   <tr>
     <td align="center"><strong>가로 모드 설정</strong></td>
     <td align="center"><strong>가로 모드 대화</strong></td>
   </tr>
   <tr>
-    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/landscape-navigation.webp"><img src="Docs/images/screenshots/2026-10-26-duo/landscape-navigation.webp" alt="열린 탐색 사이드바" width="100%"></a></td>
-    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/portrait-home.webp"><img src="Docs/images/screenshots/2026-10-26-duo/portrait-home.webp" alt="펼친 세로 모드 홈" width="100%"></a></td>
+    <td width="50.00%" align="center"><a href="../images/screenshots/2026-10-26-duo/landscape-navigation.webp"><img src="../images/screenshots/2026-10-26-duo/landscape-navigation.webp" alt="열린 탐색 사이드바" width="100%"></a></td>
+    <td width="50.00%" align="center"><a href="../images/screenshots/2026-10-26-duo/portrait-home.webp"><img src="../images/screenshots/2026-10-26-duo/portrait-home.webp" alt="펼친 세로 모드 홈" width="100%"></a></td>
   </tr>
   <tr>
     <td align="center"><strong>열린 탐색 사이드바</strong></td>
@@ -138,9 +138,9 @@ Whaleness WeChat 베타 그룹에서 사용 경험을 나누고 문제를 제보
 
 <table>
   <tr>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/team-members.webp"><img src="Docs/images/screenshots/2026-10-23/team-members.webp" alt="Agent 팀 멤버" width="100%"></a></td>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/team-tasks.webp"><img src="Docs/images/screenshots/2026-10-23/team-tasks.webp" alt="팀 공유 작업" width="100%"></a></td>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/attachment-picker.webp"><img src="Docs/images/screenshots/2026-10-23/attachment-picker.webp" alt="파일 및 이미지 선택" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/team-members.webp"><img src="../images/screenshots/2026-10-23/team-members.webp" alt="Agent 팀 멤버" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/team-tasks.webp"><img src="../images/screenshots/2026-10-23/team-tasks.webp" alt="팀 공유 작업" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/attachment-picker.webp"><img src="../images/screenshots/2026-10-23/attachment-picker.webp" alt="파일 및 이미지 선택" width="100%"></a></td>
   </tr>
   <tr>
     <td align="center"><strong>Agent 팀 멤버</strong></td>
@@ -148,9 +148,9 @@ Whaleness WeChat 베타 그룹에서 사용 경험을 나누고 문제를 제보
     <td align="center"><strong>파일 및 이미지 선택</strong></td>
   </tr>
   <tr>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/text-selection.webp"><img src="Docs/images/screenshots/2026-10-23/text-selection.webp" alt="독립 문자 선택 화면" width="100%"></a></td>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/conversation-files.webp"><img src="Docs/images/screenshots/2026-10-23/conversation-files.webp" alt="대화의 파일 카드" width="100%"></a></td>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/release-notes.webp"><img src="Docs/images/screenshots/2026-10-23/release-notes.webp" alt="앱에 포함된 릴리스 노트" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/text-selection.webp"><img src="../images/screenshots/2026-10-23/text-selection.webp" alt="독립 문자 선택 화면" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/conversation-files.webp"><img src="../images/screenshots/2026-10-23/conversation-files.webp" alt="대화의 파일 카드" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/release-notes.webp"><img src="../images/screenshots/2026-10-23/release-notes.webp" alt="앱에 포함된 릴리스 노트" width="100%"></a></td>
   </tr>
   <tr>
     <td align="center"><strong>독립 문자 선택 화면</strong></td>
@@ -158,9 +158,9 @@ Whaleness WeChat 베타 그룹에서 사용 경험을 나누고 문제를 제보
     <td align="center"><strong>앱에 포함된 릴리스 노트</strong></td>
   </tr>
   <tr>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/storage.webp"><img src="Docs/images/screenshots/2026-10-23/storage.webp" alt="로컬 저장 공간과 캐시 분류" width="100%"></a></td>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/voice-input.webp"><img src="Docs/images/screenshots/2026-10-23/voice-input.webp" alt="길게 눌러 음성 입력" width="100%"></a></td>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/file-upload.webp"><img src="Docs/images/screenshots/2026-10-23/file-upload.webp" alt="입력란의 파일 첨부" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/storage.webp"><img src="../images/screenshots/2026-10-23/storage.webp" alt="로컬 저장 공간과 캐시 분류" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/voice-input.webp"><img src="../images/screenshots/2026-10-23/voice-input.webp" alt="길게 눌러 음성 입력" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/file-upload.webp"><img src="../images/screenshots/2026-10-23/file-upload.webp" alt="입력란의 파일 첨부" width="100%"></a></td>
   </tr>
   <tr>
     <td align="center"><strong>로컬 저장 공간과 캐시 분류</strong></td>
@@ -172,15 +172,15 @@ Whaleness WeChat 베타 그룹에서 사용 경험을 나누고 문제를 제보
 <details>
 <summary>이전 이미지: iPad, 미리보기, 설정, 페어링</summary>
 
-> 스크린샷은 중국어 UI의 iOS 앱입니다. Android는 Jetpack Compose로 해당 정보 구조와 흐름을 구현합니다. 이 모음의 음성, 파일, 글자 크기, iPad 이미지는 2026년 10월 16일 버전 1.7.6에서 촬영했습니다. [이미지 출처](Docs/images/screenshots/2026-10/SOURCES.md)를 참고하세요.
+> 스크린샷은 중국어 UI의 iOS 앱입니다. Android는 Jetpack Compose로 해당 정보 구조와 흐름을 구현합니다. 이 모음의 음성, 파일, 글자 크기, iPad 이미지는 2026년 10월 16일 버전 1.7.6에서 촬영했습니다. [이미지 출처](../images/screenshots/2026-10/SOURCES.md)를 참고하세요.
 
 ### 음성 입력, 파일 미리보기, 글자 크기
 
 <table>
   <tr>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/2026-10/voice-input.png" alt="iPhone에서 길게 눌러 녹음 중인 음성 입력 오버레이" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/2026-10/pdf-preview.png" alt="대화 파일 카드에서 연 PDF 미리보기" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/2026-10/font-size.png" alt="앱 글자 크기 미리보기와 슬라이더" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/2026-10/voice-input.png" alt="iPhone에서 길게 눌러 녹음 중인 음성 입력 오버레이" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/2026-10/pdf-preview.png" alt="대화 파일 카드에서 연 PDF 미리보기" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/2026-10/font-size.png" alt="앱 글자 크기 미리보기와 슬라이더" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>길게 눌러 말하기</strong><br>놓으면 텍스트 변환, 위로 밀면 취소</td>
@@ -189,22 +189,22 @@ Whaleness WeChat 베타 그룹에서 사용 경험을 나누고 문제를 제보
   </tr>
 </table>
 
-[위로 밀어 취소하는 상태 보기](Docs/images/screenshots/2026-10/voice-cancel.png)
+[위로 밀어 취소하는 상태 보기](../images/screenshots/2026-10/voice-cancel.png)
 
 ### iPad와 큰 화면
 
 <table>
   <tr>
-    <td width="50%" align="center"><img src="Docs/images/screenshots/2026-10/ipad-home.png" alt="작업 공간과 최근 세션을 두 열로 표시하는 iPad 홈" width="100%"></td>
-    <td width="50%" align="center"><img src="Docs/images/screenshots/2026-10/ipad-conversation.png" alt="파일 카드가 있는 iPad 가로 모드 대화" width="100%"></td>
+    <td width="50%" align="center"><img src="../images/screenshots/2026-10/ipad-home.png" alt="작업 공간과 최근 세션을 두 열로 표시하는 iPad 홈" width="100%"></td>
+    <td width="50%" align="center"><img src="../images/screenshots/2026-10/ipad-conversation.png" alt="파일 카드가 있는 iPad 가로 모드 대화" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>넓은 홈 화면</strong><br>작업 공간과 세션을 나란히 표시</td>
     <td align="center"><strong>태블릿 대화</strong><br>읽기 편한 본문 너비와 입력 영역</td>
   </tr>
   <tr>
-    <td align="center"><img src="Docs/images/screenshots/2026-10/ipad-pdf-preview.png" alt="iPad 대화 위에 표시되는 PDF 미리보기 창" width="100%"></td>
-    <td align="center"><img src="Docs/images/screenshots/2026-10/ipad-voice-input.png" alt="iPad 가로 화면에 맞춘 녹음 오버레이" width="100%"></td>
+    <td align="center"><img src="../images/screenshots/2026-10/ipad-pdf-preview.png" alt="iPad 대화 위에 표시되는 PDF 미리보기 창" width="100%"></td>
+    <td align="center"><img src="../images/screenshots/2026-10/ipad-voice-input.png" alt="iPad 가로 화면에 맞춘 녹음 오버레이" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>파일 미리보기</strong><br>대화 맥락을 유지하며 확인</td>
@@ -216,9 +216,9 @@ Whaleness WeChat 베타 그룹에서 사용 경험을 나누고 문제를 제보
 
 <table>
   <tr>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/home.png" alt="iOS 작업 공간 홈 화면" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/2026-10/file-card.png" alt="파일 카드와 실행 통계 컨트롤이 있는 iOS 대화" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/trajectory-light.png" alt="iOS 라이트 모드의 Agent 실행 기록" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/home.png" alt="iOS 작업 공간 홈 화면" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/2026-10/file-card.png" alt="파일 카드와 실행 통계 컨트롤이 있는 iOS 대화" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/trajectory-light.png" alt="iOS 라이트 모드의 Agent 실행 기록" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>홈</strong><br>작업 공간과 최근 세션</td>
@@ -231,9 +231,9 @@ Whaleness WeChat 베타 그룹에서 사용 경험을 나누고 문제를 제보
 
 <table>
   <tr>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/settings.png" alt="iOS 앱 설정" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/agent-presets.png" alt="iOS Agent 프리셋" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/default-model.png" alt="iOS 기본 모델 설정" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/settings.png" alt="iOS 앱 설정" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/agent-presets.png" alt="iOS Agent 프리셋" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/default-model.png" alt="iOS 기본 모델 설정" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>설정</strong><br>배포 기본값과 Gateway 상태</td>
@@ -246,8 +246,8 @@ Whaleness WeChat 베타 그룹에서 사용 경험을 나누고 문제를 제보
 
 <table>
   <tr>
-    <td width="50%" align="center"><img src="website/assets/plugins.webp" alt="iOS 공식 및 설치된 플러그인 목록" width="100%"></td>
-    <td width="50%" align="center"><img src="website/assets/tasks.webp" alt="iOS 예약 작업의 규칙과 상세 정보" width="100%"></td>
+    <td width="50%" align="center"><img src="../../website/assets/plugins.webp" alt="iOS 공식 및 설치된 플러그인 목록" width="100%"></td>
+    <td width="50%" align="center"><img src="../../website/assets/tasks.webp" alt="iOS 예약 작업의 규칙과 상세 정보" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>플러그인 관리</strong><br>상세 정보와 활성화 상태 확인</td>
@@ -262,9 +262,9 @@ Whaleness WeChat 베타 그룹에서 사용 경험을 나누고 문제를 제보
 
 <table>
   <tr>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/workspace-switcher.png" alt="iOS 작업 공간 전환기" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/workspace-directory-picker.png" alt="iOS 작업 공간 디렉터리 선택기" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/trajectory-detail-light.png" alt="iOS 실행 기록 상세 패널" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/workspace-switcher.png" alt="iOS 작업 공간 전환기" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/workspace-directory-picker.png" alt="iOS 작업 공간 디렉터리 선택기" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/trajectory-detail-light.png" alt="iOS 실행 기록 상세 패널" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>작업 공간 전환</strong><br>다른 프로젝트에 접근</td>
@@ -277,9 +277,9 @@ Whaleness WeChat 베타 그룹에서 사용 경험을 나누고 문제를 제보
 
 <table>
   <tr>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/pairing-light.png" alt="iOS 라이트 모드 기기 페어링" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/pairing-dark.png" alt="iOS 다크 모드 기기 페어링" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/conversation-dark.png" alt="iOS 다크 모드 대화" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/pairing-light.png" alt="iOS 라이트 모드 기기 페어링" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/pairing-dark.png" alt="iOS 다크 모드 기기 페어링" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/conversation-dark.png" alt="iOS 다크 모드 대화" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>라이트 모드 페어링</strong><br>QR 코드 스캔 또는 정보 직접 입력</td>
@@ -471,21 +471,21 @@ iOS 테스트는 Xcode에서 `DeepSeekHarnessMobile` 스킴을 선택하고 **Pr
 
 일부 기술 문서는 현재 중국어로만 제공됩니다.
 
-- [Harness / WebUI 기능 및 프로토콜 조사](Docs/exploration.md)
-- [모바일 디자인 사양](Design/design-spec.md)
-- [서드파티 고지](Docs/third-party-notices.md)
+- [Harness / WebUI 기능 및 프로토콜 조사](../exploration.md)
+- [모바일 디자인 사양](../../Design/design-spec.md)
+- [서드파티 고지](../third-party-notices.md)
 
 다음 문서는 KMP 이전과 Android 구현 기록입니다. 현재 상태는 이 README와 소스 코드를 참고하세요.
 
-- [KMP 개발 가이드](Docs/kmp-development.md)
-- [Android Gateway 12단계 검증](Docs/kmp-stage12-android-gateway-verification.md)
-- [Android UI 13단계 검증](Docs/kmp-stage13-android-ui-verification.md)
+- [KMP 개발 가이드](../kmp-development.md)
+- [Android Gateway 12단계 검증](../kmp-stage12-android-gateway-verification.md)
+- [Android UI 13단계 검증](../kmp-stage13-android-ui-verification.md)
 
 ## 프로젝트 현황
 
 Whaleness는 지속적으로 개발 중입니다. KMP 공유 모듈과 Android 및 iOS 네이티브 앱이 구현되어 있으며, 프로토콜 지원, 플랫폼 간 일관성, 모바일 경험은 DeepSeek Harness 및 Mobile Gateway와 함께 개선됩니다.
 
-이 프로젝트는 DeepSeek Harness 커뮤니티 클라이언트이며 DeepSeek의 공식 릴리스가 아닙니다.
+이 프로젝트는 독립적으로 개발된 DeepSeek Harness 서드파티 클라이언트입니다.
 
 [![dsh-plugin.org에 등록됨](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/clarklevis1995/dsh-plugin-mobile-gateway)
 

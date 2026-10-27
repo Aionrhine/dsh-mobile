@@ -1,10 +1,10 @@
 <div align="center">
 
-[English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Español](README.es.md) · **Français** · [Deutsch](README.de.md) · [Português (Brasil)](README.pt-BR.md)
+[English](../../README.md) · [简体中文](../../README.zh-CN.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Español](README.es.md) · **Français** · [Deutsch](README.de.md) · [Português (Brasil)](README.pt-BR.md)
 
-<img src="Design/whale-girl-ios-app-promo-16x9-v3.png" alt="Présentation de l’application Whaleness pour iOS" width="100%">
+<img src="../../Design/whale-girl-ios-app-promo-16x9-v3.png" alt="Présentation de l’application Whaleness pour iOS" width="100%">
 
-# Whaleness — Client mobile non officiel pour DeepSeek Harness
+# Whaleness — Client mobile tiers pour DeepSeek Harness
 
 **Des applications natives Android et iOS dont la logique principale est partagée avec Kotlin Multiplatform.**
 
@@ -13,9 +13,9 @@ Connectez-vous à DeepSeek Harness via Mobile Gateway pour accéder aux espaces 
 Site web : [Whaleness](https://clarklevis1995.github.io/dsh-mobile/)
 
 <p>
-  <a href="https://testflight.apple.com/join/1Euwby6r"><img src="Docs/images/badges/testflight.svg" alt="Rejoindre la bêta iOS sur TestFlight" width="180" height="60"></a>
+  <a href="https://testflight.apple.com/join/1Euwby6r"><img src="../images/badges/testflight.svg" alt="Rejoindre la bêta iOS sur TestFlight" width="180" height="60"></a>
   &nbsp;&nbsp;
-  <a href="https://github.com/Clarklevis1995/dsh-mobile/releases"><img src="Docs/images/badges/android-github.svg" alt="Télécharger l’APK Android depuis GitHub Releases" width="180" height="60"></a>
+  <a href="https://github.com/Clarklevis1995/dsh-mobile/releases"><img src="../images/badges/android-github.svg" alt="Télécharger l’APK Android depuis GitHub Releases" width="180" height="60"></a>
 </p>
 
 ![Kotlin Multiplatform](https://img.shields.io/badge/Kotlin-Multiplatform-7F52FF?logo=kotlin&logoColor=white)
@@ -29,7 +29,7 @@ Site web : [Whaleness](https://clarklevis1995.github.io/dsh-mobile/)
 
 ## Présentation
 
-Whaleness est un client mobile natif non officiel pour DeepSeek Harness, développé de manière indépendante. Les applications Android et iOS utilisent Kotlin Multiplatform (KMP) :
+Whaleness est un client mobile natif tiers pour DeepSeek Harness, développé de manière indépendante. Les applications Android et iOS utilisent Kotlin Multiplatform (KMP) :
 
 - `shared` est la source de vérité de l’état métier partagé : protocoles, machines à états, réducteurs, projections et synchronisation.
 - `androidApp` implémente l’application Android avec Kotlin, Jetpack Compose et OkHttp.
@@ -41,7 +41,7 @@ Les deux applications se connectent à Harness par WebSocket via [`dsh-plugin-mo
 
 - **iOS** : [Rejoindre la bêta TestFlight](https://testflight.apple.com/join/1Euwby6r). Compatible avec les iPhone et iPad sous iOS / iPadOS 16.1 ou version ultérieure.
 - **Android** : [Télécharger un APK depuis GitHub Releases](https://github.com/Clarklevis1995/dsh-mobile/releases). Android 7.0 (API 24) ou version ultérieure est requis. La recherche de mises à jour privilégie la source de téléchargement accélérée et vérifie les paquets téléchargés.
-- **Hôte de bureau** : lancez DeepSeek Harness avec **`dsh-plugin-mobile-gateway` 0.11.1 ou version ultérieure** installé et activé. [`AppRelease/release-info.json`](AppRelease/release-info.json) définit la version minimale requise.
+- **Hôte de bureau** : lancez DeepSeek Harness avec **`dsh-plugin-mobile-gateway` 0.11.1 ou version ultérieure** installé et activé. [`AppRelease/release-info.json`](../../AppRelease/release-info.json) définit la version minimale requise.
 - **Saisie vocale** : activez le plugin officiel de saisie vocale dans la section des plugins de l’hôte, terminez le téléchargement et l’initialisation du modèle, puis autorisez l’accès au microphone sur l’appareil mobile.
 
 ## Communauté bêta
@@ -49,7 +49,7 @@ Les deux applications se connectent à Harness par WebSocket via [`dsh-plugin-mo
 Rejoignez le groupe WeChat de la bêta Whaleness pour partager votre expérience, signaler des problèmes et obtenir de l’aide. Scannez avec WeChat ou enregistrez l’image pour la reconnaître dans WeChat.
 
 <p align="center">
-  <a href="website/assets/support-wechat-2026-10-23.png"><img src="website/assets/support-wechat-2026-10-23.png" alt="Code QR du groupe WeChat de la bêta Whaleness, valable avant le 30 octobre 2026" width="320"></a>
+  <a href="../../website/assets/support-wechat-2026-10-23.png"><img src="../../website/assets/support-wechat-2026-10-23.png" alt="Code QR du groupe WeChat de la bêta Whaleness, valable avant le 30 octobre 2026" width="320"></a>
 </p>
 
 > Mis à jour le 23 octobre 2026. L’image d’origine indique que le code est valable avant le 30 octobre 2026. S’il a expiré, consultez la [page du produit](https://clarklevis1995.github.io/dsh-mobile/) pour obtenir le dernier code QR.
@@ -103,30 +103,30 @@ Rejoignez le groupe WeChat de la bêta Whaleness pour partager votre expérience
 
 ## Captures d’écran
 
-> Captures iOS récentes : le lot 1.7.10 date des 22–23 octobre 2026 et les captures iPhone Duo du 26 octobre 2026. L’interface est en chinois. [Sources du produit](Docs/images/screenshots/2026-10-23/SOURCES.md) · [Sources Duo](Docs/images/screenshots/2026-10-26-duo/SOURCES.md).
+> Captures iOS récentes : le lot 1.7.10 date des 22–23 octobre 2026 et les captures iPhone Duo du 26 octobre 2026. L’interface est en chinois. [Sources du produit](../images/screenshots/2026-10-23/SOURCES.md) · [Sources Duo](../images/screenshots/2026-10-26-duo/SOURCES.md).
 
 ### iPhone Duo : paysage, portrait et navigation
 
 <table>
   <tr>
-    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/landscape-home.webp"><img src="Docs/images/screenshots/2026-10-26-duo/landscape-home.webp" alt="Accueil déplié en paysage" width="100%"></a></td>
-    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/landscape-home-alt.webp"><img src="Docs/images/screenshots/2026-10-26-duo/landscape-home-alt.webp" alt="Fond d’accueil en paysage" width="100%"></a></td>
+    <td width="50.00%" align="center"><a href="../images/screenshots/2026-10-26-duo/landscape-home.webp"><img src="../images/screenshots/2026-10-26-duo/landscape-home.webp" alt="Accueil déplié en paysage" width="100%"></a></td>
+    <td width="50.00%" align="center"><a href="../images/screenshots/2026-10-26-duo/landscape-home-alt.webp"><img src="../images/screenshots/2026-10-26-duo/landscape-home-alt.webp" alt="Fond d’accueil en paysage" width="100%"></a></td>
   </tr>
   <tr>
     <td align="center"><strong>Accueil déplié en paysage</strong></td>
     <td align="center"><strong>Fond d’accueil en paysage</strong></td>
   </tr>
   <tr>
-    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/landscape-settings.webp"><img src="Docs/images/screenshots/2026-10-26-duo/landscape-settings.webp" alt="Réglages en paysage" width="100%"></a></td>
-    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/landscape-conversation.webp"><img src="Docs/images/screenshots/2026-10-26-duo/landscape-conversation.webp" alt="Conversation en paysage" width="100%"></a></td>
+    <td width="50.00%" align="center"><a href="../images/screenshots/2026-10-26-duo/landscape-settings.webp"><img src="../images/screenshots/2026-10-26-duo/landscape-settings.webp" alt="Réglages en paysage" width="100%"></a></td>
+    <td width="50.00%" align="center"><a href="../images/screenshots/2026-10-26-duo/landscape-conversation.webp"><img src="../images/screenshots/2026-10-26-duo/landscape-conversation.webp" alt="Conversation en paysage" width="100%"></a></td>
   </tr>
   <tr>
     <td align="center"><strong>Réglages en paysage</strong></td>
     <td align="center"><strong>Conversation en paysage</strong></td>
   </tr>
   <tr>
-    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/landscape-navigation.webp"><img src="Docs/images/screenshots/2026-10-26-duo/landscape-navigation.webp" alt="Barre latérale de navigation ouverte" width="100%"></a></td>
-    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/portrait-home.webp"><img src="Docs/images/screenshots/2026-10-26-duo/portrait-home.webp" alt="Accueil déplié en portrait" width="100%"></a></td>
+    <td width="50.00%" align="center"><a href="../images/screenshots/2026-10-26-duo/landscape-navigation.webp"><img src="../images/screenshots/2026-10-26-duo/landscape-navigation.webp" alt="Barre latérale de navigation ouverte" width="100%"></a></td>
+    <td width="50.00%" align="center"><a href="../images/screenshots/2026-10-26-duo/portrait-home.webp"><img src="../images/screenshots/2026-10-26-duo/portrait-home.webp" alt="Accueil déplié en portrait" width="100%"></a></td>
   </tr>
   <tr>
     <td align="center"><strong>Barre latérale de navigation ouverte</strong></td>
@@ -138,9 +138,9 @@ Rejoignez le groupe WeChat de la bêta Whaleness pour partager votre expérience
 
 <table>
   <tr>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/team-members.webp"><img src="Docs/images/screenshots/2026-10-23/team-members.webp" alt="Membres de l’équipe d’Agents" width="100%"></a></td>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/team-tasks.webp"><img src="Docs/images/screenshots/2026-10-23/team-tasks.webp" alt="Tâches partagées de l’équipe" width="100%"></a></td>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/attachment-picker.webp"><img src="Docs/images/screenshots/2026-10-23/attachment-picker.webp" alt="Sélecteur de fichiers et d’images" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/team-members.webp"><img src="../images/screenshots/2026-10-23/team-members.webp" alt="Membres de l’équipe d’Agents" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/team-tasks.webp"><img src="../images/screenshots/2026-10-23/team-tasks.webp" alt="Tâches partagées de l’équipe" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/attachment-picker.webp"><img src="../images/screenshots/2026-10-23/attachment-picker.webp" alt="Sélecteur de fichiers et d’images" width="100%"></a></td>
   </tr>
   <tr>
     <td align="center"><strong>Membres de l’équipe d’Agents</strong></td>
@@ -148,9 +148,9 @@ Rejoignez le groupe WeChat de la bêta Whaleness pour partager votre expérience
     <td align="center"><strong>Sélecteur de fichiers et d’images</strong></td>
   </tr>
   <tr>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/text-selection.webp"><img src="Docs/images/screenshots/2026-10-23/text-selection.webp" alt="Écran de sélection de texte" width="100%"></a></td>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/conversation-files.webp"><img src="Docs/images/screenshots/2026-10-23/conversation-files.webp" alt="Fichiers dans une conversation" width="100%"></a></td>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/release-notes.webp"><img src="Docs/images/screenshots/2026-10-23/release-notes.webp" alt="Notes de version intégrées" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/text-selection.webp"><img src="../images/screenshots/2026-10-23/text-selection.webp" alt="Écran de sélection de texte" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/conversation-files.webp"><img src="../images/screenshots/2026-10-23/conversation-files.webp" alt="Fichiers dans une conversation" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/release-notes.webp"><img src="../images/screenshots/2026-10-23/release-notes.webp" alt="Notes de version intégrées" width="100%"></a></td>
   </tr>
   <tr>
     <td align="center"><strong>Écran de sélection de texte</strong></td>
@@ -158,9 +158,9 @@ Rejoignez le groupe WeChat de la bêta Whaleness pour partager votre expérience
     <td align="center"><strong>Notes de version intégrées</strong></td>
   </tr>
   <tr>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/storage.webp"><img src="Docs/images/screenshots/2026-10-23/storage.webp" alt="Stockage local et catégories du cache" width="100%"></a></td>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/voice-input.webp"><img src="Docs/images/screenshots/2026-10-23/voice-input.webp" alt="Saisie vocale par appui prolongé" width="100%"></a></td>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/file-upload.webp"><img src="Docs/images/screenshots/2026-10-23/file-upload.webp" alt="Fichier joint dans la zone de saisie" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/storage.webp"><img src="../images/screenshots/2026-10-23/storage.webp" alt="Stockage local et catégories du cache" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/voice-input.webp"><img src="../images/screenshots/2026-10-23/voice-input.webp" alt="Saisie vocale par appui prolongé" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/file-upload.webp"><img src="../images/screenshots/2026-10-23/file-upload.webp" alt="Fichier joint dans la zone de saisie" width="100%"></a></td>
   </tr>
   <tr>
     <td align="center"><strong>Stockage local et catégories du cache</strong></td>
@@ -172,15 +172,15 @@ Rejoignez le groupe WeChat de la bêta Whaleness pour partager votre expérience
 <details>
 <summary>Anciennes captures : iPad, aperçus, réglages et appairage</summary>
 
-> Les captures montrent l’application iOS avec une interface en chinois ; Android implémente les mêmes structures et flux avec Jetpack Compose. Les captures de voix, fichiers, taille du texte et iPad datent du 16 octobre 2026, version 1.7.6. Consultez les [sources des captures](Docs/images/screenshots/2026-10/SOURCES.md).
+> Les captures montrent l’application iOS avec une interface en chinois ; Android implémente les mêmes structures et flux avec Jetpack Compose. Les captures de voix, fichiers, taille du texte et iPad datent du 16 octobre 2026, version 1.7.6. Consultez les [sources des captures](../images/screenshots/2026-10/SOURCES.md).
 
 ### Saisie vocale, aperçus de fichiers et taille du texte
 
 <table>
   <tr>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/2026-10/voice-input.png" alt="Superposition d’enregistrement par appui prolongé sur iPhone" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/2026-10/pdf-preview.png" alt="Aperçu PDF ouvert depuis une carte de fichier dans la conversation" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/2026-10/font-size.png" alt="Aperçu de la taille du texte et curseur de réglage" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/2026-10/voice-input.png" alt="Superposition d’enregistrement par appui prolongé sur iPhone" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/2026-10/pdf-preview.png" alt="Aperçu PDF ouvert depuis une carte de fichier dans la conversation" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/2026-10/font-size.png" alt="Aperçu de la taille du texte et curseur de réglage" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>Maintenir pour parler</strong><br>Relâcher pour transcrire, glisser vers le haut pour annuler</td>
@@ -189,22 +189,22 @@ Rejoignez le groupe WeChat de la bêta Whaleness pour partager votre expérience
   </tr>
 </table>
 
-[Voir l’état d’annulation par glissement vers le haut](Docs/images/screenshots/2026-10/voice-cancel.png)
+[Voir l’état d’annulation par glissement vers le haut](../images/screenshots/2026-10/voice-cancel.png)
 
 ### iPad et grands écrans
 
 <table>
   <tr>
-    <td width="50%" align="center"><img src="Docs/images/screenshots/2026-10/ipad-home.png" alt="Accueil iPad à deux colonnes avec espaces de travail et sessions récentes" width="100%"></td>
-    <td width="50%" align="center"><img src="Docs/images/screenshots/2026-10/ipad-conversation.png" alt="Conversation iPad en paysage avec une carte de fichier" width="100%"></td>
+    <td width="50%" align="center"><img src="../images/screenshots/2026-10/ipad-home.png" alt="Accueil iPad à deux colonnes avec espaces de travail et sessions récentes" width="100%"></td>
+    <td width="50%" align="center"><img src="../images/screenshots/2026-10/ipad-conversation.png" alt="Conversation iPad en paysage avec une carte de fichier" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>Accueil sur grand écran</strong><br>Espaces de travail et sessions côte à côte</td>
     <td align="center"><strong>Conversations sur tablette</strong><br>Largeur de lecture et zone de saisie confortables</td>
   </tr>
   <tr>
-    <td align="center"><img src="Docs/images/screenshots/2026-10/ipad-pdf-preview.png" alt="Fenêtre d’aperçu PDF au-dessus d’une conversation iPad" width="100%"></td>
-    <td align="center"><img src="Docs/images/screenshots/2026-10/ipad-voice-input.png" alt="Superposition d’enregistrement adaptée à l’iPad en paysage" width="100%"></td>
+    <td align="center"><img src="../images/screenshots/2026-10/ipad-pdf-preview.png" alt="Fenêtre d’aperçu PDF au-dessus d’une conversation iPad" width="100%"></td>
+    <td align="center"><img src="../images/screenshots/2026-10/ipad-voice-input.png" alt="Superposition d’enregistrement adaptée à l’iPad en paysage" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>Aperçus de fichiers</strong><br>Consulter sans perdre le contexte</td>
@@ -216,9 +216,9 @@ Rejoignez le groupe WeChat de la bêta Whaleness pour partager votre expérience
 
 <table>
   <tr>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/home.png" alt="Accueil des espaces de travail sur iOS" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/2026-10/file-card.png" alt="Conversation iOS avec carte de fichier et commande de statistiques d’exécution" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/trajectory-light.png" alt="Trace de l’Agent en mode clair sur iOS" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/home.png" alt="Accueil des espaces de travail sur iOS" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/2026-10/file-card.png" alt="Conversation iOS avec carte de fichier et commande de statistiques d’exécution" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/trajectory-light.png" alt="Trace de l’Agent en mode clair sur iOS" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>Accueil</strong><br>Espaces de travail et sessions récentes</td>
@@ -231,9 +231,9 @@ Rejoignez le groupe WeChat de la bêta Whaleness pour partager votre expérience
 
 <table>
   <tr>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/settings.png" alt="Réglages de l’application iOS" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/agent-presets.png" alt="Préréglages de l’Agent sur iOS" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/default-model.png" alt="Réglages du modèle par défaut sur iOS" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/settings.png" alt="Réglages de l’application iOS" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/agent-presets.png" alt="Préréglages de l’Agent sur iOS" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/default-model.png" alt="Réglages du modèle par défaut sur iOS" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>Réglages</strong><br>Valeurs de déploiement et état du Gateway</td>
@@ -246,8 +246,8 @@ Rejoignez le groupe WeChat de la bêta Whaleness pour partager votre expérience
 
 <table>
   <tr>
-    <td width="50%" align="center"><img src="website/assets/plugins.webp" alt="Liste des plugins officiels et installés sur iOS" width="100%"></td>
-    <td width="50%" align="center"><img src="website/assets/tasks.webp" alt="Règles et détails des tâches planifiées sur iOS" width="100%"></td>
+    <td width="50%" align="center"><img src="../../website/assets/plugins.webp" alt="Liste des plugins officiels et installés sur iOS" width="100%"></td>
+    <td width="50%" align="center"><img src="../../website/assets/tasks.webp" alt="Règles et détails des tâches planifiées sur iOS" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>Gestion des plugins</strong><br>Consulter les détails et l’état d’activation</td>
@@ -262,9 +262,9 @@ Rejoignez le groupe WeChat de la bêta Whaleness pour partager votre expérience
 
 <table>
   <tr>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/workspace-switcher.png" alt="Sélecteur d’espaces de travail iOS" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/workspace-directory-picker.png" alt="Sélecteur de répertoire de l’espace de travail iOS" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/trajectory-detail-light.png" alt="Panneau des détails de trace iOS" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/workspace-switcher.png" alt="Sélecteur d’espaces de travail iOS" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/workspace-directory-picker.png" alt="Sélecteur de répertoire de l’espace de travail iOS" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/trajectory-detail-light.png" alt="Panneau des détails de trace iOS" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>Changer d’espace de travail</strong><br>Accéder à différents projets</td>
@@ -277,9 +277,9 @@ Rejoignez le groupe WeChat de la bêta Whaleness pour partager votre expérience
 
 <table>
   <tr>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/pairing-light.png" alt="Appairage d’un appareil en mode clair sur iOS" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/pairing-dark.png" alt="Appairage d’un appareil en mode sombre sur iOS" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/conversation-dark.png" alt="Conversation en mode sombre sur iOS" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/pairing-light.png" alt="Appairage d’un appareil en mode clair sur iOS" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/pairing-dark.png" alt="Appairage d’un appareil en mode sombre sur iOS" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/conversation-dark.png" alt="Conversation en mode sombre sur iOS" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>Appairage en mode clair</strong><br>Scanner un QR ou saisir les informations</td>
@@ -471,21 +471,21 @@ Pour les tests iOS, sélectionnez le schéma `DeepSeekHarnessMobile` dans Xcode,
 
 Certains documents techniques liés sont actuellement disponibles uniquement en chinois.
 
-- [Étude des fonctions et du protocole Harness / WebUI](Docs/exploration.md)
-- [Spécification du design mobile](Design/design-spec.md)
-- [Mentions relatives aux tiers](Docs/third-party-notices.md)
+- [Étude des fonctions et du protocole Harness / WebUI](../exploration.md)
+- [Spécification du design mobile](../../Design/design-spec.md)
+- [Mentions relatives aux tiers](../third-party-notices.md)
 
 Les documents suivants décrivent la migration KMP et l’implémentation Android. Pour l’état actuel, consultez ce README et le code source :
 
-- [Guide de développement KMP](Docs/kmp-development.md)
-- [Validation Android Gateway, phase 12](Docs/kmp-stage12-android-gateway-verification.md)
-- [Validation Android UI, phase 13](Docs/kmp-stage13-android-ui-verification.md)
+- [Guide de développement KMP](../kmp-development.md)
+- [Validation Android Gateway, phase 12](../kmp-stage12-android-gateway-verification.md)
+- [Validation Android UI, phase 13](../kmp-stage13-android-ui-verification.md)
 
 ## État du projet
 
 Whaleness est en développement actif. Le module partagé KMP et les applications natives Android et iOS sont implémentés. Le protocole, la cohérence entre plateformes et l’expérience mobile continuent d’évoluer avec DeepSeek Harness et Mobile Gateway.
 
-Il s’agit d’un client communautaire pour DeepSeek Harness, et non d’une version officielle de DeepSeek.
+Il s’agit d’un client tiers pour DeepSeek Harness, développé de manière indépendante.
 
 [![Répertorié sur dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/clarklevis1995/dsh-plugin-mobile-gateway)
 

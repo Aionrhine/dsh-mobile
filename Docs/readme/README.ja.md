@@ -1,10 +1,10 @@
 <div align="center">
 
-[English](README.md) · [简体中文](README.zh-CN.md) · **日本語** · [한국어](README.ko.md) · [Español](README.es.md) · [Français](README.fr.md) · [Deutsch](README.de.md) · [Português (Brasil)](README.pt-BR.md)
+[English](../../README.md) · [简体中文](../../README.zh-CN.md) · **日本語** · [한국어](README.ko.md) · [Español](README.es.md) · [Français](README.fr.md) · [Deutsch](README.de.md) · [Português (Brasil)](README.pt-BR.md)
 
-<img src="Design/whale-girl-ios-app-promo-16x9-v3.png" alt="Whaleness iOS アプリの紹介" width="100%">
+<img src="../../Design/whale-girl-ios-app-promo-16x9-v3.png" alt="Whaleness iOS アプリの紹介" width="100%">
 
-# Whaleness — DeepSeek Harness の非公式モバイルクライアント
+# Whaleness — DeepSeek Harness のサードパーティー製モバイルクライアント
 
 **Kotlin Multiplatform でコアロジックを共有する、Android と iOS のネイティブアプリ。**
 
@@ -13,9 +13,9 @@ Mobile Gateway 経由で DeepSeek Harness に接続し、スマートフォン�
 ウェブサイト：[Whaleness](https://clarklevis1995.github.io/dsh-mobile/)
 
 <p>
-  <a href="https://testflight.apple.com/join/1Euwby6r"><img src="Docs/images/badges/testflight.svg" alt="iOS TestFlight ベータに参加" width="180" height="60"></a>
+  <a href="https://testflight.apple.com/join/1Euwby6r"><img src="../images/badges/testflight.svg" alt="iOS TestFlight ベータに参加" width="180" height="60"></a>
   &nbsp;&nbsp;
-  <a href="https://github.com/Clarklevis1995/dsh-mobile/releases"><img src="Docs/images/badges/android-github.svg" alt="GitHub Releases から Android APK をダウンロード" width="180" height="60"></a>
+  <a href="https://github.com/Clarklevis1995/dsh-mobile/releases"><img src="../images/badges/android-github.svg" alt="GitHub Releases から Android APK をダウンロード" width="180" height="60"></a>
 </p>
 
 ![Kotlin Multiplatform](https://img.shields.io/badge/Kotlin-Multiplatform-7F52FF?logo=kotlin&logoColor=white)
@@ -29,7 +29,7 @@ Mobile Gateway 経由で DeepSeek Harness に接続し、スマートフォン�
 
 ## 概要
 
-Whaleness は独立して開発された DeepSeek Harness の非公式ネイティブモバイルクライアントです。Android と iOS の両アプリで Kotlin Multiplatform（KMP）を使用しています。
+Whaleness は独立して開発された DeepSeek Harness のサードパーティー製ネイティブモバイルクライアントです。Android と iOS の両アプリで Kotlin Multiplatform（KMP）を使用しています。
 
 - `shared` は共有ビジネス状態の唯一の情報源であり、プロトコル処理、状態機械、Reducer、投影、同期を担当します。
 - `androidApp` は Kotlin、Jetpack Compose、OkHttp で Android アプリを実装しています。
@@ -41,7 +41,7 @@ Whaleness は独立して開発された DeepSeek Harness の非公式ネイテ�
 
 - **iOS**：[TestFlight ベータに参加](https://testflight.apple.com/join/1Euwby6r)。iOS / iPadOS 16.1 以降の iPhone と iPad に対応します。
 - **Android**：[GitHub Releases から APK をダウンロード](https://github.com/Clarklevis1995/dsh-mobile/releases)。Android 7.0（API 24）以降が必要です。アプリ内の更新確認では高速ダウンロード元を優先し、取得したパッケージを検証します。
-- **デスクトップホスト**：DeepSeek Harness を起動し、**`dsh-plugin-mobile-gateway` 0.11.1 以降**をインストールして有効にしてください。最低バージョンは [`AppRelease/release-info.json`](AppRelease/release-info.json) で定義されています。
+- **デスクトップホスト**：DeepSeek Harness を起動し、**`dsh-plugin-mobile-gateway` 0.11.1 以降**をインストールして有効にしてください。最低バージョンは [`AppRelease/release-info.json`](../../AppRelease/release-info.json) で定義されています。
 - **音声入力**：ホストのプラグイン画面で公式の音声入力プラグインを有効にし、モデルのダウンロードと初期化を完了して、モバイル端末のマイクへのアクセスを許可してください。
 
 ## ベータコミュニティ
@@ -49,7 +49,7 @@ Whaleness は独立して開発された DeepSeek Harness の非公式ネイテ�
 Whaleness の WeChat ベータグループでは、体験の共有、不具合の報告、サポートの相談ができます。WeChat でスキャンするか、画像を保存して WeChat で読み取ってください。
 
 <p align="center">
-  <a href="website/assets/support-wechat-2026-10-23.png"><img src="website/assets/support-wechat-2026-10-23.png" alt="Whaleness ベータ WeChat グループの QR コード、2026 年 10 月 30 日より前まで有効（原画像の表記）" width="320"></a>
+  <a href="../../website/assets/support-wechat-2026-10-23.png"><img src="../../website/assets/support-wechat-2026-10-23.png" alt="Whaleness ベータ WeChat グループの QR コード、2026 年 10 月 30 日より前まで有効（原画像の表記）" width="320"></a>
 </p>
 
 > 2026 年 10 月 23 日更新。原画像には「2026 年 10 月 30 日前まで有効」と記載されています。期限切れの場合は[製品ページ](https://clarklevis1995.github.io/dsh-mobile/)で最新の QR コードを確認してください。
@@ -103,30 +103,30 @@ Whaleness の WeChat ベータグループでは、体験の共有、不具合�
 
 ## スクリーンショット
 
-> 最新の iOS 製品画像：1.7.10 の素材は 2026 年 10 月 22～23 日、iPhone Duo の画像は 2026 年 10 月 26 日に撮影しました。UI は中国語です。[製品画像の出典](Docs/images/screenshots/2026-10-23/SOURCES.md) · [Duo 画像の出典](Docs/images/screenshots/2026-10-26-duo/SOURCES.md)。
+> 最新の iOS 製品画像：1.7.10 の素材は 2026 年 10 月 22～23 日、iPhone Duo の画像は 2026 年 10 月 26 日に撮影しました。UI は中国語です。[製品画像の出典](../images/screenshots/2026-10-23/SOURCES.md) · [Duo 画像の出典](../images/screenshots/2026-10-26-duo/SOURCES.md)。
 
 ### iPhone Duo：横向き・縦向き・ナビゲーション
 
 <table>
   <tr>
-    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/landscape-home.webp"><img src="Docs/images/screenshots/2026-10-26-duo/landscape-home.webp" alt="展開時の横向きホーム" width="100%"></a></td>
-    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/landscape-home-alt.webp"><img src="Docs/images/screenshots/2026-10-26-duo/landscape-home-alt.webp" alt="横向きホームの背景" width="100%"></a></td>
+    <td width="50.00%" align="center"><a href="../images/screenshots/2026-10-26-duo/landscape-home.webp"><img src="../images/screenshots/2026-10-26-duo/landscape-home.webp" alt="展開時の横向きホーム" width="100%"></a></td>
+    <td width="50.00%" align="center"><a href="../images/screenshots/2026-10-26-duo/landscape-home-alt.webp"><img src="../images/screenshots/2026-10-26-duo/landscape-home-alt.webp" alt="横向きホームの背景" width="100%"></a></td>
   </tr>
   <tr>
     <td align="center"><strong>展開時の横向きホーム</strong></td>
     <td align="center"><strong>横向きホームの背景</strong></td>
   </tr>
   <tr>
-    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/landscape-settings.webp"><img src="Docs/images/screenshots/2026-10-26-duo/landscape-settings.webp" alt="横向きの設定" width="100%"></a></td>
-    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/landscape-conversation.webp"><img src="Docs/images/screenshots/2026-10-26-duo/landscape-conversation.webp" alt="横向きの会話" width="100%"></a></td>
+    <td width="50.00%" align="center"><a href="../images/screenshots/2026-10-26-duo/landscape-settings.webp"><img src="../images/screenshots/2026-10-26-duo/landscape-settings.webp" alt="横向きの設定" width="100%"></a></td>
+    <td width="50.00%" align="center"><a href="../images/screenshots/2026-10-26-duo/landscape-conversation.webp"><img src="../images/screenshots/2026-10-26-duo/landscape-conversation.webp" alt="横向きの会話" width="100%"></a></td>
   </tr>
   <tr>
     <td align="center"><strong>横向きの設定</strong></td>
     <td align="center"><strong>横向きの会話</strong></td>
   </tr>
   <tr>
-    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/landscape-navigation.webp"><img src="Docs/images/screenshots/2026-10-26-duo/landscape-navigation.webp" alt="開いたナビゲーションサイドバー" width="100%"></a></td>
-    <td width="50.00%" align="center"><a href="Docs/images/screenshots/2026-10-26-duo/portrait-home.webp"><img src="Docs/images/screenshots/2026-10-26-duo/portrait-home.webp" alt="展開時の縦向きホーム" width="100%"></a></td>
+    <td width="50.00%" align="center"><a href="../images/screenshots/2026-10-26-duo/landscape-navigation.webp"><img src="../images/screenshots/2026-10-26-duo/landscape-navigation.webp" alt="開いたナビゲーションサイドバー" width="100%"></a></td>
+    <td width="50.00%" align="center"><a href="../images/screenshots/2026-10-26-duo/portrait-home.webp"><img src="../images/screenshots/2026-10-26-duo/portrait-home.webp" alt="展開時の縦向きホーム" width="100%"></a></td>
   </tr>
   <tr>
     <td align="center"><strong>開いたナビゲーションサイドバー</strong></td>
@@ -138,9 +138,9 @@ Whaleness の WeChat ベータグループでは、体験の共有、不具合�
 
 <table>
   <tr>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/team-members.webp"><img src="Docs/images/screenshots/2026-10-23/team-members.webp" alt="Agent チームのメンバー" width="100%"></a></td>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/team-tasks.webp"><img src="Docs/images/screenshots/2026-10-23/team-tasks.webp" alt="チームの共有タスク" width="100%"></a></td>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/attachment-picker.webp"><img src="Docs/images/screenshots/2026-10-23/attachment-picker.webp" alt="ファイルと画像の選択" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/team-members.webp"><img src="../images/screenshots/2026-10-23/team-members.webp" alt="Agent チームのメンバー" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/team-tasks.webp"><img src="../images/screenshots/2026-10-23/team-tasks.webp" alt="チームの共有タスク" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/attachment-picker.webp"><img src="../images/screenshots/2026-10-23/attachment-picker.webp" alt="ファイルと画像の選択" width="100%"></a></td>
   </tr>
   <tr>
     <td align="center"><strong>Agent チームのメンバー</strong></td>
@@ -148,9 +148,9 @@ Whaleness の WeChat ベータグループでは、体験の共有、不具合�
     <td align="center"><strong>ファイルと画像の選択</strong></td>
   </tr>
   <tr>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/text-selection.webp"><img src="Docs/images/screenshots/2026-10-23/text-selection.webp" alt="独立した文字選択画面" width="100%"></a></td>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/conversation-files.webp"><img src="Docs/images/screenshots/2026-10-23/conversation-files.webp" alt="会話内のファイル" width="100%"></a></td>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/release-notes.webp"><img src="Docs/images/screenshots/2026-10-23/release-notes.webp" alt="同梱のリリースノート" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/text-selection.webp"><img src="../images/screenshots/2026-10-23/text-selection.webp" alt="独立した文字選択画面" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/conversation-files.webp"><img src="../images/screenshots/2026-10-23/conversation-files.webp" alt="会話内のファイル" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/release-notes.webp"><img src="../images/screenshots/2026-10-23/release-notes.webp" alt="同梱のリリースノート" width="100%"></a></td>
   </tr>
   <tr>
     <td align="center"><strong>独立した文字選択画面</strong></td>
@@ -158,9 +158,9 @@ Whaleness の WeChat ベータグループでは、体験の共有、不具合�
     <td align="center"><strong>同梱のリリースノート</strong></td>
   </tr>
   <tr>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/storage.webp"><img src="Docs/images/screenshots/2026-10-23/storage.webp" alt="ローカルストレージとキャッシュ分類" width="100%"></a></td>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/voice-input.webp"><img src="Docs/images/screenshots/2026-10-23/voice-input.webp" alt="長押しで音声入力" width="100%"></a></td>
-    <td width="33.33%" align="center"><a href="Docs/images/screenshots/2026-10-23/file-upload.webp"><img src="Docs/images/screenshots/2026-10-23/file-upload.webp" alt="入力欄の添付ファイル" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/storage.webp"><img src="../images/screenshots/2026-10-23/storage.webp" alt="ローカルストレージとキャッシュ分類" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/voice-input.webp"><img src="../images/screenshots/2026-10-23/voice-input.webp" alt="長押しで音声入力" width="100%"></a></td>
+    <td width="33.33%" align="center"><a href="../images/screenshots/2026-10-23/file-upload.webp"><img src="../images/screenshots/2026-10-23/file-upload.webp" alt="入力欄の添付ファイル" width="100%"></a></td>
   </tr>
   <tr>
     <td align="center"><strong>ローカルストレージとキャッシュ分類</strong></td>
@@ -172,15 +172,15 @@ Whaleness の WeChat ベータグループでは、体験の共有、不具合�
 <details>
 <summary>以前の画像：iPad、プレビュー、設定、ペアリング</summary>
 
-> 画像は中国語 UI の iOS アプリです。Android は Jetpack Compose で同様の情報構造とフローを実装しています。本グループの音声、ファイル、文字サイズ、iPad の画像は 2026 年 10 月 16 日にバージョン 1.7.6 で撮影しました。[画像の出典](Docs/images/screenshots/2026-10/SOURCES.md)をご覧ください。
+> 画像は中国語 UI の iOS アプリです。Android は Jetpack Compose で同様の情報構造とフローを実装しています。本グループの音声、ファイル、文字サイズ、iPad の画像は 2026 年 10 月 16 日にバージョン 1.7.6 で撮影しました。[画像の出典](../images/screenshots/2026-10/SOURCES.md)をご覧ください。
 
 ### 音声入力・ファイルプレビュー・文字サイズ
 
 <table>
   <tr>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/2026-10/voice-input.png" alt="iPhone で長押し録音中の音声入力オーバーレイ" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/2026-10/pdf-preview.png" alt="会話のファイルカードから開いた PDF プレビュー" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/2026-10/font-size.png" alt="アプリの文字サイズプレビューとスライダー" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/2026-10/voice-input.png" alt="iPhone で長押し録音中の音声入力オーバーレイ" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/2026-10/pdf-preview.png" alt="会話のファイルカードから開いた PDF プレビュー" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/2026-10/font-size.png" alt="アプリの文字サイズプレビューとスライダー" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>長押しで話す</strong><br>離すと文字起こし、上にスライドでキャンセル</td>
@@ -189,22 +189,22 @@ Whaleness の WeChat ベータグループでは、体験の共有、不具合�
   </tr>
 </table>
 
-[上にスライドしてキャンセルする状態を見る](Docs/images/screenshots/2026-10/voice-cancel.png)
+[上にスライドしてキャンセルする状態を見る](../images/screenshots/2026-10/voice-cancel.png)
 
 ### iPad と大画面
 
 <table>
   <tr>
-    <td width="50%" align="center"><img src="Docs/images/screenshots/2026-10/ipad-home.png" alt="ワークスペースと最近のセッションを 2 列で表示する iPad ホーム" width="100%"></td>
-    <td width="50%" align="center"><img src="Docs/images/screenshots/2026-10/ipad-conversation.png" alt="ファイルカードを含む横向き iPad の会話" width="100%"></td>
+    <td width="50%" align="center"><img src="../images/screenshots/2026-10/ipad-home.png" alt="ワークスペースと最近のセッションを 2 列で表示する iPad ホーム" width="100%"></td>
+    <td width="50%" align="center"><img src="../images/screenshots/2026-10/ipad-conversation.png" alt="ファイルカードを含む横向き iPad の会話" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>ワイドなホーム画面</strong><br>ワークスペースとセッションを並べて表示</td>
     <td align="center"><strong>タブレットでの会話</strong><br>読みやすい本文幅と入力欄</td>
   </tr>
   <tr>
-    <td align="center"><img src="Docs/images/screenshots/2026-10/ipad-pdf-preview.png" alt="iPad の会話に重ねて表示する PDF プレビュー" width="100%"></td>
-    <td align="center"><img src="Docs/images/screenshots/2026-10/ipad-voice-input.png" alt="横向き iPad に適応する録音オーバーレイ" width="100%"></td>
+    <td align="center"><img src="../images/screenshots/2026-10/ipad-pdf-preview.png" alt="iPad の会話に重ねて表示する PDF プレビュー" width="100%"></td>
+    <td align="center"><img src="../images/screenshots/2026-10/ipad-voice-input.png" alt="横向き iPad に適応する録音オーバーレイ" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>ファイルプレビュー</strong><br>会話の流れを保ったまま閲覧</td>
@@ -216,9 +216,9 @@ Whaleness の WeChat ベータグループでは、体験の共有、不具合�
 
 <table>
   <tr>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/home.png" alt="iOS のワークスペースホーム画面" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/2026-10/file-card.png" alt="ファイルカードと実行統計の操作を含む iOS の会話" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/trajectory-light.png" alt="iOS のライトモードの Agent 実行履歴" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/home.png" alt="iOS のワークスペースホーム画面" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/2026-10/file-card.png" alt="ファイルカードと実行統計の操作を含む iOS の会話" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/trajectory-light.png" alt="iOS のライトモードの Agent 実行履歴" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>ホーム</strong><br>ワークスペースと最近のセッション</td>
@@ -231,9 +231,9 @@ Whaleness の WeChat ベータグループでは、体験の共有、不具合�
 
 <table>
   <tr>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/settings.png" alt="iOS アプリの設定" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/agent-presets.png" alt="iOS の Agent プリセット" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/default-model.png" alt="iOS の既定モデル設定" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/settings.png" alt="iOS アプリの設定" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/agent-presets.png" alt="iOS の Agent プリセット" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/default-model.png" alt="iOS の既定モデル設定" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>設定</strong><br>デプロイの既定値と Gateway の状態</td>
@@ -246,8 +246,8 @@ Whaleness の WeChat ベータグループでは、体験の共有、不具合�
 
 <table>
   <tr>
-    <td width="50%" align="center"><img src="website/assets/plugins.webp" alt="iOS の公式・インストール済みプラグイン一覧" width="100%"></td>
-    <td width="50%" align="center"><img src="website/assets/tasks.webp" alt="iOS の定期実行タスクのルールと詳細" width="100%"></td>
+    <td width="50%" align="center"><img src="../../website/assets/plugins.webp" alt="iOS の公式・インストール済みプラグイン一覧" width="100%"></td>
+    <td width="50%" align="center"><img src="../../website/assets/tasks.webp" alt="iOS の定期実行タスクのルールと詳細" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>プラグイン管理</strong><br>詳細と有効化状態を確認</td>
@@ -262,9 +262,9 @@ Whaleness の WeChat ベータグループでは、体験の共有、不具合�
 
 <table>
   <tr>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/workspace-switcher.png" alt="iOS のワークスペース切り替え" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/workspace-directory-picker.png" alt="iOS のワークスペースディレクトリ選択" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/trajectory-detail-light.png" alt="iOS の実行履歴詳細パネル" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/workspace-switcher.png" alt="iOS のワークスペース切り替え" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/workspace-directory-picker.png" alt="iOS のワークスペースディレクトリ選択" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/trajectory-detail-light.png" alt="iOS の実行履歴詳細パネル" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>ワークスペースを切り替え</strong><br>別のプロジェクトにアクセス</td>
@@ -277,9 +277,9 @@ Whaleness の WeChat ベータグループでは、体験の共有、不具合�
 
 <table>
   <tr>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/pairing-light.png" alt="iOS のライトモードの端末ペアリング" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/pairing-dark.png" alt="iOS のダークモードの端末ペアリング" width="100%"></td>
-    <td width="33.33%" align="center"><img src="Docs/images/screenshots/conversation-dark.png" alt="iOS のダークモードの会話" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/pairing-light.png" alt="iOS のライトモードの端末ペアリング" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/pairing-dark.png" alt="iOS のダークモードの端末ペアリング" width="100%"></td>
+    <td width="33.33%" align="center"><img src="../images/screenshots/conversation-dark.png" alt="iOS のダークモードの会話" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>ライトモードのペアリング</strong><br>QR コードの読み取りまたは情報の手入力</td>
@@ -471,21 +471,21 @@ iOS のテストでは Xcode で `DeepSeekHarnessMobile` スキームを選択�
 
 リンク先の技術ドキュメントの一部は現在中国語のみです。
 
-- [Harness / WebUI の機能とプロトコル調査](Docs/exploration.md)
-- [モバイルデザイン仕様](Design/design-spec.md)
-- [サードパーティーに関する表記](Docs/third-party-notices.md)
+- [Harness / WebUI の機能とプロトコル調査](../exploration.md)
+- [モバイルデザイン仕様](../../Design/design-spec.md)
+- [サードパーティーに関する表記](../third-party-notices.md)
 
 以下は KMP 移行と Android 実装の記録です。現在の状態はこの README とソースコードを参照してください。
 
-- [KMP 開発ガイド](Docs/kmp-development.md)
-- [Android Gateway フェーズ 12 検証](Docs/kmp-stage12-android-gateway-verification.md)
-- [Android UI フェーズ 13 検証](Docs/kmp-stage13-android-ui-verification.md)
+- [KMP 開発ガイド](../kmp-development.md)
+- [Android Gateway フェーズ 12 検証](../kmp-stage12-android-gateway-verification.md)
+- [Android UI フェーズ 13 検証](../kmp-stage13-android-ui-verification.md)
 
 ## プロジェクトの状況
 
 Whaleness は継続して開発中です。KMP 共有モジュールと Android・iOS のネイティブアプリは実装済みで、プロトコル対応、プラットフォーム間の一貫性、モバイル体験は DeepSeek Harness と Mobile Gateway の進化に合わせて改善しています。
 
-このプロジェクトは DeepSeek Harness のコミュニティクライアントであり、DeepSeek の公式リリースではありません。
+このプロジェクトは独立して開発された DeepSeek Harness のサードパーティー製クライアントです。
 
 [![dsh-plugin.org 掲載](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/clarklevis1995/dsh-plugin-mobile-gateway)
 
