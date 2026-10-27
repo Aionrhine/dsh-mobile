@@ -311,7 +311,7 @@ struct GenuiBlockContainer: View {
         .onAppear(perform: claimSlot)
         .onDisappear(perform: releaseSlot)
         // A recycled row must not inherit the previous fence's state.
-        .onChange(of: plan.artifactJSON) { _, _ in
+        .onChangeCompat(of: plan.artifactJSON) { _, _ in
             failure = nil
             height = 180
             claimSlot()

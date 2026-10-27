@@ -1,11 +1,7 @@
 {
   "images": [
     {
-<<<<<<<< HEAD:DeepSeekHarnessMobile/Resources/Assets.xcassets/AgentAvatar000.imageset/Contents.json
-      "filename": "avatar.svg",
-========
       "filename": "table-rotate.svg",
->>>>>>>> upstream/main:DeepSeekHarnessMobile/Resources/Assets.xcassets/TableRotate.imageset/Contents.json
       "idiom": "universal"
     }
   ],
@@ -15,6 +11,6 @@
   },
   "properties": {
     "preserves-vector-representation": true,
-    "template-rendering-intent": "original"
+    "template-rendering-intent": "template"
   }
 }
