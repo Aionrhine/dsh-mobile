@@ -11,24 +11,43 @@ on:
 
 jobs:
   build:
-    # macos-26 is the newest image and its pool is small: jobs sat in the queue
-    # for the full 15 minutes and were cancelled without ever getting a runner.
-    # macos-15 ships Xcode 26.x too (26.0.1 / 26.1.1 / 26.2 / 26.3), so select
-    # one explicitly and build on the much larger pool.
-    runs-on: macos-15
-    timeout-minutes: 45
-    env:
-      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    # 1.7.11 起代码使用 iOS 27.1 SDK 符号（toolbar 新 API 等），需要 macos-26
+    # 镜像的默认 Xcode（27.x）；macos-15 的 Xcode 26.3 编不过。
+    runs-on: macos-26
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
 
       - name: Toolchain
         run: |
-          echo "--- installed Xcodes ---"
-          ls -1 /Applications | grep -i '^xcode' || true
+          ls -d /Applications/Xcode*.app || true
+          if [ -d /Applications/Xcode_26.app ]; then
+            sudo xcode-select -s /Applications/Xcode_26.app
+          fi
           xcodebuild -version
           swift --version
           xcodebuild -showsdks | grep -i 'iphoneos' || true
+
+      - name: 下载 Metal 工具链（Xcode 26 起需单独下载）
+        run: |
+          xcodebuild -downloadComponent MetalToolchain || echo "::warning::Metal 工具链下载失败，若构建阶段报 metal 缺失请检查此步"
+
+      - name: 安装 JDK 17（Gradle 构建 KMP framework 需要）
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: 配置 Android SDK（shared 模块含 android 目标，Gradle 配置期需要）
+        run: |
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}"
+          if [ ! -d "$SDK" ]; then
+            echo "::error::未找到 Android SDK，$SDK 不存在"
+            exit 1
+          fi
+          echo "sdk.dir=$SDK" > local.properties
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
 
       - name: Apply text-selection patch
         run: python3 scripts/apply-text-selection.py && grep -n 'textSelection(.enabled)' DeepSeekHarnessMobile/Views/ConversationView.swift | head -5

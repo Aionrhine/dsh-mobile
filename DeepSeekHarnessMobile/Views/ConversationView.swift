@@ -1214,7 +1214,7 @@ struct ConversationView: View {
             store.voiceInput.draftChanged(value)
             store.updateSlashCommandInput(value)
         }
-        .onChange(of: store.commandDraftClearToken) {
+        .onChangeCompat(of: store.commandDraftClearToken) { _, _ in
             draft = ""
             pendingImages = []
             selectedPhotoItems = []

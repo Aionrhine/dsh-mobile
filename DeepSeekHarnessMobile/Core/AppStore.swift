@@ -2598,6 +2598,12 @@ final class AppStore: ObservableObject {
     func composedSlashMessage(arguments: String) -> String {
         arguments
     }
+    /// 草稿是否为斜杠命令输入：是则保持整条命令原样，引用摘录只折叠进普通消息。
+    func isSlashCommandInput(_ text: String) -> Bool {
+        kmpSlashCommandStore.commandExecutionForInput(
+            text: text.trimmingCharacters(in: .whitespacesAndNewlines)
+        ) != nil
+    }
     @discardableResult
     func send(_ text: String, images: [GatewayOutgoingImage] = [], mode: String = "queue") -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
