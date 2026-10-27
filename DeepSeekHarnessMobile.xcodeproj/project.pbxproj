@@ -279,6 +279,7 @@
 				CA11E0000000000000000002 /* ImageAttachmentCache.swift */,
 				CA11E0000000000000000004 /* ImagePreprocessor.swift */,
 				A0C0FFEE0000000000000004 /* ConversationTimeline.swift */,
+				A0C0FFEE0000000000000012 /* MessageQuote.swift */,
 				E61E231D0CD3E07857F861B0 /* GatewayClient.swift */,
 				CF206000000000000000002 /* FileUploadController.swift */,
 				954FCEA4A6E71F3D1A22BB53 /* GatewayModels.swift */,
@@ -399,7 +400,6 @@
 			isa = PBXGroup;
 			children = (
 				EEABECFD00017A6E10B1F4A2 /* ConversationView.swift */,
-				A0C0FFEE0000000000000012 /* MessageQuote.swift */,
 				AB0180000000000000000002 /* GenuiBlockView.swift */,
 				EEABECFD00017A6E10B1F4A3 /* HumanQuestionView.swift */,
 				A1B2C3D4E5F60718293A4B5D /* ApprovalRequestView.swift */,
