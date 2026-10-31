@@ -88,8 +88,10 @@ enum GenuiArtifact {
 enum GenuiConfig {
     /// How many fences may hold a WebContent process at once. Each one carries
     /// the standalone runtime, and charts add half a megabyte to a megabyte of
-    /// engine on top, so this stays small.
-    static let concurrentRenderLimit = 3
+    /// engine on top.
+    /// fork 决定（2026-11-01）：不再为省内存限制同时渲染数，全部围栏直接渲染；
+    /// 999 只是形式上限，保留回收机制兜底极端场景。
+    static let concurrentRenderLimit = 999
     static let mountBudget = GenuiMountBudget(limit: concurrentRenderLimit)
 }
 
