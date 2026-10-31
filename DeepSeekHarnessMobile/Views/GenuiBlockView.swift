@@ -165,6 +165,12 @@ enum GenuiJSONRepair {
         if balance.netOpen > 0, withoutTrailingCommas != text {
             candidates.append(withoutTrailingCommas + balance.closers)
         }
+        let withoutSurplusClosers = trimSurplusClosers(text)
+        if withoutSurplusClosers != text { candidates.append(withoutSurplusClosers) }
+        if withoutSurplusClosers != text {
+            let combined = removeTrailingCommas(withoutSurplusClosers)
+            if combined != text { candidates.append(combined) }
+        }
         let straightQuotes = normalizeQuotes(text)
         if straightQuotes != text { candidates.append(straightQuotes) }
         if straightQuotes != text {
@@ -259,6 +265,47 @@ enum GenuiJSONRepair {
             }
             if !character.isWhitespace { pendingCommaIndex = nil }
             output.append(character)
+        }
+        return output
+    }
+
+    /// A model sometimes closes every delimiter it opened and then keeps
+    /// going, leaving surplus `}`/`]` after the root object. The strict parse
+    /// rejects the trailing garbage and no other repair removes it, so the
+    /// fence falls back to raw source. Drop exactly the closers that arrive
+    /// with an empty stack or the wrong opener, outside string literals; a
+    /// valid document never takes those branches, so this cannot damage a
+    /// spec that already parses.
+    private static func trimSurplusClosers(_ text: String) -> String {
+        var output = ""
+        var stack: [Character] = []
+        var inString = false
+        var escaped = false
+        for character in text {
+            if escaped { escaped = false; output.append(character); continue }
+            if character == "\\" && inString { escaped = true; output.append(character); continue }
+            if character == "\"" { inString.toggle(); output.append(character); continue }
+            if inString { output.append(character); continue }
+            switch character {
+            case "{", "[":
+                stack.append(character)
+                output.append(character)
+            case "}", "]":
+                let matchesTop: Bool
+                if let last = stack.last {
+                    matchesTop = (character == "}" && last == "{") || (character == "]" && last == "[")
+                } else {
+                    matchesTop = false
+                }
+                if matchesTop {
+                    stack.removeLast()
+                    output.append(character)
+                }
+                // Nothing open (or the wrong opener): the closer is surplus
+                // garbage, so it is dropped instead of appended.
+            default:
+                output.append(character)
+            }
         }
         return output
     }
