@@ -1,9 +1,9 @@
 import SwiftUI
-import OSLog
+import DeepSeekHarnessShared
 
 private final class AgentNotificationAppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
-        DocumentRotationPolicy.orientations
+        AppInterfaceOrientationPolicy.orientations
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
@@ -14,9 +14,8 @@ private final class AgentNotificationAppDelegate: NSObject, UIApplicationDelegat
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-#if DEBUG
-        AppExecutionHeartbeat.start()
-#endif
+        ChatCacheDiagnostics.shared.localLogWriter = { LocalAppLog.shared.write($0) }
+        LocalAppLog.shared.write("INFO App started")
         _ = AgentUserNotificationManager.shared
         return true
     }
@@ -52,30 +51,3 @@ struct DeepSeekHarnessMobileApp: App {
         }
     }
 }
-
-#if DEBUG
-/// 独立诊断进程是否仍在执行，不依赖任务、连接或主线程，也不申请后台保活额度。
-@MainActor
-private enum AppExecutionHeartbeat {
-    private static var timer: DispatchSourceTimer?
-
-    static func start() {
-        guard timer == nil else { return }
-        let logger = Logger(subsystem: "ai.dsh.mobile.ios", category: "app-execution-heartbeat")
-        let processID = ProcessInfo.processInfo.processIdentifier
-        let launchID = UUID().uuidString
-        let startedAt = ProcessInfo.processInfo.systemUptime
-        let queue = DispatchQueue(label: "ai.dsh.mobile.ios.execution-heartbeat", qos: .utility)
-        let source = DispatchSource.makeTimerSource(queue: queue)
-        source.schedule(deadline: .now(), repeating: .seconds(1), leeway: .milliseconds(50))
-        source.setEventHandler {
-            let uptime = ProcessInfo.processInfo.systemUptime
-            let elapsed = uptime - startedAt
-            logger.notice("[AppExecutionHeartbeat] pid=\(processID) launchID=\(launchID, privacy: .public) elapsedSeconds=\(elapsed) uptimeSeconds=\(uptime)")
-        }
-        // 持有 timer，使无任务、切后台和连接断开时仍继续尝试输出。
-        timer = source
-        source.resume()
-    }
-}
-#endif

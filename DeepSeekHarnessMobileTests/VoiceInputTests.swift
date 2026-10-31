@@ -453,6 +453,8 @@ final class VoiceInputTests: XCTestCase {
 
     @MainActor
     func testConversationVoiceModeKeepsComposerCompactAcrossWindowSizes() async throws {
+        // 也需在 iPhone 真机执行：此用例可复现输入卡片泛型过深造成的主线程栈溢出，
+        // 只跑模拟器可能漏掉首次进入会话时的崩溃。
         let suiteName = "VoiceComposerLayout.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -466,7 +468,7 @@ final class VoiceInputTests: XCTestCase {
         defer { appStore.deactivateGateway() }
         let prepared = await appStore.prepareConversation(for: session)
         XCTAssertTrue(prepared)
-        let controller = UIHostingController(rootView: ConversationView().environmentObject(appStore))
+        let controller = UIHostingController(rootView: ConversationView(activeView: .constant(0)).environmentObject(appStore))
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.rootViewController = controller
@@ -527,7 +529,7 @@ final class VoiceInputTests: XCTestCase {
         defer { appStore.deactivateGateway() }
         let prepared = await appStore.prepareConversation(for: session)
         XCTAssertTrue(prepared)
-        let controller = UIHostingController(rootView: ConversationView().environmentObject(appStore))
+        let controller = UIHostingController(rootView: ConversationView(activeView: .constant(0)).environmentObject(appStore))
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)

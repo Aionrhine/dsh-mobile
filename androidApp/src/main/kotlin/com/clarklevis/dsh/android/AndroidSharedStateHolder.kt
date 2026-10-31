@@ -65,6 +65,7 @@ class AndroidSharedStateHolder(
     voiceContext: android.content.Context? = graph?.application
 ) {
     private val teamStore = com.clarklevis.dsh.shared.facade.SharedTeamStore()
+    private val agentExecutionNotifications = AndroidAgentExecutionNotifications()
     var teamSnapshot by mutableStateOf(com.clarklevis.dsh.shared.facade.TeamSnapshot())
         private set
     private var teamLeadSessionId: String? = null
@@ -175,7 +176,9 @@ class AndroidSharedStateHolder(
         })
     }
     private val projectionActor = AndroidProjectionActor(
-        projection = AndroidGatewayProjection(store, onResubscribe = { sessionId ->
+        projection = AndroidGatewayProjection(store, nowMonotonicSeconds = {
+            if (graph == null) System.nanoTime() / 1e9 else android.os.SystemClock.elapsedRealtimeNanos() / 1e9
+        }, onResubscribe = { sessionId ->
             graph?.let { appGraph ->
                 appGraph.gatewayScope.launch {
                     if (appGraph.gatewayRuntime.state.value.connection == GatewayConnectionState.CONNECTED) {
@@ -287,6 +290,18 @@ class AndroidSharedStateHolder(
     var snapshot: SharedMobileSnapshot by mutableStateOf(projectionActor.initialSnapshot)
         private set
     var wirePayload: String by mutableStateOf(DEFAULT_WIRE_PAYLOAD)
+    internal fun observeNetworkDiagnostics(): kotlinx.coroutines.flow.Flow<com.clarklevis.dsh.shared.diagnostics.NetworkDiagnosticsSnapshot> {
+        val appGraph = graph ?: return kotlinx.coroutines.flow.flowOf(
+            com.clarklevis.dsh.shared.diagnostics.NetworkDiagnosticsSnapshot()
+        )
+        return appGraph.gatewayRuntime.monitorNetworkDiagnostics { appGraph.connectionMethod.value }
+    }
+
+    internal val connectionMethod get() = graph?.connectionMethod
+        ?: kotlinx.coroutines.flow.MutableStateFlow("WebSocket")
+    internal val connectionPaths get() = graph?.connectionPaths
+        ?: kotlinx.coroutines.flow.MutableStateFlow(emptyMap<String, com.clarklevis.dsh.shared.transport.RtcSelectedPath>())
+
     var gatewayState: GatewayRuntimeState by mutableStateOf(GatewayRuntimeState())
         private set
     var scheduledTasks: List<MobileScheduledTask> by mutableStateOf(emptyList())
@@ -821,6 +836,10 @@ class AndroidSharedStateHolder(
     private var preparingNewSession = false
 
     suspend fun prepareNewSession(): Boolean {
+        if (selectedWorkspaceId == ALL_WORKSPACES_ID) {
+            platformError = appText("请先选择一个具体工作区，再创建新会话。")
+            return false
+        }
         teamLeadSessionId = null
         teamSnapshot = com.clarklevis.dsh.shared.facade.TeamSnapshot()
         if (preparingNewSession) return false
@@ -893,7 +912,8 @@ class AndroidSharedStateHolder(
 
     val activeWorkspace: GatewayWorkspace?
         get() {
-            if (selectedWorkspaceId == UNGROUPED_WORKSPACE_ID) return null
+            if (selectedWorkspaceId == UNGROUPED_WORKSPACE_ID ||
+                selectedWorkspaceId == ALL_WORKSPACES_ID) return null
             return availableWorkspaces.firstOrNull { it.workspaceId == selectedWorkspaceId }
                 ?: availableWorkspaces.firstOrNull()
         }
@@ -1333,7 +1353,7 @@ class AndroidSharedStateHolder(
             projectionActor.loadHistoryImmediate(sessionId, older = true)
             return true
         }
-        android.util.Log.d("HistoryPresentation", "stage=request-start rows=${snapshot.conversation.size}")
+        com.clarklevis.dsh.android.platform.LocalAppLog.d("HistoryPresentation", "stage=request-start rows=${snapshot.conversation.size}")
         appGraph.gatewayScope.launch {
             try {
                 projectionActor.loadHistory(sessionId, older = true, offline = offlineBrowsing) {
@@ -1350,7 +1370,7 @@ class AndroidSharedStateHolder(
                     historyPagingSessionIds = historyPagingSessionIds - sessionId
                     platformError = appText("历史记录加载失败")
                 }
-                android.util.Log.w("HistoryPresentation", "stage=request-failed type=${error.javaClass.simpleName}")
+                com.clarklevis.dsh.android.platform.LocalAppLog.w("HistoryPresentation", "stage=request-failed type=${error.javaClass.simpleName}")
             }
         }
         return true
@@ -2089,9 +2109,21 @@ class AndroidSharedStateHolder(
     }
 
     private fun notifyUserForAgentFrame(appGraph: AndroidAppGraph, frame: GatewayFrame) {
-        if (frame.kind != "approval-requested" &&
-            (frame.kind != "event" || frame.event?.type != "turn/end")
-        ) return
+        val monitoredSessionIds = appGraph.gatewayRuntime.state.value.activeTurnSessionIds +
+            listOfNotNull(snapshot.selectedSessionId)
+        val runningSessionIds = snapshot.sessions.filter { it.isRunning && it.id in monitoredSessionIds }
+            .mapTo(mutableSetOf()) { it.id }
+        agentExecutionNotifications.accept(frame, runningSessionIds)?.let { ended ->
+            appGraph.agentNotifications.notifyExecutionEnded(
+                gatewayId = appGraph.gatewayLocalId,
+                sessionId = ended.sessionId,
+                eventId = ended.eventId,
+                sessionTitle = snapshot.sessions.firstOrNull { it.id == ended.sessionId }
+                    ?.title?.takeIf(String::isNotBlank) ?: "DeepSeek Harness",
+                failed = ended.failed
+            )
+        }
+        if (frame.kind !in setOf("approval-requested", "question-requested")) return
         val sessionId = frame.sessionId?.takeIf(String::isNotBlank) ?: return
         val sessionTitle = snapshot.sessions.firstOrNull { it.id == sessionId }
             ?.title?.takeIf(String::isNotBlank) ?: "DeepSeek Harness"
@@ -2108,23 +2140,26 @@ class AndroidSharedStateHolder(
                     detail = request.localizedReason(Locale.getDefault().toLanguageTag()) ?: request.toolName
                 )
             }
-            frame.kind == "event" && frame.event?.type == "turn/end" -> {
-                val sequence = frame.seq ?: return
-                if (frame.time == null) return
-                val event = frame.event ?: return
-                val failed = event.isError == true || event.interrupted == true ||
-                    !event.error.isNullOrBlank() ||
-                    event.reason?.lowercase(Locale.ROOT) in setOf(
-                        "error", "failed", "cancelled", "canceled", "interrupted", "aborted"
-                    )
-                appGraph.agentNotifications.notifyExecutionEnded(
+            frame.kind == "question-requested" -> {
+                val request = snapshot.pendingQuestions.firstOrNull {
+                    it.sessionId == sessionId && it.rpcId == frame.rpcId &&
+                        it.rpcId.isNotBlank() && it.questions.isNotEmpty()
+                } ?: return
+                appGraph.agentNotifications.notifyQuestionRequired(
                     gatewayId = appGraph.gatewayLocalId,
+                    requestId = request.rpcId,
                     sessionId = sessionId,
-                    sequence = sequence,
                     sessionTitle = sessionTitle,
-                    failed = failed
+                    prompt = request.questions.first().question
                 )
             }
+        }
+    }
+
+    internal fun notifyPendingAgentRequests() {
+        val appGraph = graph ?: return
+        for (frame in pendingAgentNotificationFrames(snapshot)) {
+            notifyUserForAgentFrame(appGraph, frame)
         }
     }
 
@@ -3283,7 +3318,9 @@ class AndroidSharedStateHolder(
                                         defaultConfigurationLoadingKinds =
                                             defaultConfigurationLoadingKinds - event.requestType
                                         clearWorkspaceRequestLoading(event.requestType)
-                                        platformError = "${event.requestType}: ${event.reason}"
+                                        platformError = if (event.reason == "transport/ws-required") {
+                                            appText("正在切换到 WebSocket 以发送大消息，草稿已保留，请连接后重新发送。")
+                                        } else "${event.requestType}: ${event.reason}"
                                         if (event.requestType == "history") {
                                             event.targetSessionId?.let {
                                                 historyPagingSessionIds = historyPagingSessionIds - it
@@ -3347,6 +3384,8 @@ class AndroidSharedStateHolder(
         private const val HISTORY_PAGE_BYTE_BUDGET = 4 * 1_024 * 1_024
         private const val HISTORY_VIEW = "conversation"
         const val UNGROUPED_WORKSPACE_ID = "__ungrouped__"
+        /** 2026-10-27（fork）：跨工作区"全部会话"视图的哨兵 id。 */
+        const val ALL_WORKSPACES_ID = "__all_sessions__"
 
         private val WORKSPACE_REQUEST_TYPES = setOf(
             "directories",
@@ -3425,6 +3464,8 @@ internal fun resolveWorkspaceSelection(
     preferredWorkspaceId: String?,
     workspaces: List<GatewayWorkspace>
 ): String = when {
+    preferredWorkspaceId == AndroidSharedStateHolder.ALL_WORKSPACES_ID ->
+        AndroidSharedStateHolder.ALL_WORKSPACES_ID
     preferredWorkspaceId == AndroidSharedStateHolder.UNGROUPED_WORKSPACE_ID ->
         AndroidSharedStateHolder.UNGROUPED_WORKSPACE_ID
     workspaces.any { it.workspaceId == preferredWorkspaceId } -> requireNotNull(preferredWorkspaceId)
