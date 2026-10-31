@@ -5207,6 +5207,25 @@ struct MarkdownTableTextSelection: UIViewRepresentable {
         }
     }
 
+    static func dismantleUIView(_ view: WKWebView, coordinator: Coordinator) {
+        view.stopLoading()
+        view.navigationDelegate = nil
+    }
+
+    final class Coordinator: NSObject, WKNavigationDelegate {
+        var body: String?
+        var appearance = ""
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            webView.becomeFirstResponder()
+            webView.evaluateJavaScript(appearance + "window.dshSelectInitial();", completionHandler: nil)
+        }
+
+        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
+                     decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            decisionHandler(navigationAction.navigationType == .other && navigationAction.request.url?.scheme == "about" ? .allow : .cancel)
+        }
+    }
 }
 
 /// 原生 TextView 独立滚动，聊天页的 MarkdownUI 始终保留在原来的布局中。
