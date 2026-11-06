@@ -52,6 +52,30 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class GatewayRuntimeIntegrationTest {
     @Test
+    fun pluginUpdateProgressKeepsLaneUntilMatchingFinalResult() = runTest {
+        val transport = FakeTransport()
+        val runtime = newRuntime(transport)
+        val events = mutableListOf<GatewayRuntimeEvent>()
+        backgroundScope.launch { runtime.events.collect(events::add) }
+        runCurrent()
+        runtime.connect("ws://localhost/mobile")
+        transport.opened()
+        transport.receive("""{"kind":"hello","protocol":3,"capabilities":["plugin-updates-v1"]}""")
+        runCurrent()
+        assertTrue(runtime.sendRequest(GatewayRequests.pluginUpdate("update-1", "pkg", "2")))
+        transport.receive("""{"kind":"plugin-update-state","requestId":"update-1","step":"restoring"}""")
+        runCurrent()
+        assertFalse(runtime.sendRequest(GatewayRequests.pluginUpdate("update-2", "pkg", "3")))
+        transport.receive("""{"kind":"plugin-update-result","requestId":"wrong","result":{}}""")
+        runCurrent()
+        assertFalse(runtime.sendRequest(GatewayRequests.pluginUpdate("update-2", "pkg", "3")))
+        transport.receive("""{"kind":"plugin-update-result","requestId":"update-1","result":{"restore":{"application":"failed"}}}""")
+        runCurrent()
+        assertTrue(events.filterIsInstance<GatewayRuntimeEvent.Frame>().any { it.frame.step == "restoring" })
+        assertTrue(runtime.sendRequest(GatewayRequests.pluginUpdate("update-2", "pkg", "3")))
+    }
+
+    @Test
     fun networkDiagnosticsAreColdCorrelatedAndCancelledWithThePage() = runTest {
         val transport = FakeTransport()
         val runtime = GatewayRuntime(transport, FakePreferences(), FakeCredentials(), FakeAttachmentCache(),
@@ -457,27 +481,30 @@ class GatewayRuntimeIntegrationTest {
     }
 
     @Test
-    fun lanPairingKeepsOriginalWebSocketWithoutRtcReopen() = runTest {
-        val raw = FakeTransport()
-        val transport = object : com.clarklevis.dsh.shared.platform.GatewayRtcTransport, GatewayTransport by raw {
-            override val conversationEvents: Flow<GatewayTransportEvent> = kotlinx.coroutines.flow.emptyFlow()
-            override fun resetRtcRecovery() = Unit
+    fun lanAndTailscalePairingKeepOriginalWebSocketWithoutRtcReopen() = runTest {
+        for (host in listOf("192.168.1.94", "100.100.1.19")) {
+            val endpoint = "ws://$host:3081/ws/mobile"
+            val raw = FakeTransport()
+            val transport = object : com.clarklevis.dsh.shared.platform.GatewayRtcTransport, GatewayTransport by raw {
+                override val conversationEvents: Flow<GatewayTransportEvent> = kotlinx.coroutines.flow.emptyFlow()
+                override fun resetRtcRecovery() = Unit
+            }
+            val credentials = FakeCredentials()
+            val runtime = GatewayRuntime(transport, FakePreferences(), credentials, FakeAttachmentCache(),
+                FakeNetworkMonitor(), FakeClock(0), backgroundScope)
+            runCurrent()
+            runtime.pair(encodeBase64Url(
+                """{"version":2,"publicUrl":"$endpoint","pairingCode":"pair-code","expiresAt":60000}"""
+            ))
+            raw.opened()
+            raw.receive("""{"kind":"paired","token":"saved-token"}""")
+            runCurrent()
+            raw.receive("""{"kind":"hello","protocol":3}""")
+            runCurrent()
+            assertEquals("saved-token", credentials.tokens[endpoint])
+            assertEquals(1, raw.connectionSpecs.size)
+            assertEquals(GatewayConnectionState.CONNECTED, runtime.state.value.connection)
         }
-        val credentials = FakeCredentials()
-        val runtime = GatewayRuntime(transport, FakePreferences(), credentials, FakeAttachmentCache(),
-            FakeNetworkMonitor(), FakeClock(0), backgroundScope)
-        runCurrent()
-        runtime.pair(encodeBase64Url(
-            """{"version":2,"publicUrl":"ws://192.168.1.94:3081/ws/mobile","pairingCode":"pair-code","expiresAt":60000}"""
-        ))
-        raw.opened()
-        raw.receive("""{"kind":"paired","token":"saved-token"}""")
-        runCurrent()
-        raw.receive("""{"kind":"hello","protocol":3}""")
-        runCurrent()
-        assertEquals("saved-token", credentials.tokens["ws://192.168.1.94:3081/ws/mobile"])
-        assertEquals(1, raw.connectionSpecs.size)
-        assertEquals(GatewayConnectionState.CONNECTED, runtime.state.value.connection)
     }
 
     @Test
@@ -2032,6 +2059,31 @@ class GatewayRuntimeIntegrationTest {
         restarted.connect("ws://127.0.0.1:3080/ws/mobile")
         assertTrue(preferences.load().automaticallyConnect)
         assertEquals(1, restartedTransport.connectionSpecs.size)
+    }
+
+    @Test
+    fun generatedImageAttachmentMayExceedOldEightMegabyteLimit() = runTest {
+        val transport = FakeTransport()
+        val cache = FakeAttachmentCache()
+        val runtime = newRuntime(transport, cache = cache)
+        val events = mutableListOf<GatewayRuntimeEvent>()
+        backgroundScope.launch { runtime.events.collect(events::add) }
+        runCurrent()
+        runtime.connect("wss://gateway.example/ws/mobile")
+        transport.opened()
+        transport.receive("""{"kind":"hello","authenticated":true}""")
+        runCurrent()
+        val byteCount = 9 * 1024 * 1024
+        assertTrue(runtime.requestAttachment("session-a", "large"))
+        val base64 = "AAAA".repeat(byteCount / 3)
+        transport.receive(
+            """{"kind":"attachment","sessionId":"session-a","attachment":{"attachmentId":"large","mediaType":"image/png","bytes":$byteCount,"width":4096,"height":4096},"data":"$base64"}"""
+        )
+        runCurrent()
+        assertEquals(byteCount, cache.values[gatewayAttachmentCacheKey("session-a", "large")]?.size)
+        val frame = events.filterIsInstance<GatewayRuntimeEvent.Frame>().last { it.frame.kind == "attachment" }
+        assertNull(frame.frame.data)
+        assertTrue(frame.rawJson.length < 1024, "图片字节不能进入会话事件快照")
     }
 
     @Test

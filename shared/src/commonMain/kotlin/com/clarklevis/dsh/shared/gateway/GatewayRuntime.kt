@@ -272,7 +272,19 @@ class GatewayRuntime(
         openTransportLocked(preserveTurns = false)
     }
 
-    suspend fun connectStoredIfPaired(): Boolean = serialized {
+    /** 在锁外等待网络依赖；用户仍可断开或切换主机，就绪后重新核对自动连接意图。 */
+    suspend fun connectStoredWhenReady(prepareConnection: suspend () -> Unit): Boolean {
+        val generation = serialized {
+            connectionGeneration.takeIf { preferences.load().automaticallyConnect }
+        } ?: return false
+        prepareConnection()
+        return connectStoredIfPaired(generation)
+    }
+
+    suspend fun connectStoredIfPaired(): Boolean = connectStoredIfPaired(expectedGeneration = null)
+
+    private suspend fun connectStoredIfPaired(expectedGeneration: Long?): Boolean = serialized {
+        if (expectedGeneration != null && connectionGeneration != expectedGeneration) return@serialized false
         val stored = preferences.load()
         if (!stored.automaticallyConnect) return@serialized false
         if (
@@ -301,7 +313,12 @@ class GatewayRuntime(
         true
     }
 
-    suspend fun disconnect() = serialized {
+    suspend fun disconnect() = serialized { disconnectLocked(persistDisconnected = true) }
+
+    /** 切换或替换应用连接图只释放传输，保留用户下次启动时的自动连接意图。 */
+    suspend fun retireConnection() = serialized { disconnectLocked(persistDisconnected = false) }
+
+    private suspend fun disconnectLocked(persistDisconnected: Boolean) {
         upgradeAfterPairing = false
         desiredConnection = false
         reconnectBlocked = false
@@ -321,8 +338,10 @@ class GatewayRuntime(
             reconnectAttempt = 0,
             lastError = null
         )
-        val stored = preferences.load()
-        preferences.update(stored.copy(automaticallyConnect = false))
+        if (persistDisconnected) {
+            val stored = preferences.load()
+            preferences.update(stored.copy(automaticallyConnect = false))
+        }
     }
 
     suspend fun applicationDidEnterBackground() = serialized {
@@ -423,16 +442,21 @@ class GatewayRuntime(
         clientTimeZone: String,
         mode: String = "queue",
         receipts: List<String> = emptyList(),
-        requestId: String? = null
+        requestId: String? = null,
+        textParts: List<com.clarklevis.dsh.shared.protocol.GatewayTextPart>? = null
     ): Boolean = serialized {
-        if (text.isBlank() && images.isEmpty() && receipts.isEmpty()) return@serialized false
+        if (text.isBlank() && textParts.orEmpty().none { it.text.isNotBlank() } && images.isEmpty() && receipts.isEmpty()) return@serialized false
+        if (textParts != null && runCatching { com.clarklevis.dsh.shared.protocol.GatewayTextPart.validate(textParts) }.isFailure) {
+            rejectLocked("message", "invalid-text-parts")
+            return@serialized false
+        }
         if (!outgoingImagesAreWithinLimits(images)) {
             rejectLocked("message", ERROR_IMAGE_LIMITS)
             return@serialized false
         }
         markTurnLocked(sessionId)
         val sent = sendRequestLocked(
-            GatewayRequests.message(text.trim(), images, sessionId, workspaceId, clientTimeZone, mode, receipts, requestId)
+            GatewayRequests.message(text.trim(), images, sessionId, workspaceId, clientTimeZone, mode, receipts, requestId, textParts)
         )
         if (!sent) releaseTurnLocked(sessionId)
         sent
@@ -942,7 +966,7 @@ class GatewayRuntime(
             "session-created", "session-agent-preset", "select-agent-preset", "file-resolved", "file-list", "file-download-opened" -> request.correlationId == frame.requestId
             "file-download-chunk", "file-download-cancelled" -> request.correlationId == frame.transferId
             "command-options", "command-selected" -> request.correlationId == frame.command?.stringValue
-            else -> true
+            else -> request.correlationId == null || request.correlationId == frame.requestId
         }
 
     private fun responseCorrelation(frame: GatewayFrame): String? =
@@ -1466,7 +1490,7 @@ class GatewayRuntime(
         private const val DEFAULT_CONNECTION_ATTEMPT_TIMEOUT_MILLISECONDS = 15_000L
         private const val DEFAULT_FOREGROUND_PROBE_TIMEOUT_MILLISECONDS = 2_000L
         private const val FOREGROUND_RESUME_RETRY_WINDOW_MILLISECONDS = 5_000L
-        private const val MAXIMUM_ATTACHMENT_BYTES = 8 * 1_024 * 1_024
+        private const val MAXIMUM_ATTACHMENT_BYTES = 32 * 1_024 * 1_024
         private const val MAXIMUM_OUTGOING_IMAGE_COUNT = 4
         private const val MAXIMUM_OUTGOING_IMAGE_CHARACTERS = 4_893_356
         private const val MAXIMUM_OUTGOING_TOTAL_BASE64_CHARACTERS = 16L * 1_024 * 1_024

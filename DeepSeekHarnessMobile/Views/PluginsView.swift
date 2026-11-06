@@ -128,7 +128,7 @@ struct PluginsView: View {
                 }
             ))
             .labelsHidden()
-            .tint(pluginSwitchTint(for: colorScheme))
+            .tint(DSHColor.switchTint(for: colorScheme))
             .disabled(!store.gateway.state.isConnected || bundle.readOnlyReason != nil ||
                 store.pluginCatalog?.managementAvailable != true)
             .allowsHitTesting(store.pluginPendingName == nil)
@@ -163,7 +163,7 @@ private struct PluginDetailView: View {
                             }
                         ))
                         .labelsHidden()
-                        .tint(pluginSwitchTint(for: colorScheme))
+                        .tint(DSHColor.switchTint(for: colorScheme))
                         .disabled(!store.gateway.state.isConnected || bundle.readOnlyReason != nil)
                         .allowsHitTesting(store.pluginPendingName == nil)
                     }
@@ -183,6 +183,27 @@ private struct PluginDetailView: View {
                     if !store.gateway.state.isConnected {
                         Text("网关已断开，插件状态待重新连接确认")
                             .appFont(.footnote).foregroundStyle(.orange)
+                    }
+                    if store.supportsPluginUpdates {
+                        if bundle.raw["updatable"]?.boolValue == true {
+                            Button("检查更新") { store.loadPluginInformation(name, versions: true) }
+                                .disabled(store.pluginPendingName != nil)
+                        }
+                        if let versions = store.pluginVersions {
+                            if versions["status"]?.stringValue != "listed" { Text(versions.displayText).appFont(.footnote) }
+                            ForEach(Array((versions["versions"]?.arrayValue ?? []).enumerated()), id: \.offset) { _, entry in
+                                if let version = entry["version"]?.stringValue ?? entry.stringValue {
+                                    Button("更新到 \(version)") { store.updatePlugin(name, version: version) }
+                                        .disabled(store.pluginPendingName != nil || entry["selectable"]?.boolValue == false || entry["compatible"]?.boolValue == false)
+                                }
+                            }
+                        }
+                        if let step = store.pluginUpdateStep { Text("更新进度 · \(step)").foregroundStyle(.secondary) }
+                        if let result = store.pluginUpdateResult { Text(result.displayText).appFont(.footnote.monospaced()) }
+                        if !store.pluginUpdateLogs.isEmpty { Text(store.pluginUpdateLogs.joined(separator: "\n")).appFont(.caption.monospaced()) }
+                        if let markdown = store.pluginDetail?["markdown"]?.stringValue {
+                            MarkdownContent(markdown.replacingOccurrences(of: #"!\[([^]]*)]\([^)]*\)"#, with: "[图片 · $1]", options: .regularExpression))
+                        }
                     }
                     let entries = bundle.rows.map { row -> MobilePluginRow in
                         let entryID = row["entryId"]?.stringValue
@@ -222,7 +243,7 @@ private struct PluginDetailView: View {
                                     get: { entry.enabled },
                                     set: { store.setPluginEnabled(name: bundle.name, enabled: $0, entryID: entryID) }
                                 )).labelsHidden()
-                                    .tint(pluginSwitchTint(for: colorScheme))
+                                    .tint(DSHColor.switchTint(for: colorScheme))
                                     .disabled(!store.gateway.state.isConnected || entry.readOnlyReason != nil)
                                     .allowsHitTesting(store.pluginPendingName == nil)
                             }
@@ -241,6 +262,7 @@ private struct PluginDetailView: View {
                 .readableContentWidth()
             }
         }
+        .task(id: name) { store.loadPluginInformation(name) }
         .navigationTitle("插件详情").navigationBarTitleDisplayMode(.inline)
         .sheet(item: $selectedEntry) { entry in
             PluginComponentSheet(entry: entry)
@@ -298,12 +320,6 @@ private struct PluginComponentSheet: View {
             Text(value).appFont(.subheadline.monospaced()).textSelection(.enabled)
         }
     }
-}
-
-private func pluginSwitchTint(for scheme: ColorScheme) -> Color {
-    scheme == .dark
-        ? Color(red: 29.0 / 255, green: 68.0 / 255, blue: 127.0 / 255)
-        : Color(red: 36.0 / 255, green: 90.0 / 255, blue: 196.0 / 255)
 }
 
 private struct OfficialPluginDetailView: View {

@@ -484,6 +484,9 @@ final class AppStore: ObservableObject {
     private let sessionAgentPresetStore = SharedSessionAgentPresetStore()
     private var sessionAgentPresetTimeout: Task<Void, Never>?
     private var isPreparingNewConversation = false
+    @Published private(set) var supportsScheduleManagement = false
+    @Published private(set) var supportsPluginUpdates = false
+    @Published private(set) var supportsMessageQuotes = false
     @Published private(set) var supportsTasks = false
     @Published private(set) var supportsGoals = false
     @Published private(set) var supportsSessionCancel = false
@@ -730,7 +733,11 @@ final class AppStore: ObservableObject {
     /// Decoded bytes live outside the raw/history message models. A bounded
     /// memory layer fronts a seven-day, purgeable on-disk cache.
     private let imageAttachmentCache: ImageAttachmentCache
-    private var attachmentLoader = AttachmentLoader()
+    private var attachmentLoaders: [String: AttachmentLoader] = [:]
+    private var imageAttachmentRequests: [String: AttachmentLoadRequest] = [:]
+    private var imageAttachmentTokens: [String: UUID] = [:]
+    private var imageAttachmentErrors: [String: String] = [:]
+    private var imageLoadingGeneration = UUID()
     private var pendingModelsSessionId: String?
     private var isPendingGlobalModelsRequest = false
     private var pendingModelSelectionSessionId: String?
@@ -1026,8 +1033,19 @@ final class AppStore: ObservableObject {
             ?? normalized["command"]?.stringValue
             ?? (normalized.objectValue == nil ? rawText : nil)
     }
-    func imageData(for attachmentId: String) -> Data? {
-        imageAttachmentCache.data(for: attachmentId)
+    private func imageCacheKey(_ attachmentID: String, sessionID: String) -> String {
+        "\(gatewayLocalID):\(sessionID.count):\(sessionID):\(attachmentID)"
+    }
+    func imageData(for attachmentId: String, sessionID: String? = nil) -> Data? {
+        guard let sessionID = sessionID ?? selectedSessionId else { return nil }
+        return imageAttachmentCache.data(for: imageCacheKey(attachmentId, sessionID: sessionID))
+    }
+    func imageLoadError(for attachmentID: String, sessionID: String) -> String? {
+        imageAttachmentErrors[imageCacheKey(attachmentID, sessionID: sessionID)]
+    }
+    func retryImageAttachment(_ attachment: GatewayImageAttachment, sessionID: String) {
+        imageAttachmentErrors.removeValue(forKey: imageCacheKey(attachment.id, sessionID: sessionID))
+        enqueueImageAttachments([attachment], sessionId: sessionID)
     }
     func conversationTimeline(for sessionId: String) -> ConversationTimeline {
         if let timeline = conversationTimelines[sessionId] { return timeline }
@@ -1282,7 +1300,12 @@ final class AppStore: ObservableObject {
         fileUploads.clear()
         gateway.disconnect()
         pendingKMPEventDeliveries.removeAll()
-        attachmentLoader.reset()
+        attachmentLoaders.removeAll()
+        imageLoadingGeneration = UUID()
+        imageAttachmentRequests.removeAll()
+        imageAttachmentTokens.removeAll()
+        imageAttachmentErrors.removeAll()
+        imageAttachmentRequestEpochs.removeAll()
         localSearchTask?.cancel()
         remoteSearchTimeout?.cancel()
         cancelWorkspaceFileDownload()
@@ -1439,8 +1462,12 @@ final class AppStore: ObservableObject {
         return await prepareNewConversation() && selectedSessionId != nil
     }
 
-    func prepareNewConversation() async -> Bool {
-        guard !isAllWorkspacesSelected else {
+    func prepareNewConversation(useDefaultWorkspace: Bool = false) async -> Bool {
+        guard !useDefaultWorkspace || supportsSessionCreation else {
+            lastError = String(localized: "请更新并重启 Mobile Gateway，以支持发送消息前配置新会话")
+            return false
+        }
+        guard useDefaultWorkspace || !isAllWorkspacesSelected else {
             lastError = WorkspaceSessionCopy.creationPrompt
             return false
         }
@@ -1456,7 +1483,7 @@ final class AppStore: ObservableObject {
         var sessionID: String?
         if supportsSessionCreation {
             do {
-                sessionID = try await gateway.createSession(workspaceId: activeWorkspace?.id)
+                sessionID = try await gateway.createSession(workspaceId: useDefaultWorkspace ? nil : activeWorkspace?.id)
             } catch {
                 if !Task.isCancelled { lastError = error.localizedDescription }
                 return false
@@ -1634,7 +1661,56 @@ final class AppStore: ObservableObject {
         if gateway.state.isConnected, !assistantStreamState.hasBaseline(sessionId: id) { loadHistory(for: id) }
     }
 
-    func refreshScheduledTasks() {
+    private var scheduleActiveFilter: Bool?
+    private var scheduleListRequestID: String?
+    private var scheduleListOffset = 0
+    @Published private(set) var scheduledTasksTotal = 0
+    @Published private(set) var scheduleHistory: JSONValue?
+    private var scheduleHistoryRequestID: String?
+    private var scheduleHistoryTaskID: String?
+    private var scheduleHistoryAppending = false
+    @Published private(set) var scheduleHistoryLoading = false
+    @Published private(set) var scheduleHistoryError: String?
+
+    func loadScheduleHistory(_ task: ScheduledTask, before: String? = nil) {
+        if scheduleHistoryLoading && scheduleHistoryTaskID == task.id { return }
+        let id = UUID().uuidString
+        scheduleHistoryRequestID = id
+        scheduleHistoryTaskID = task.id
+        scheduleHistoryAppending = before != nil
+        if before == nil { scheduleHistory = nil }
+        scheduleHistoryError = nil
+        guard gateway.state.isConnected else {
+            scheduleHistoryLoading = false
+            scheduleHistoryError = String(localized: "请连接网关后重试。")
+            return
+        }
+        scheduleHistoryLoading = true
+        var payload: [String: Any] = ["type": "schedule-history", "requestId": id, "id": task.id, "limit": 100]
+        if let before { payload["before"] = before }
+        sendManagement(payload)
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(12))
+            guard let self, self.scheduleHistoryRequestID == id, self.scheduleHistoryLoading else { return }
+            self.scheduleHistoryRequestID = nil
+            self.scheduleHistoryLoading = false
+            self.scheduleHistoryError = String(localized: "运行轨迹加载超时，请重试")
+        }
+    }
+
+    func filterScheduledTasks(active: Bool?) {
+        scheduleActiveFilter = active
+        refreshScheduledTasks()
+    }
+
+    func loadMoreScheduledTasks() {
+        guard !scheduledTasksLoading, scheduledTasks.count < scheduledTasksTotal else { return }
+        loadScheduledTasks(offset: scheduledTasks.count)
+    }
+
+    func refreshScheduledTasks() { loadScheduledTasks(offset: 0) }
+
+    private func loadScheduledTasks(offset: Int) {
         guard gateway.state.isConnected else {
             scheduledTasksLoading = false
             scheduledTasksError = "连接网关后可查看定时任务"
@@ -1644,7 +1720,14 @@ final class AppStore: ObservableObject {
         scheduledTasksError = nil
         let requestID = UUID()
         scheduledTasksRequestID = requestID
-        gateway.requestScheduleCatalog()
+        scheduleListOffset = offset
+        if supportsScheduleManagement {
+            let id = requestID.uuidString
+            scheduleListRequestID = id
+            var payload: [String: Any] = ["type": "schedule-list", "requestId": id, "limit": 100, "offset": offset]
+            if let active = scheduleActiveFilter { payload["active"] = active }
+            sendManagement(payload)
+        } else { gateway.requestScheduleCatalog() }
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(12))
             guard let self, self.scheduledTasksRequestID == requestID,
@@ -1676,7 +1759,7 @@ final class AppStore: ObservableObject {
 
     func setPluginEnabled(name: String, enabled: Bool, entryID: String? = nil) {
         guard gateway.state.isConnected, pluginCatalog?.managementAvailable == true,
-              pluginToggleRequestID == nil else { return }
+              pluginToggleRequestID == nil, pluginUpdateRequestID == nil else { return }
         let requestID = UUID().uuidString
         pluginToggleRequestID = requestID
         pluginPendingName = name
@@ -1696,10 +1779,93 @@ final class AppStore: ObservableObject {
         }
     }
 
+    private func sendManagement(_ payload: [String: Any]) {
+        guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return }
+        gateway.sendRequestPayload(String(decoding: data, as: UTF8.self))
+    }
+
+    @Published private(set) var pluginVersions: JSONValue?
+    @Published private(set) var pluginDetail: JSONValue?
+    @Published private(set) var pluginUpdateResult: JSONValue?
+    @Published private(set) var pluginUpdateLogs: [String] = []
+    @Published private(set) var pluginUpdateStep: String?
+    private var pluginInformationName: String?
+    private var pluginVersionsRequestID: String?
+    private var pluginDetailRequestID: String?
+    private var pluginUpdateRequestID: String?
+
+    func loadPluginInformation(_ name: String, versions: Bool = false) {
+        guard supportsPluginUpdates, gateway.state.isConnected else { return }
+        if pluginInformationName != name {
+            pluginInformationName = name
+            pluginVersions = nil
+            pluginDetail = nil
+            pluginVersionsRequestID = nil
+            pluginDetailRequestID = nil
+            pluginUpdateResult = nil
+        }
+        let id = UUID().uuidString
+        if versions { pluginVersions = nil; pluginVersionsRequestID = id }
+        else { pluginDetail = nil; pluginDetailRequestID = id }
+        var payload: [String: Any] = ["type": versions ? "plugin-versions" : "plugin-detail", "name": name, "requestId": id]
+        if !versions { payload["language"] = Locale.current.identifier.replacingOccurrences(of: "_", with: "-") }
+        sendManagement(payload)
+    }
+
+    func updatePlugin(_ name: String, version: String) {
+        guard supportsPluginUpdates, gateway.state.isConnected, pluginPendingName == nil else { return }
+        let id = UUID().uuidString
+        pluginUpdateRequestID = id
+        pluginPendingName = name
+        pluginUpdateStep = "checking"
+        pluginUpdateLogs = []
+        pluginUpdateResult = nil
+        pluginNotice = nil
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(600))
+            guard let self, self.pluginUpdateRequestID == id else { return }
+            self.pluginUpdateRequestID = nil
+            self.pluginPendingName = nil
+            self.pluginUpdateStep = "unverified"
+            self.pluginNotice = "更新及恢复结果待核实，请刷新实际版本并检查 Host 日志"
+            self.refreshPlugins()
+        }
+        sendManagement(["type": "plugin-update", "requestId": id, "name": name, "version": version,
+            "registry": pluginVersions?["registry"]?.foundationValue ?? NSNull()])
+    }
+
     func clearPluginNotice() { pluginNotice = nil }
 
     private func acceptPluginFrame(_ frame: GatewayFrame) {
         switch frame.kind {
+        case "plugin-versions", "plugin-detail", "plugin-update-state", "plugin-install-state", "plugin-install-log", "plugin-update-result", "error"
+            where frame.requestId != nil && [pluginVersionsRequestID, pluginDetailRequestID, pluginUpdateRequestID].contains(frame.requestId):
+            if frame.requestId == pluginVersionsRequestID {
+                pluginVersions = frame.result
+                pluginVersionsRequestID = nil
+            } else if frame.requestId == pluginDetailRequestID {
+                pluginDetail = frame.result
+                pluginDetailRequestID = nil
+            } else if frame.kind == "plugin-install-log" {
+                let lines = String((frame.text ?? "").suffix(16_384)).components(separatedBy: .newlines)
+                pluginUpdateLogs = Array((pluginUpdateLogs + lines).suffix(200))
+            } else if frame.kind == "plugin-update-state" || frame.kind == "plugin-install-state" {
+                pluginUpdateStep = frame.step ?? pluginUpdateStep
+            } else {
+                pluginUpdateResult = frame.result
+                if frame.result?["restore"]?["application"]?.stringValue == "failed" {
+                    pluginNotice = "更新失败，旧版本恢复失败。请刷新目录并检查 Host 日志。"
+                } else if frame.result?["result"]?["application"]?.stringValue == "restart-required" {
+                    pluginNotice = "请重启 DSH 后刷新目录确认实际版本"
+                } else if ["failed", "cancelled", "overridden"].contains(frame.result?["result"]?["application"]?.stringValue ?? "") {
+                    pluginNotice = "目标版本更新未生效，请检查更新及恢复结果"
+                }
+                pluginUpdateRequestID = nil
+                pluginPendingName = nil
+                pluginUpdateStep = nil
+                refreshPlugins()
+            }
+            if frame.kind == "error" { pluginNotice = frame.message }
         case "plugin-catalog" where frame.requestId == pluginCatalogRequestID:
             pluginCatalog = MobilePluginCatalog(
                 managementAvailable: frame.managementAvailable == true,
@@ -1738,10 +1904,75 @@ final class AppStore: ObservableObject {
         }
     }
 
+    private func scheduleManagementTimeout(_ id: String) {
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(15))
+            guard let self, self.scheduledTaskMutationRequestID == id else { return }
+            self.finishScheduledTaskMutation(error: "操作结果待核实，请刷新后确认")
+        }
+    }
+
     @discardableResult
-    func updateScheduledTask(_ task: ScheduledTask, title: String, prompt: String, change: JSONValue?) -> String? {
-        guard beginScheduledTaskMutation(task, kind: "schedule-update") else { return nil }
+    func createScheduledTask(title: String, prompt: String, timingJSON: String, targetKind: String, sessionID: String) -> String? {
+        guard supportsScheduleManagement, gateway.state.isConnected, scheduledTaskPendingID == nil else { return nil }
+        guard let timing = try? JSONSerialization.jsonObject(with: Data(timingJSON.utf8)) as? [String: Any],
+              !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, title.count <= 120,
+              !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              targetKind != "session" || !sessionID.isEmpty else {
+            scheduledTaskMutationError = "请填写标题、任务内容、有效的执行规则和目标"
+            return nil
+        }
+        var target: [String: Any] = ["kind": targetKind]
+        if targetKind == "session" { target["sessionId"] = sessionID }
+        let id = UUID().uuidString
+        scheduledTaskMutationRequestID = id
+        scheduledTaskMutationKind = "schedule-create"
+        scheduledTaskPendingID = "creating"
+        scheduledTaskMutationError = nil
+        scheduleManagementTimeout(id)
+        sendManagement(["type": "schedule-create", "requestId": id, "title": title, "prompt": prompt,
+            "timing": timing, "target": target])
+        return id
+    }
+
+    func setScheduledTaskActive(_ task: ScheduledTask, active: Bool) {
+        guard beginScheduledTaskMutation(task, kind: "schedule-edit") else { return }
+        sendManagement(["type": "schedule-edit", "requestId": scheduledTaskMutationRequestID!, "id": task.id,
+            "action": "update", "expectedUpdatedAt": task.raw["updatedAt"]?.foundationValue ?? NSNull(), "patch": ["active": active]])
+    }
+
+    func runScheduledTask(_ task: ScheduledTask) {
+        guard beginScheduledTaskMutation(task, kind: "schedule-run") else { return }
+        sendManagement(["type": "schedule-run", "requestId": scheduledTaskMutationRequestID!, "id": task.id])
+    }
+
+    func clearEndedScheduledTasks() {
+        guard supportsScheduleManagement, gateway.state.isConnected, scheduledTaskPendingID == nil else { return }
+        let id = UUID().uuidString
+        scheduledTaskMutationRequestID = id
+        scheduledTaskMutationKind = "schedule-delete-inactive"
+        scheduledTaskPendingID = "clearing"
+        scheduleManagementTimeout(id)
+        sendManagement(["type": "schedule-delete-inactive", "requestId": id, "confirm": true])
+    }
+
+    @discardableResult
+    func updateScheduledTask(_ task: ScheduledTask, title: String, prompt: String, change: JSONValue?, target: JSONValue? = nil) -> String? {
+        guard target == nil || supportsScheduleManagement else {
+            scheduledTaskMutationError = String(localized: "当前网关不支持修改执行位置，请升级网关")
+            return nil
+        }
+        guard beginScheduledTaskMutation(task, kind: supportsScheduleManagement ? "schedule-edit" : "schedule-update") else { return nil }
         let requestID = scheduledTaskMutationRequestID!
+        if supportsScheduleManagement {
+            var patch: [String: JSONValue] = ["title": .string(title.trimmingCharacters(in: .whitespacesAndNewlines)), "prompt": .string(prompt.trimmingCharacters(in: .whitespacesAndNewlines))]
+            if let change { patch["timing"] = change }
+            if let target { patch["target"] = target }
+            sendManagement(["type": "schedule-edit", "requestId": requestID, "id": task.id,
+                "action": "update", "expectedUpdatedAt": task.raw["updatedAt"]?.foundationValue ?? NSNull(),
+                "patch": JSONValue.object(patch).foundationValue])
+            return requestID
+        }
         gateway.updateSchedule(
             sessionId: task.sessionID, id: task.id, expected: task.raw,
             title: title.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -1753,9 +1984,12 @@ final class AppStore: ObservableObject {
 
     @discardableResult
     func deleteScheduledTask(_ task: ScheduledTask) -> String? {
-        guard beginScheduledTaskMutation(task, kind: "schedule-delete") else { return nil }
+        guard beginScheduledTaskMutation(task, kind: supportsScheduleManagement ? "schedule-edit" : "schedule-delete") else { return nil }
         let requestID = scheduledTaskMutationRequestID!
-        gateway.deleteSchedule(sessionId: task.sessionID, id: task.id, requestId: requestID)
+        if supportsScheduleManagement {
+            sendManagement(["type": "schedule-edit", "requestId": requestID, "id": task.id,
+                "action": "delete", "expectedUpdatedAt": task.raw["updatedAt"]?.foundationValue ?? NSNull()])
+        } else { gateway.deleteSchedule(sessionId: task.sessionID, id: task.id, requestId: requestID) }
         return requestID
     }
 
@@ -2702,7 +2936,10 @@ final class AppStore: ObservableObject {
             sessionId: selectedSessionId,
             workspaceId: selectedSessionId == nil ? activeWorkspace?.id : nil,
             mode: mode,
-            requestId: messageSubmissionRequestID
+            requestId: messageSubmissionRequestID,
+            textParts: supportsMessageQuotes ? GatewayQuoteTextParts.shared.parseJson(text: trimmed).flatMap {
+                try? JSONDecoder().decode([GatewayTextPart].self, from: Data($0.utf8))
+            } : nil
         )
         return true
     }
@@ -2819,6 +3056,7 @@ final class AppStore: ObservableObject {
         guard let id = pendingSnapshotSessionID else { return }
         pendingSnapshotSessionID = nil
         finishHistoryLoading(id)
+        scheduleConversationProjection(for: id)
     }
 
     private func subscribeToSession(_ sessionID: String?) {
@@ -2903,7 +3141,7 @@ final class AppStore: ObservableObject {
             remoteSearchTimeout?.cancel()
             guard accepted else { requestRemoteSearchIfPossible(); return }
         }
-        if frame.kind == "plugin-catalog" || frame.kind == "plugins-changed" ||
+        if frame.kind.hasPrefix("plugin-") || frame.kind == "plugins-changed" ||
             frame.kind == "plugin-bundle-set-enabled" || frame.kind == "plugin-entry-set-enabled" ||
             (frame.kind == "error" && frame.requestType?.hasPrefix("plugin-") == true) {
             acceptPluginFrame(frame)
@@ -2911,7 +3149,8 @@ final class AppStore: ObservableObject {
         }
         if frame.kind == scheduledTaskMutationKind,
            frame.requestId == scheduledTaskMutationRequestID {
-            let succeeded = frame.kind == "schedule-update" ? frame.updated == true : frame.deleted == true
+            let succeeded = frame.kind == "schedule-update" ? frame.updated == true :
+                (["schedule-edit", "schedule-create", "schedule-run", "schedule-delete-inactive"].contains(frame.kind) ? frame.code == nil : frame.deleted == true)
             finishScheduledTaskMutation(error: succeeded ? nil : scheduledTaskFailureMessage(frame.code, frame.message))
             return
         }
@@ -2920,20 +3159,41 @@ final class AppStore: ObservableObject {
             finishScheduledTaskMutation(error: scheduledTaskFailureMessage(frame.code, frame.message))
             return
         }
-        if frame.kind == "schedule-catalog" {
-            scheduledTasks = (frame.items ?? []).compactMap(ScheduledTask.init).sorted {
+        if frame.kind == "error", frame.requestType == "schedule-history", frame.requestId == scheduleHistoryRequestID {
+            scheduleHistoryLoading = false
+            scheduleHistoryError = frame.message ?? String(localized: "运行轨迹加载失败")
+            return
+        }
+        if frame.kind == "schedule-history", frame.requestId == scheduleHistoryRequestID {
+            let previous = scheduleHistoryAppending ? (scheduleHistory?["records"]?.arrayValue ?? []) : []
+            var seen = Set<JSONValue>()
+            let records = (previous + (frame.records ?? [])).filter { seen.insert($0).inserted }
+            scheduleHistory = .object(["records": .array(records), "nextBefore": frame.nextBefore.map(JSONValue.string) ?? .null,
+                "retention": frame.retention ?? .null,
+                "earlierRecordsUnavailable": .bool(frame.earlierRecordsUnavailable == true),
+                "earlierRecordsPruned": .bool(frame.earlierRecordsPruned == true)])
+            scheduleHistoryLoading = false
+            scheduleHistoryError = nil
+            return
+        }
+        if frame.kind == "schedule-catalog" || frame.kind == "schedule-list" {
+            if frame.kind == "schedule-list", frame.requestId != scheduleListRequestID { return }
+            let previous = frame.kind == "schedule-list" && scheduleListOffset > 0 ? scheduledTasks : []
+            var seen: Set<String> = []
+            scheduledTasks = (previous + (frame.items ?? []).compactMap(ScheduledTask.init)).filter { seen.insert($0.id).inserted }.sorted {
                 if $0.status != $1.status { return $0.status == "active" }
                 return $0.scheduledAt < $1.scheduledAt
             }
+            scheduledTasksTotal = frame.total ?? scheduledTasks.count
             scheduledTasksLoading = false
             scheduledTasksError = nil
             return
         }
         if frame.kind == "schedule-changed" {
-            if gateway.state.isConnected { gateway.requestScheduleCatalog() }
+            if gateway.state.isConnected { refreshScheduledTasks() }
             return
         }
-        if frame.kind == "error" && frame.requestType == "schedule-catalog" {
+        if frame.kind == "error" && ["schedule-catalog", "schedule-list"].contains(frame.requestType ?? "") {
             scheduledTasksLoading = false
             scheduledTasksError = frame.message ?? "定时任务加载失败"
             return
@@ -3032,7 +3292,7 @@ final class AppStore: ObservableObject {
                     let replaced = try kmpHistoryStore.installSnapshot(sessionID: id,
                         events: records,
                         hasMore: frame.hasMore == true, nextBeforeSequence: frame.nextBeforeSeq)
-                    if pendingSnapshotSessionID == id { pendingSnapshotSessionID = nil }
+                    // 首屏两页作为一次呈现提交，补页期间继续接收实时事件。
                     applyHistoryProjections(frame.projections, sessionId: id)
                     installTaskGoalBaseline(frame.projections, sessionID: id)
                     drainKMPEventDeliveries()
@@ -3043,6 +3303,7 @@ final class AppStore: ObservableObject {
                             chunksJSON: assistantStreamState.replayChunksJson())
                         drainKMPEventDeliveries()
                     }
+                    scheduleConversationProjection(for: id)
                     return
                 }
                 if let attemptID = update.attemptId, let id = update.sessionId, update.chunksJson != "[]" {
@@ -3185,6 +3446,9 @@ final class AppStore: ObservableObject {
             supportsSlashCommands = payload.capabilities.contains("commands")
             supportsSessionCreation = payload.capabilities.contains("session-create")
             supportsSessionAgentPreset = payload.capabilities.contains("session-agent-preset")
+            supportsScheduleManagement = payload.capabilities.contains("schedule-management-v2")
+            supportsPluginUpdates = payload.capabilities.contains("plugin-updates-v1")
+            supportsMessageQuotes = payload.capabilities.contains("message-quotes-v1")
             supportsTasks = payload.capabilities.contains("tasks")
             supportsGoals = payload.capabilities.contains("goals")
             supportsSessionCancel = payload.capabilities.contains("session-cancel")
@@ -3199,7 +3463,12 @@ final class AppStore: ObservableObject {
             }
             if workspaceFilePreviewNeedsConnection { workspaceFileOperationID = UUID() }
             applyWorkspaceFileTransition(kmpWorkspaceFileStore.reset(sessionId: selectedSessionId))
-            attachmentLoader.reset()
+            attachmentLoaders.removeAll()
+            imageLoadingGeneration = UUID()
+            imageAttachmentRequests.removeAll()
+            imageAttachmentTokens.removeAll()
+            imageAttachmentErrors.removeAll()
+            imageAttachmentRequestEpochs.removeAll()
             presentsNextConnectionFailureAsAlert = false
             let authentication = payload.authenticated
                 ? String(localized: "设备鉴权成功")
@@ -3665,7 +3934,13 @@ final class AppStore: ObservableObject {
                 let transition = dispatchSessionControlAction(.permissionSelected(sessionID: sessionID, value: value))
                 cancelCompletedSessionControlTracker("permission", transition: transition)
                 if transition.completed("permission"), let targetSessionID {
-                    notice(String(localized: "权限已切换"), value, sessionId: targetSessionID)
+                    notice(
+                        String(localized: "权限已切换"),
+                        L10n.permissionName(for: value, fallback: sessionPermissions[targetSessionID]?.options?
+                            .first(where: { $0.value == value })?.name
+                            ?? permissionDefaultOptions.first(where: { $0.value == value })?.name),
+                        sessionId: targetSessionID
+                    )
                 }
             } else {
                 if failSessionControlRequest("permission", responseSessionID: sessionID) {
@@ -3961,6 +4236,12 @@ final class AppStore: ObservableObject {
             recordHistoryFailure([payload.code, payload.message].compactMap { $0 }.joined(separator: ": "), sessionID: sessionID)
         }
         let detail = [payload.code, payload.message].compactMap { $0 }.joined(separator: ": ")
+        if payload.requestType == "attachment", let sessionID = payload.sessionID {
+            // 旧协议错误没有附件 ID：结束该会话的待处理请求，避免永久占用下载槽。
+            let requests = imageAttachmentRequests.values.filter { $0.sessionID == sessionID }
+            for request in requests { finishImageRequest(request, error: detail) }
+            return
+        }
         if let requestType = payload.requestType,
            ["question-answer", "question-cancel"].contains(requestType) {
             if let rpcID = payload.rpcID {
@@ -4130,56 +4411,75 @@ final class AppStore: ObservableObject {
         enqueueImageAttachments(records.flatMap { $0.event.images ?? [] }, sessionId: sessionId)
     }
 
+    private func publishAttachmentChange(sessionID: String) {
+        if let items = renderedConversationItems[sessionID] { conversationTimeline(for: sessionID).publish(items) }
+        if isShowingSearchContext, let timeline = searchContextTimeline { timeline.publish(timeline.currentSnapshot.items) }
+    }
+
     private func enqueueImageAttachments(_ attachments: [GatewayImageAttachment], sessionId: String) {
-        guard supportsImages else { return }
+        guard supportsImages, !attachments.isEmpty else { return }
         let cache = imageAttachmentCache
+        let generation = imageLoadingGeneration
         Task { [weak self] in
-            for attachment in attachments { _ = await cache.loadData(for: attachment.id) }
-            guard let self, !self.evictedConversationSessionIDs.contains(sessionId) else { return }
-            if let items = self.renderedConversationItems[sessionId] { self.conversationTimeline(for: sessionId).publish(items) }
-            let requests = self.attachmentLoader.enqueue(attachments, sessionID: sessionId) {
-                cache.data(for: $0) != nil
+            guard let self else { return }
+            for attachment in attachments {
+                _ = await cache.loadData(for: self.imageCacheKey(attachment.id, sessionID: sessionId))
             }
+            guard self.imageLoadingGeneration == generation, !self.evictedConversationSessionIDs.contains(sessionId) else { return }
+            self.publishAttachmentChange(sessionID: sessionId)
+            let requests = self.attachmentLoaders[sessionId, default: AttachmentLoader()].enqueue(
+                attachments.filter { self.imageAttachmentErrors[self.imageCacheKey($0.id, sessionID: sessionId)] == nil },
+                sessionID: sessionId
+            ) { cache.data(for: self.imageCacheKey($0, sessionID: sessionId)) != nil }
             self.requestImageAttachments(requests)
         }
     }
 
     private func requestImageAttachments(_ requests: [AttachmentLoadRequest]) {
         for request in requests {
-            imageAttachmentRequestEpochs[request.attachment.id] = imageAttachmentCache.epoch
-            gateway.requestAttachment(
-                sessionId: request.sessionID,
-                attachmentId: request.attachment.id
-            )
+            let key = imageCacheKey(request.attachment.id, sessionID: request.sessionID)
+            let token = UUID()
+            imageAttachmentRequestEpochs[key] = imageAttachmentCache.epoch
+            imageAttachmentRequests[key] = request
+            imageAttachmentTokens[key] = token
+            gateway.requestAttachment(sessionId: request.sessionID, attachmentId: request.attachment.id)
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+                guard let self, self.imageAttachmentTokens[key] == token else { return }
+                self.finishImageRequest(request, error: String(localized: "图片加载超时，请重试"))
+            }
         }
+    }
+
+    private func finishImageRequest(_ request: AttachmentLoadRequest, error: String? = nil) {
+        let key = imageCacheKey(request.attachment.id, sessionID: request.sessionID)
+        imageAttachmentRequests.removeValue(forKey: key)
+        imageAttachmentRequestEpochs.removeValue(forKey: key)
+        imageAttachmentTokens.removeValue(forKey: key)
+        imageAttachmentErrors[key] = error
+        let ready = attachmentLoaders[request.sessionID, default: AttachmentLoader()].complete(attachmentID: request.attachment.id) {
+            imageAttachmentCache.data(for: imageCacheKey($0, sessionID: request.sessionID)) != nil
+        }
+        publishAttachmentChange(sessionID: request.sessionID)
+        requestImageAttachments(ready)
     }
 
     private func handleImageAttachment(_ payload: GatewayAttachmentPayload) {
         let attachment = payload.attachment
-        let requestEpoch = imageAttachmentRequestEpochs.removeValue(forKey: attachment.id)
-        let nextRequests = attachmentLoader.complete(attachmentID: attachment.id) {
-            imageAttachmentCache.data(for: $0) != nil
-        }
-        defer { requestImageAttachments(nextRequests) }
-        guard let encoded = payload.base64Data,
-              let decoded = Data(base64Encoded: encoded),
-              decoded.count == attachment.bytes else {
-            notice(
-                String(localized: "notice.image.load-failed", defaultValue: "图片加载失败"),
-                String(localized: "image.invalid.base64", defaultValue: "附件 \(attachment.id.prefix(12))… 的 Base64 或字节数无效。"),
-                sessionId: payload.sessionID,
-                isError: true
-            )
+        guard let sessionID = payload.sessionID else { return }
+        let key = imageCacheKey(attachment.id, sessionID: sessionID)
+        guard let request = imageAttachmentRequests[key], let epoch = imageAttachmentRequestEpochs[key] else { return }
+        guard let encoded = payload.base64Data, encoded.count <= 48 * 1024 * 1024,
+              let decoded = Data(base64Encoded: encoded), decoded.count == attachment.bytes,
+              let dimensions = GatewayImageInspector.dimensions(of: decoded),
+              dimensions.width > 0, dimensions.height > 0,
+              dimensions.width <= 16_384, dimensions.height <= 16_384,
+              dimensions.width * dimensions.height <= 80_000_000, decoded.count <= 32 * 1024 * 1024 else {
+            finishImageRequest(request, error: String(localized: "图片数据无效或尺寸超过限制"))
             return
         }
-        guard let requestEpoch else { return }
-        imageAttachmentCache.store(decoded, for: attachment.id, expectedEpoch: requestEpoch)
-        if isShowingSearchContext, let timeline = searchContextTimeline { timeline.publish(timeline.currentSnapshot.items) }
-        guard let sessionId = payload.sessionID,
-              let items = renderedConversationItems[sessionId] else { return }
-        // The row revision also includes cache presence, so this publication
-        // replaces only rows whose attachment just became renderable.
-        conversationTimeline(for: sessionId).publish(items)
+        imageAttachmentCache.store(decoded, for: key, expectedEpoch: epoch)
+        finishImageRequest(request)
     }
 
     private func scheduleConversationProjection(for sessionId: String) {
@@ -4386,6 +4686,12 @@ final class AppStore: ObservableObject {
     /// 一次发布给 UIKit timeline，避免高频 token 让 SwiftUI 根视图失效。
     private func projectIncrementally(for sessionId: String) async {
         guard !Task.isCancelled else { return }
+        if pendingSnapshotSessionID == sessionId {
+            guard !kmpHistoryStore.isLoading(sessionID: sessionId),
+                  pendingConversationHistory[sessionId] == nil,
+                  activeConversationHistory[sessionId] == nil else { return }
+            pendingSnapshotSessionID = nil
+        }
         let items = kmpConversationStore.items(for: sessionId)
         if let batch = historyReadingBatches[sessionId] {
             guard batch.responseReady, !kmpHistoryStore.isLoading(sessionID: sessionId),
@@ -4664,6 +4970,12 @@ final class AppStore: ObservableObject {
             failWorkspaceFilePreview(detail)
         }
         applyWorkspaceFileTransition(kmpWorkspaceFileStore.reset(sessionId: selectedSessionId))
+        if pluginUpdateRequestID != nil {
+            pluginUpdateRequestID = nil
+            pluginPendingName = nil
+            pluginUpdateStep = "unverified"
+            pluginNotice = "连接中断，更新及恢复结果待核实，请重连后检查实际版本"
+        }
         if pluginToggleRequestID != nil {
             pluginNotice = pluginPendingName == "dsh-plugin-mobile-gateway"
                 ? "网关连接已断开，停用结果待重连确认。若已停用，请从 DSH Web 或 CLI 重新开启。"
@@ -5117,8 +5429,10 @@ final class AppStore: ObservableObject {
             break
         case "stopped":
             historySyncEngine.finish(sessionID: change.sessionID)
+            scheduleConversationProjection(for: change.sessionID)
         case "failed":
             historySyncEngine.finish(sessionID: change.sessionID)
+            scheduleConversationProjection(for: change.sessionID)
             let message: String
             switch change.failureCode {
             case "MISSING_NEXT_CURSOR":
@@ -5137,6 +5451,8 @@ final class AppStore: ObservableObject {
             )
         case "completed":
             historySyncEngine.finish(sessionID: change.sessionID)
+            // 空页或完全重复的第二页没有行补丁，也必须释放首屏呈现。
+            scheduleConversationProjection(for: change.sessionID)
             let eventCount = change.completedEventCount ?? 0
             let byteCount = change.completedByteCount ?? 0
             let byteDetail = byteCount > 0

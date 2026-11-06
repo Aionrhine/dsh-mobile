@@ -102,10 +102,12 @@ private const val ROUTE_WORKSPACE = "workspace"
 private const val ROUTE_CONVERSATION = "conversation"
 private const val ROUTE_SETTINGS = "settings"
 private const val ROUTE_SETTINGS_NETWORK = "settings/network-diagnostics"
+private const val ROUTE_SETTINGS_LOGS = "settings/logs"
 private const val ROUTE_SETTINGS_STORAGE = "settings/storage"
 private const val ROUTE_SETTINGS_FONT_SIZE = "settings/font-size"
 private const val ROUTE_SETTINGS_AGENT_PRESETS = "settings/agent-presets"
 private const val ROUTE_SETTINGS_DEFAULT_MODEL = "settings/default-model"
+private const val ROUTE_SETTINGS_TUNNEL = "settings/tailscale-tunnel"
 private const val ROUTE_PLUGINS = "plugins"
 private const val ROUTE_PLUGIN_BUNDLE = "plugins/bundle/{bundleName}"
 private const val ROUTE_PLUGIN_OFFICIAL = "plugins/official/{pluginId}"
@@ -148,116 +150,142 @@ internal fun DshProductApp(
             isAppearanceLightNavigationBars = !systemDark
         }
     }
-    NavHost(
-        navController = navController,
-        startDestination = ROUTE_WORKSPACE,
-        enterTransition = {
-            slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Left, tween(260))
-        },
-        exitTransition = {
-            slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Left, tween(260))
-        },
-        popEnterTransition = {
-            slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Right, tween(260))
-        },
-        popExitTransition = {
-            slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Right, tween(260))
-        }
-    ) {
-        composable(ROUTE_WORKSPACE) {
-            val workspaceScope = rememberCoroutineScope()
-            WorkspaceScreen(
-                stateHolder = stateHolder,
-                onOpenSession = { id ->
-                    // 转场期间首页仍能收到点击，直接读取当前目的地以拦截重复事件。
-                    if (navController.currentDestination?.route == ROUTE_WORKSPACE) {
-                        stateHolder.selectSession(id)
+    DshLiquidGlassHost(background = { Box(it.fillMaxSize().background(MaterialTheme.colorScheme.background)) }) {
+        NavHost(
+            navController = navController,
+            startDestination = ROUTE_WORKSPACE,
+            enterTransition = {
+                slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Left, tween(260))
+            },
+            exitTransition = {
+                slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Left, tween(260))
+            },
+            popEnterTransition = {
+                slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Right, tween(260))
+            },
+            popExitTransition = {
+                slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Right, tween(260))
+            }
+        ) {
+            composable(ROUTE_WORKSPACE) {
+                val workspaceScope = rememberCoroutineScope()
+                WorkspaceScreen(
+                    stateHolder = stateHolder,
+                    onOpenSession = { id ->
+                        // 转场期间首页仍能收到点击，直接读取当前目的地以拦截重复事件。
+                        if (navController.currentDestination?.route == ROUTE_WORKSPACE) {
+                            stateHolder.selectSession(id)
+                            navController.navigate(ROUTE_CONVERSATION) {
+                                launchSingleTop = true
+                            }
+                        }
+                    },
+                    onNewSession = {
+                        workspaceScope.launch {
+                            if (stateHolder.prepareNewSession()) {
+                                navController.navigate(ROUTE_CONVERSATION)
+                            }
+                        }
+                    },
+                    onSettings = { navController.navigate(ROUTE_SETTINGS) },
+                    onPlugins = { navController.navigate(ROUTE_PLUGINS) },
+                    onScheduledTasks = { navController.navigate(ROUTE_SCHEDULED_TASKS) }
+                )
+            }
+            composable(ROUTE_CONVERSATION) {
+                ConversationScreen(
+                    stateHolder, onPickImage, navController::popBackStack, onPickFile,
+                    onPlugins = { navController.navigate(ROUTE_PLUGINS) { launchSingleTop = true } },
+                    onScheduledTasks = { navController.navigate(ROUTE_SCHEDULED_TASKS) { launchSingleTop = true } },
+                    onSettings = { navController.navigate(ROUTE_SETTINGS) { launchSingleTop = true } }
+                )
+            }
+            composable(ROUTE_SETTINGS) {
+                SettingsScreen(
+                    updateModel = updateModel,
+                    stateHolder = stateHolder,
+                    onBack = navController::popBackStack,
+                    onOpenAgentPresets = { navController.navigate(ROUTE_SETTINGS_AGENT_PRESETS) },
+                    onOpenDefaultModel = { navController.navigate(ROUTE_SETTINGS_DEFAULT_MODEL) },
+                    onOpenFontSize = { navController.navigate(ROUTE_SETTINGS_FONT_SIZE) },
+                    onOpenLogs = { navController.navigate(ROUTE_SETTINGS_LOGS) },
+                    onOpenStorage = { navController.navigate(ROUTE_SETTINGS_STORAGE) },
+                    onOpenNetworkDiagnostics = { navController.navigate(ROUTE_SETTINGS_NETWORK) },
+                    onOpenTunnel = { navController.navigate(ROUTE_SETTINGS_TUNNEL) }
+                )
+            }
+            composable(ROUTE_SETTINGS_LOGS) {
+                LogExportScreen(navController::popBackStack)
+            }
+            composable(ROUTE_SETTINGS_NETWORK) {
+                NetworkDiagnosticsScreen(stateHolder, navController::popBackStack)
+            }
+            composable(ROUTE_SETTINGS_TUNNEL) {
+                TailscaleTunnelScreen(navController::popBackStack)
+            }
+            composable(ROUTE_SETTINGS_STORAGE) {
+                StorageSpaceScreen(stateHolder, navController::popBackStack)
+            }
+            composable(ROUTE_SETTINGS_FONT_SIZE) {
+                FontSizeSettingsScreen(navController::popBackStack)
+            }
+            composable(ROUTE_SETTINGS_AGENT_PRESETS) {
+                AgentPresetSelectionScreen(stateHolder, navController::popBackStack)
+            }
+            composable(ROUTE_SETTINGS_DEFAULT_MODEL) {
+                DefaultModelSelectionScreen(stateHolder, navController::popBackStack)
+            }
+            composable(ROUTE_PLUGINS) {
+                PluginsScreen(
+                    stateHolder = stateHolder,
+                    onBack = navController::popBackStack,
+                    onOpenBundle = { navController.navigate("plugins/bundle/${Uri.encode(it)}") },
+                    onOpenOfficial = { navController.navigate("plugins/official/${Uri.encode(it)}") }
+                )
+            }
+            composable(ROUTE_PLUGIN_BUNDLE) { entry ->
+                PluginBundleDetailScreen(
+                    stateHolder = stateHolder,
+                    bundleName = entry.arguments?.getString("bundleName").orEmpty(),
+                    onBack = navController::popBackStack
+                )
+            }
+            composable(ROUTE_PLUGIN_OFFICIAL) { entry ->
+                OfficialPluginDetailScreen(
+                    stateHolder = stateHolder,
+                    pluginId = entry.arguments?.getString("pluginId").orEmpty(),
+                    onBack = navController::popBackStack
+                )
+            }
+            composable(ROUTE_SCHEDULED_TASKS) {
+                val scheduleScope = rememberCoroutineScope()
+                var creatingConversation by remember { mutableStateOf(false) }
+                ScheduledTasksScreen(
+                    stateHolder = stateHolder,
+                    onBack = navController::popBackStack,
+                    onOpenSession = { sessionId ->
+                        stateHolder.selectSession(sessionId)
                         navController.navigate(ROUTE_CONVERSATION) {
+                            popUpTo(ROUTE_WORKSPACE)
                             launchSingleTop = true
                         }
-                    }
-                },
-                onNewSession = {
-                    workspaceScope.launch {
-                        if (stateHolder.prepareNewSession()) {
-                            navController.navigate(ROUTE_CONVERSATION)
+                    },
+                    onCreateTask = {
+                        if (!creatingConversation) {
+                            creatingConversation = true
+                            scheduleScope.launch {
+                                try {
+                                    if (stateHolder.prepareScheduledTaskConversation()) {
+                                        navController.navigate(ROUTE_CONVERSATION) {
+                                            popUpTo(ROUTE_WORKSPACE)
+                                        }
+                                    }
+                                } finally { creatingConversation = false }
+                            }
                         }
                     }
-                },
-                onSettings = { navController.navigate(ROUTE_SETTINGS) },
-                onPlugins = { navController.navigate(ROUTE_PLUGINS) },
-                onScheduledTasks = { navController.navigate(ROUTE_SCHEDULED_TASKS) }
-            )
-        }
-        composable(ROUTE_CONVERSATION) {
-            ConversationScreen(
-                stateHolder, onPickImage, navController::popBackStack, onPickFile,
-                onPlugins = { navController.navigate(ROUTE_PLUGINS) { launchSingleTop = true } },
-                onScheduledTasks = { navController.navigate(ROUTE_SCHEDULED_TASKS) { launchSingleTop = true } },
-                onSettings = { navController.navigate(ROUTE_SETTINGS) { launchSingleTop = true } }
-            )
-        }
-        composable(ROUTE_SETTINGS) {
-            SettingsScreen(
-                updateModel = updateModel,
-                stateHolder = stateHolder,
-                onBack = navController::popBackStack,
-                onOpenAgentPresets = { navController.navigate(ROUTE_SETTINGS_AGENT_PRESETS) },
-                onOpenDefaultModel = { navController.navigate(ROUTE_SETTINGS_DEFAULT_MODEL) },
-                onOpenFontSize = { navController.navigate(ROUTE_SETTINGS_FONT_SIZE) },
-                onOpenStorage = { navController.navigate(ROUTE_SETTINGS_STORAGE) },
-                onOpenNetworkDiagnostics = { navController.navigate(ROUTE_SETTINGS_NETWORK) }
-            )
-        }
-        composable(ROUTE_SETTINGS_NETWORK) {
-            NetworkDiagnosticsScreen(stateHolder, navController::popBackStack)
-        }
-        composable(ROUTE_SETTINGS_STORAGE) {
-            StorageSpaceScreen(stateHolder, navController::popBackStack)
-        }
-        composable(ROUTE_SETTINGS_FONT_SIZE) {
-            FontSizeSettingsScreen(navController::popBackStack)
-        }
-        composable(ROUTE_SETTINGS_AGENT_PRESETS) {
-            AgentPresetSelectionScreen(stateHolder, navController::popBackStack)
-        }
-        composable(ROUTE_SETTINGS_DEFAULT_MODEL) {
-            DefaultModelSelectionScreen(stateHolder, navController::popBackStack)
-        }
-        composable(ROUTE_PLUGINS) {
-            PluginsScreen(
-                stateHolder = stateHolder,
-                onBack = navController::popBackStack,
-                onOpenBundle = { navController.navigate("plugins/bundle/${Uri.encode(it)}") },
-                onOpenOfficial = { navController.navigate("plugins/official/${Uri.encode(it)}") }
-            )
-        }
-        composable(ROUTE_PLUGIN_BUNDLE) { entry ->
-            PluginBundleDetailScreen(
-                stateHolder = stateHolder,
-                bundleName = entry.arguments?.getString("bundleName").orEmpty(),
-                onBack = navController::popBackStack
-            )
-        }
-        composable(ROUTE_PLUGIN_OFFICIAL) { entry ->
-            OfficialPluginDetailScreen(
-                stateHolder = stateHolder,
-                pluginId = entry.arguments?.getString("pluginId").orEmpty(),
-                onBack = navController::popBackStack
-            )
-        }
-        composable(ROUTE_SCHEDULED_TASKS) {
-            ScheduledTasksScreen(
-                stateHolder = stateHolder,
-                onBack = navController::popBackStack,
-                onOpenSession = { sessionId ->
-                    stateHolder.selectSession(sessionId)
-                    navController.navigate(ROUTE_CONVERSATION) {
-                        popUpTo(ROUTE_WORKSPACE)
-                        launchSingleTop = true
-                    }
-                }
-            )
+                )
+            }
         }
     }
     stateHolder.platformError?.let { error ->
@@ -372,18 +400,24 @@ internal fun WorkspaceScreen(
         }
     }
 
+    val sessionScopeId = stateHolder.selectedWorkspaceId.orEmpty()
     // 分组排序与展开投影在后台执行；滚动只消费稳定 key 的扁平条目。
-    val allSessionEntries by produceState(
+    val sessionEntries by produceState(
         initialValue = emptyList<WorkspaceSessionListEntry>(),
         key1 = sessions,
         key2 = workspaces,
-        key3 = showingAllWorkspaces to expandedSectionIds
+        key3 = Triple(showingAllWorkspaces, sessionScopeId, expandedSectionIds)
     ) {
-        value = if (showingAllWorkspaces) {
-            withContext(Dispatchers.Default) {
-                allWorkspaceSessionEntries(sessions, workspaces, expandedSectionIds.toSet())
+        val expandedIds = expandedSectionIds.toSet()
+        value = withContext(Dispatchers.Default) {
+            if (showingAllWorkspaces) {
+                allWorkspaceSessionEntries(sessions, workspaces, expandedIds)
+            } else {
+                recentWorkspaceSessionEntries(
+                    sessions, sessionScopeId, expandedIds
+                )
             }
-        } else emptyList()
+        }
     }
 
     WorkspaceDrawer(onPlugins = onPlugins, onScheduledTasks = onScheduledTasks) { openDrawer, canScrollVertically ->
@@ -473,40 +507,31 @@ internal fun WorkspaceScreen(
                             }
                             LocalChatSearchContent(stateHolder, searchQuery, { searchQuery = it }, onOpenSession)
                             if (sessions.isEmpty()) EmptySessions()
-                            else if (!showingAllWorkspaces) SessionList(sessions, { id ->
-                                if (searchQuery.isNotBlank()) stateHolder.localChatMatches.firstOrNull { it.sessionId == id }
-                                    ?.let(stateHolder::prepareLocalChatMatch)
-                                onOpenSession(id)
-                            }, stateHolder::renameSession, stateHolder::archiveSession,
-                                folderLabels = sessionFolderLabels)
-                            Spacer(Modifier.height(24.dp))
                         }
                     )
                 }
-                if (showingAllWorkspaces) {
-                    items(allSessionEntries, key = { it.key }, contentType = { it::class }) { entry ->
-                        AdaptiveWorkspaceSessionContent(window) {
-                            when (entry) {
-                                is WorkspaceSessionListEntry.Header -> WorkspaceSessionSectionHeader(entry)
-                                is WorkspaceSessionListEntry.Toggle -> WorkspaceSessionSectionToggle(entry) { id ->
-                                    expandedSectionIds = if (id in expandedSectionIds) expandedSectionIds - id else expandedSectionIds + id
-                                }
-                                is WorkspaceSessionListEntry.Session -> SessionListItem(
-                                    session = entry.session,
-                                    folderLabel = null,
-                                    onOpen = { id ->
-                                        if (searchQuery.isNotBlank()) stateHolder.localChatMatches.firstOrNull { it.sessionId == id }
-                                            ?.let(stateHolder::prepareLocalChatMatch)
-                                        onOpenSession(id)
-                                    },
-                                    onRename = stateHolder::renameSession,
-                                    onArchive = stateHolder::archiveSession
-                                )
+                items(sessionEntries, key = { it.key }, contentType = { it::class }) { entry ->
+                    AdaptiveWorkspaceSessionContent(window) {
+                        when (entry) {
+                            is WorkspaceSessionListEntry.Header -> WorkspaceSessionSectionHeader(entry)
+                            is WorkspaceSessionListEntry.Toggle -> WorkspaceSessionSectionToggle(entry) { id ->
+                                expandedSectionIds = if (id in expandedSectionIds) expandedSectionIds - id else expandedSectionIds + id
                             }
+                            is WorkspaceSessionListEntry.Session -> SessionListItem(
+                                session = entry.session,
+                                folderLabel = if (showingAllWorkspaces) null else sessionFolderLabel(entry.session, sessionFolderLabels),
+                                onOpen = { id ->
+                                    if (searchQuery.isNotBlank()) stateHolder.localChatMatches.firstOrNull { it.sessionId == id }
+                                        ?.let(stateHolder::prepareLocalChatMatch)
+                                    onOpenSession(id)
+                                },
+                                onRename = stateHolder::renameSession,
+                                onArchive = stateHolder::archiveSession
+                            )
                         }
                     }
-                    item(key = "workspace-sessions-footer", contentType = "footer") { Spacer(Modifier.height(24.dp)) }
                 }
+                item(key = "workspace-sessions-footer", contentType = "footer") { Spacer(Modifier.height(24.dp)) }
             }
         }
     }
@@ -802,24 +827,6 @@ private fun sessionFolderLabel(session: SessionSummary, folderLabels: Map<String
     val label = folderLabels[session.id]
         ?: session.cwd?.trimEnd('/')?.substringAfterLast('/')?.takeIf { it.isNotEmpty() }
     return label?.takeIf { it != session.title }
-}
-
-@Composable
-private fun SessionList(
-    sessions: List<SessionSummary>,
-    onOpen: (String) -> Unit,
-    onRename: (String, String) -> Unit,
-    onArchive: (String) -> Unit,
-    folderLabels: Map<String, String> = emptyMap(),
-    maxRows: Int = 12
-) {
-    Column(Modifier.background(Color.Transparent)) {
-        sessions.forEach { session ->
-            androidx.compose.runtime.key(session.id) {
-                SessionListItem(session, sessionFolderLabel(session, folderLabels), onOpen, onRename, onArchive)
-            }
-        }
-    }
 }
 
 @Composable

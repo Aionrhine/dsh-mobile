@@ -17,6 +17,7 @@ private struct KMPConversationItemSnapshot: Decodable {
     let epochSeconds: Double
     let files: [PresentedFile]?
     let knownFiles: [PresentedFile]?
+    let textParts: [GatewayTextPart]?
 
     var item: ConversationItem? {
         guard !id.isEmpty,
@@ -31,7 +32,8 @@ private struct KMPConversationItemSnapshot: Decodable {
             isError: isError,
             date: Date(timeIntervalSince1970: epochSeconds),
             files: files ?? [],
-            knownFiles: knownFiles ?? []
+            knownFiles: knownFiles ?? [],
+            textParts: textParts
         )
     }
 }
@@ -46,6 +48,7 @@ private extension ConversationItem.Kind {
         case "TOOL": self = .tool
         case "JSON_TOOL": self = .jsonTool
         case "TOOL_RESULT": self = .toolResult
+        case "GENERATED_IMAGES": self = .generatedImages
         case "STATUS": self = .status
         case "SYSTEM": self = .system
         default: return nil
@@ -495,7 +498,8 @@ final class KMPConversationStoreAdapter {
                         isError: old.isError,
                         date: Date(timeIntervalSince1970: epochSeconds),
                         files: old.files,
-                        knownFiles: old.knownFiles
+                        knownFiles: old.knownFiles,
+                        textParts: old.textParts
                     )
                 case "replace":
                     guard let item = operation.item?.item,
@@ -1340,7 +1344,7 @@ final class KMPHistoryStoreAdapter {
         let previousRevision = replacementRevision
         try dispatch(.page(sessionID: sessionID)) {
             shared.installSnapshot(sessionId: sessionID, eventsJson: try encode(events), hasMore: hasMore,
-                nextBeforeSequence: nextBeforeSequence.map { KotlinInt(int: Int32($0)) })
+                nextBeforeSequence: nextBeforeSequence.map { KotlinInt(int: Int32($0)) }, loadRecentPages: true)
         }
         return replacementRevision != previousRevision
     }
