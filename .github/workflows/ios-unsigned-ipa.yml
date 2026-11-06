@@ -36,7 +36,7 @@ jobs:
         run: |
           go version || { echo "::error::runner 上未找到 Go"; exit 1; }
           go install golang.org/x/mobile/cmd/gomobile@latest
-          "$(go env GOPATH)/bin/gomobile" init
+          "$(go env GOPATH)/bin/gomobile" init || echo "::warning::gomobile init 失败（缺 NDK 时 iOS bind 通常仍可进行，bind 报错再处理）"
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: 安装 JDK 17（Gradle 构建 KMP framework 需要）
