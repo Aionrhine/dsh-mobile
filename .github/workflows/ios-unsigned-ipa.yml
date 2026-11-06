@@ -11,19 +11,19 @@ on:
 
 jobs:
   build:
-    # 1.7.11 起代码使用 iOS 27.1 SDK 符号（toolbar 新 API 等），需要 macos-26
-    # 镜像的默认 Xcode（27.x）；macos-15 的 Xcode 26.3 编不过。
-    runs-on: macos-26
+    # macos-26 池子小：实测 1.7.15 首跑两个 run 排队满 15 分钟未等到 runner，
+    # 被 GitHub 原样取消（与本注释记录的作者历史现象一致）。macos-15 池子大；
+    # 镜像最高 Xcode 26.3，当前代码（27.1 已被上游撤除）可在 26.3 SDK 下编译。
+    runs-on: macos-15
     timeout-minutes: 120
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
 
       - name: Toolchain
         run: |
           ls -d /Applications/Xcode*.app || true
-          if [ -d /Applications/Xcode_26.app ]; then
-            sudo xcode-select -s /Applications/Xcode_26.app
-          fi
           xcodebuild -version
           swift --version
           xcodebuild -showsdks | grep -i 'iphoneos' || true
