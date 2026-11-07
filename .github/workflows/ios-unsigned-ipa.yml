@@ -68,6 +68,12 @@ jobs:
       - name: Resolve Swift packages
         run: xcodebuild -resolvePackageDependencies -project DeepSeekHarnessMobile.xcodeproj -scheme DeepSeekHarnessMobile
 
+      - name: Build Tsnetgo xcframework
+        run: |
+          set -o pipefail
+          ./gradlew buildTsnetXcframework 2>&1 | tee /tmp/tsnetgo.log
+          ls -d tsnetgo/build/tsnetgo/Tsnetgo.xcframework
+
       - name: Build (unsigned)
         run: |
           set -o pipefail
