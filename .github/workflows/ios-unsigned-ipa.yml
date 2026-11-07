@@ -32,9 +32,15 @@ jobs:
         run: |
           xcodebuild -downloadComponent MetalToolchain || echo "::warning::Metal 工具链下载失败，若构建阶段报 metal 缺失请检查此步"
 
-      - name: 安装 Go 与 gomobile（Xcode 脚本阶段经 gradlew buildTsnetXcframework 现场产出 Tsnetgo.xcframework）
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "stable"
+          cache: false
+
+      - name: 安装 gomobile（Xcode 脚本阶段经 gradlew buildTsnetXcframework 现场产出 Tsnetgo.xcframework）
         run: |
-          go version || { echo "::error::runner 上未找到 Go"; exit 1; }
+          go version
           go install golang.org/x/mobile/cmd/gomobile@latest
           "$(go env GOPATH)/bin/gomobile" init || echo "::warning::gomobile init 失败（缺 NDK 时 iOS bind 通常仍可进行，bind 报错再处理）"
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
