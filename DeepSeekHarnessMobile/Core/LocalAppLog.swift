@@ -185,9 +185,16 @@ final class LocalAppLog: @unchecked Sendable {
                     var offset: UInt32 = 0
                     var count: UInt16 = 0
                     let parts = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: Date())
-                    let dosDate = UInt16(((max(1980, min(2107, parts.year ?? 1980)) - 1980) << 9)
-                        | ((parts.month ?? 1) << 5) | (parts.day ?? 1))
-                    let dosTime = UInt16(((parts.hour ?? 0) << 11) | ((parts.minute ?? 0) << 5) | ((parts.second ?? 0) / 2))
+                    // DOS 时间字段的位运算整段内联会超类型检查预算，逐字段拆开。
+                    let archiveYear = max(1980, min(2107, parts.year ?? 1980))
+                    let dosYear = UInt16((archiveYear - 1980) << 9)
+                    let dosMonth = UInt16((parts.month ?? 1) << 5)
+                    let dosDay = UInt16(parts.day ?? 1)
+                    let dosDate = dosYear | dosMonth | dosDay
+                    let dosHour = UInt16((parts.hour ?? 0) << 11)
+                    let dosMinute = UInt16((parts.minute ?? 0) << 5)
+                    let dosSecond = UInt16((parts.second ?? 0) / 2)
+                    let dosTime = dosHour | dosMinute | dosSecond
                     let remaining = try limit - directoryBytes()
                     func write(_ data: Data) throws {
                         guard Int64(offset) + Int64(data.count) <= remaining else { throw CocoaError(.fileWriteOutOfSpace) }
