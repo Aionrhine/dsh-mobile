@@ -5415,6 +5415,7 @@ struct MarkdownContent: View {
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(AppFontScale.key) private var fontScale = 1.0
     @AppStorage(AppFontScale.followsSystemKey) private var fontFollowsSystem = false
+    @State private var selectionDocument: MarkdownSelectionDocument?
     let text: String
     var compact = false
     var knownFiles: [PresentedFile] = []

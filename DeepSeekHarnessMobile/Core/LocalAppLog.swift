@@ -162,6 +162,18 @@ final class LocalAppLog: @unchecked Sendable {
         try await withCheckedThrowingContinuation { continuation in
             queue.async { [self] in
                 do {
+                    continuation.resume(returning: try writeArchive(in: interval))
+                } catch {
+                    try? files.removeItem(at: exports)
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// Kept out of the continuation closure: inlined, the archive writer pushed
+    /// the whole expression past the type-checker budget.
+    private func writeArchive(in interval: DateInterval) throws -> URL {
                     try? files.removeItem(at: exports)
                     try files.createDirectory(at: exports, withIntermediateDirectories: true)
                     try trim(to: max(0, (limit - 1_000_000) / 2))
@@ -210,13 +222,7 @@ final class LocalAppLog: @unchecked Sendable {
                     end.logLE(UInt32(0x06054b50)); end.logLE(UInt16(0)); end.logLE(UInt16(0))
                     end.logLE(count); end.logLE(count); end.logLE(UInt32(central.count)); end.logLE(centralOffset); end.logLE(UInt16(0))
                     try write(end)
-                    continuation.resume(returning: target)
-                } catch {
-                    try? files.removeItem(at: exports)
-                    continuation.resume(throwing: error)
-                }
-            }
-        }
+                    return target
     }
 
     func export() async throws -> [URL] {
