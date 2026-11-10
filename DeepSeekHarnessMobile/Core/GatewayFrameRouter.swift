@@ -62,6 +62,7 @@ enum GatewayContentRoute {
     case sessionArchives(Set<String>)
     case sessionTitle(sessionID: String, title: String, sequence: Int, time: Double?)
     case sessions([GatewaySessionSummary])
+    case turnOutlineUpdated(sessionID: String, entries: [TurnOutlineEntry])
     case history(GatewayHistoryPayload)
     case attachment(GatewayAttachmentPayload)
     case search([GatewaySearchItem], hasMore: Bool)
@@ -195,6 +196,11 @@ enum GatewayFrameRouter {
             let sessions = items.compactMap { $0.decode(GatewaySessionSummary.self) }
             guard sessions.count == items.count, sessions.allSatisfy({ !$0.sessionId.isEmpty }) else { return .ignored }
             return .content(.sessions(sessions))
+        case "turn-outline-updated":
+            guard let sessionID = frame.sessionId, !sessionID.isEmpty,
+                  let values = frame.turnOutline?.arrayValue else { return .ignored }
+            let entries = values.compactMap { $0.decode(TurnOutlineEntry.self) }
+            return .content(.turnOutlineUpdated(sessionID: sessionID, entries: entries))
         case "history":
             return .content(.history(GatewayHistoryPayload(
                 sessionID: frame.sessionId ?? context.pendingHistorySessionID ?? context.selectedSessionID,

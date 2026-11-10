@@ -505,6 +505,8 @@ struct ConversationView: View {
     @State private var pendingImages: [GatewayOutgoingImage] = []
     @State private var isImportingImages = false
     @State private var showsContextUsage = false
+    @State private var showTurnJumpSheet = false
+    @State private var pendingTurnJump: Int?
     @State private var showsSessionStats = false
     @State private var showsSessionStatsPopover = false
     @State private var tasksExpanded = false
@@ -604,6 +606,11 @@ struct ConversationView: View {
         .sheet(item: conversationPreviewBinding) { request in
             WorkspaceFilePreviewLoadingSheet(store: store, request: request)
         }
+        .sheet(isPresented: \) {
+            TurnJumpSheet(outline: selectedTurnOutline) { entry in
+                pendingTurnJump = entry.turn
+            }
+        }
         .sheet(isPresented: $showsSessionStats) {
             SessionStatsSheet(
                 snapshot: store.selectedSessionStatsSnapshot,
@@ -661,7 +668,7 @@ struct ConversationView: View {
                 proxy: viewportProxy,
                 sessionID: sessionID,
                 cacheScope: store.gatewayLocalID,
-                searchTargetID: searchTargetViewportID,
+                searchTargetID: turnJumpViewportID ?? searchTargetViewportID,
                 timeline: store.displayedConversationTimeline(for: sessionID ?? "__empty__"),
                 supplementalEntries: supplementalViewportEntries,
                 makeEntries: { items in
@@ -705,6 +712,21 @@ struct ConversationView: View {
             )
             // Session 是 UIKit viewport 的身份边界。切换时直接销毁旧
             // controller，不能让上一 Session 的 diffable snapshot 参与新页面首帧。
+            .overlay(alignment: .bottomTrailing) {
+                VStack(spacing: 10) {
+                    if selectedTurnOutline.count >= 2 {
+                        railButton("list.bullet", label: String(localized: "跳转到轮次")) {
+                            showTurnJumpSheet = true
+                        }
+                    }
+                    railButton("chevron.down", label: String(localized: "滚动到最新消息")) {
+                        viewportScrollToBottomToken &+= 1
+                    }
+                }
+                .padding(.trailing, 10)
+                .padding(.bottom, composerHeight + conversationBottomClearance + 12)
+            }
+
             .id(sessionID ?? "__empty__")
             .opacity(shouldShowHistoryPresentationMask ? 0 : 1)
 
@@ -1362,6 +1384,10 @@ struct ConversationView: View {
             selectedPhotoItems = []
             composerIsFocused = false
         }
+        .onChangeCompat(of: store.conversationSearchTarget) { _, _ in
+            // 新的搜索跳转压过更早的轮次跳转目标，避免陈旧轮次 id 抢占定位。
+            pendingTurnJump = nil
+        }
         // 附件选择器呈现在稳定祖先上：挂在 attachmentMenu 的 Menu 链上时，
         // 菜单收起与选择器呈现竞争会丢失回调（选中文件后点「打开」无响应）。
         .photosPicker(isPresented: $showsPhotoPicker, selection: $selectedPhotoItems,
@@ -1402,6 +1428,7 @@ struct ConversationView: View {
             store.fileUploads.select(sessionID: store.selectedSessionId, allowed: !store.isViewingTeamMember)
             queueExpanded = false
             quotesExpanded = false
+            pendingTurnJump = nil
             quoteInbox.clear()
             selectionOffer.clear()
             restoreQueuedDraft()
@@ -1564,6 +1591,23 @@ struct ConversationView: View {
                     .allowsHitTesting(false)
             }
         }
+    }
+
+    /// 会话右缘的悬浮圆钮（fish-pocket 同款）：列表跳轮 + 回到最新。
+    private func railButton(_ systemName: String, label: String, action: @escaping () -> Void) -> some View {
+        Button {
+            action()
+        } label: {
+            Image(systemName: systemName)
+                .appFont(.system(size: 17, weight: .medium))
+                .foregroundStyle(.primary)
+                .frame(width: 40, height: 40)
+                .background(Color(uiColor: .systemBackground), in: Circle())
+                .overlay(Circle().stroke(Color.primary.opacity(0.08), lineWidth: 0.7))
+                .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
     }
 
     private var composerAction: some View {
@@ -2493,6 +2537,22 @@ struct ConversationView: View {
             ))
         }
         return entries
+    }
+
+    /// 当前会话的轮次大纲（host turnOutline 投影）。
+    private var selectedTurnOutline: [TurnOutlineEntry] {
+        store.turnOutlines[store.selectedSessionId ?? ""] ?? []
+    }
+
+    /// 轮次跳转的目标行：第一条带该轮次号的条目（user 消息或过程组）。
+    private var turnJumpViewportID: String? {
+        guard let turn = pendingTurnJump else { return nil }
+        return ConversationDisplayEntry.make(from: conversationItems).first { entry in
+            switch entry.content {
+            case .message(let item): return item.turn == turn
+            case .process(let group): return group.items.contains { $0.turn == turn }
+            }
+        }?.id
     }
 
     private var searchTargetViewportID: String? {

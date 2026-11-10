@@ -20,6 +20,7 @@
 /* End PBXAggregateTarget section */
 
 /* Begin PBXBuildFile section */
+		AB1900000000000000000001 /* TurnJumpSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB1900000000000000000002 /* TurnJumpSheet.swift */; };
 		A0C0FFEE0000000000000011 /* MessageQuote.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0C0FFEE0000000000000012 /* MessageQuote.swift */; };
 		AB0180000000000000000001 /* GenuiBlockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0180000000000000000002 /* GenuiBlockView.swift */; };
 		AB0180000000000000000003 /* genui.html in Resources */ = {isa = PBXBuildFile; fileRef = AB0180000000000000000004 /* genui.html */; };
@@ -166,6 +167,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		AB1900000000000000000002 /* TurnJumpSheet.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TurnJumpSheet.swift; sourceTree = "<group>"; };
 		A0C0FFEE0000000000000012 /* MessageQuote.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MessageQuote.swift; sourceTree = "<group>"; };
 		AB0180000000000000000002 /* GenuiBlockView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GenuiBlockView.swift; sourceTree = "<group>"; };
 		AB0180000000000000000004 /* genui.html */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.html; path = genui.html; sourceTree = "<group>"; };
@@ -481,6 +483,7 @@
 			isa = PBXGroup;
 			children = (
 				EEABECFD00017A6E10B1F4A2 /* ConversationView.swift */,
+				AB1900000000000000000002 /* TurnJumpSheet.swift */,
 				AB0180000000000000000002 /* GenuiBlockView.swift */,
 				EEABECFD00017A6E10B1F4A3 /* HumanQuestionView.swift */,
 				A1B2C3D4E5F60718293A4B5D /* ApprovalRequestView.swift */,
@@ -863,6 +866,7 @@
 				CA11E0000000000000000003 /* ImagePreprocessor.swift in Sources */,
 				A0C0FFEE0000000000000003 /* ConversationTimeline.swift in Sources */,
 				80E777AC0855635BC3D12EA7 /* GatewayClient.swift in Sources */,
+				AB1900000000000000000001 /* TurnJumpSheet.swift in Sources */,
 				A0C0FFEE0000000000000011 /* MessageQuote.swift in Sources */,
 				AB0180000000000000000001 /* GenuiBlockView.swift in Sources */,
 				A9FF00000000000000000001 /* TsnetTunnel.swift in Sources */,

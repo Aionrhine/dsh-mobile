@@ -215,6 +215,7 @@ struct GatewayFrame: Codable, Sendable {
     var subagentCatalog: JSONValue?
     var subagent: JSONValue?
     var subagentTiming: JSONValue?
+    var turnOutline: JSONValue?
     var projectionState: String?
     var running: Bool?
     var title: String?
@@ -750,6 +751,16 @@ struct GatewayWorkspace: Codable, Hashable, Sendable, Identifiable {
     var createdAt: String
     var updatedAt: String
     var id: String { workspaceId }
+}
+
+/// 会话轮次大纲的一行：host 的 turnOutline 投影（C-14），用于「跳转到轮次」。
+struct TurnOutlineEntry: Codable, Sendable, Identifiable, Equatable {
+    let turn: Int
+    /// 该轮 turn/start 事件的 seq：分页回溯与行定位的锚点。
+    let seq: Int
+    let prompt: String?
+    let response: String?
+    var id: Int { turn }
 }
 
 struct GatewaySessionSummary: Codable, Hashable, Sendable {

@@ -547,6 +547,8 @@ final class AppStore: ObservableObject {
     @Published private(set) var taskProjections: [String: GatewayTasksProjection] = [:]
     @Published private(set) var goalProjections: [String: GatewayGoalProjection] = [:]
     @Published private(set) var goalMutationKind: String?
+    /// 每个会话的轮次大纲（host turnOutline 投影），驱动「跳转到轮次」面板。
+    @Published var turnOutlines: [String: [TurnOutlineEntry]] = [:]
     @Published private(set) var slashCommands: SharedSlashCommandSnapshot
     @Published private(set) var commandSubmissionPending = false
     @Published private(set) var commandDraftClearToken = 0
@@ -3845,6 +3847,7 @@ final class AppStore: ObservableObject {
                 title: title
             )
         case .sessions(let received):
+            received.forEach { summary in ingestTurnOutline(sessionID: summary.sessionId, values: summary.projections) }
             dispatchSessionListIntent(.remoteSessionsReceived(received))
             updateChatPrefetchState(sessionsReceived: true)
             let runningBySessionID = received.reduce(into: [String: Bool]()) { result, session in
@@ -3862,6 +3865,8 @@ final class AppStore: ObservableObject {
                 String(localized: "notice.sessions.synced", defaultValue: "会话列表已同步"),
                 String(localized: "sessions.count", defaultValue: "\(sessions.count) 个会话")
             )
+        case .turnOutlineUpdated(let sessionID, let entries):
+            turnOutlines[sessionID] = entries.isEmpty ? nil : entries
         case .history(let payload):
             applyHistoryRebased(payload)
         case .attachment(let payload):
@@ -5017,6 +5022,15 @@ final class AppStore: ObservableObject {
             sourceLabel: liveActivitySourceLabel(for: sessionID)
         )
     }
+
+    /// 从 sessions 帧内嵌投影或 turn-outline-updated 帧提取轮次大纲。
+    private func ingestTurnOutline(sessionID: String, values: JSONValue?) {
+        guard let outline = values?["turnOutline"]?.arrayValue else { return }
+        let entries = outline.compactMap { $0.decode(TurnOutlineEntry.self) }
+        guard !entries.isEmpty else { return }
+        turnOutlines[sessionID] = entries
+    }
+
     private func notice(_ title: String, _ text: String, sessionId: String? = nil, isError: Bool = false) {
         protocolNotices.append(GatewayNotice(sessionId: sessionId, title: title, text: text, isError: isError))
         if protocolNotices.count > 100 { protocolNotices.removeFirst(protocolNotices.count - 100) }
