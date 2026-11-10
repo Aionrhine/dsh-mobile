@@ -14,7 +14,7 @@ jobs:
     # macos-26 池子小：实测 1.7.15 首跑两个 run 排队满 15 分钟未等到 runner，
     # 被 GitHub 原样取消（与本注释记录的作者历史现象一致）。macos-15 池子大；
     # 镜像最高 Xcode 26.3，当前代码（27.1 已被上游撤除）可在 26.3 SDK 下编译。
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 120
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
