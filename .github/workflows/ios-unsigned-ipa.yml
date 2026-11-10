@@ -11,12 +11,11 @@ on:
 
 jobs:
   build:
-    # macos-26 池子小：实测 1.7.15 首跑两个 run 排队满 15 分钟未等到 runner，
-    # 被 GitHub 原样取消（与本注释记录的作者历史现象一致）。macos-15 池子大；
+    # macos-26（v19 绿构建同池同 Xcode 26.6）。macos-15 池上四个 run 全部
+    # 零步骤取消（含 26 分钟那次），疑似账号级 macOS 分配问题，故回此池。
     # 镜像最高 Xcode 26.3，当前代码（27.1 已被上游撤除）可在 26.3 SDK 下编译。
     runs-on: macos-26
     timeout-minutes: 120
-    env:
     steps:
       - uses: actions/checkout@v4
 
