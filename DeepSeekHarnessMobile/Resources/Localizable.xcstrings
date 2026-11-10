@@ -30034,6 +30034,22 @@
           }
         }
       }
+    },
+    "upload.channelNotReady": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't import the selected file: upload channel not ready or connection changed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法导入所选文件：文件上传通道未就绪或连接已变化"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
