@@ -606,7 +606,7 @@ struct ConversationView: View {
         .sheet(item: conversationPreviewBinding) { request in
             WorkspaceFilePreviewLoadingSheet(store: store, request: request)
         }
-        .sheet(isPresented: \) {
+        .sheet(isPresented: $showTurnJumpSheet) {
             TurnJumpSheet(outline: selectedTurnOutline) { entry in
                 pendingTurnJump = entry.turn
             }
@@ -1491,8 +1491,7 @@ struct ConversationView: View {
             token: store.slashCommands.commandToken,
             hint: store.slashCommands.argumentHint
         )
-        return return ComposerAttachmentStack(shown: composerExpanded,
-            ComposerAttachmentStack(shown: composerExpanded,
+        return ComposerAttachmentStack(shown: composerExpanded,
                 hasContent: !pendingImages.isEmpty || store.fileUploads.preparing || !store.fileUploads.drafts.isEmpty) {
                 VStack(alignment: .leading, spacing: 12) {
                     if selectionOffer.excerpt != nil {
@@ -5202,7 +5201,7 @@ struct ConversationRow: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 if showsCopyButton && !item.text.isEmpty {
-                    AssistantMessageActions(text: item.text
+                    AssistantMessageActions(text: item.text)
                         .padding(.bottom, 8)
                 }
             }
