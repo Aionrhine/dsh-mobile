@@ -1,5 +1,6 @@
 package com.clarklevis.dsh.android
 
+import com.clarklevis.dsh.android.localization.appText
 import com.clarklevis.dsh.shared.cache.ChatCacheDiagnostics
 import com.clarklevis.dsh.shared.cache.ChatCacheRestoreSkipReason
 import com.clarklevis.dsh.shared.facade.CachedHistoryWindow
@@ -432,7 +433,8 @@ internal class AndroidGatewayProjection(
             historyHasMore.remove(it)
         }
         if (update.clearTransient) update.sessionId?.let { conversationStore.clearAssistantChunks(it) }
-        update.error?.let { lastError = it }
+        val streamError = update.error?.let { appText(it) }
+        streamError?.let { lastError = it }
         if (update.resubscribe && id != null) {
             awaitSnapshot(id)
             onResubscribe(id)
@@ -442,13 +444,12 @@ internal class AndroidGatewayProjection(
         ) {
             cancelSnapshotWait()
         }
-        val streamError = update.error
         if (streamError != null && !update.resubscribe && id != null) {
             historyErrors[id] = streamError
             historyCancelled(id)
         }
         if (frame.kind == "error" && frame.requestType in setOf("history", "subscribe") && id != null) {
-            historyErrors[id] = frame.message ?: "历史记录加载失败"
+            historyErrors[id] = frame.message ?: appText("历史记录加载失败")
             historyCancelled(id)
         }
         if (!update.accepted) return snapshot()
@@ -542,10 +543,10 @@ internal class AndroidGatewayProjection(
     }
 
     fun historyTimedOut(sessionId: String) {
-        historyErrors[sessionId] = "历史记录加载超时，请重试"
+        historyErrors[sessionId] = appText("历史记录加载超时，请重试")
         if (snapshotWait?.first == sessionId) {
             snapshotWait = null
-            lastError = "历史记录加载超时，请重试"
+            lastError = appText("历史记录加载超时，请重试")
         }
         historyStore.timedOut(sessionId)
     }
@@ -905,18 +906,18 @@ private fun mobileConversationLabels(): ConversationProjectionLabels {
     val isChinese = Locale.getDefault().language.startsWith("zh")
     return if (isChinese) {
         ConversationProjectionLabels(
-            commandRunning = "正在执行…",
-            commandCompacting = "正在压缩…",
-            commandCompleted = "已完成",
-            commandFailed = "执行失败",
-            compactedHistory = "已压缩 {items} 条历史记录（约 {tokens} tokens）",
-            interrupted = "生成已中断",
-            modelAttemptFailed = "模型请求失败",
-            modelRetrying = "正在重试模型请求",
-            modelRetried = "已重试模型请求",
-            generationFailed = "生成失败",
-            generationCancelled = "生成已取消",
-            outputTruncated = "输出已截断，保留开头和末尾"
+            commandRunning = "正在执行…", // i18n-ignore: zh branch of locale switch
+            commandCompacting = "正在压缩…", // i18n-ignore: zh branch of locale switch
+            commandCompleted = "已完成", // i18n-ignore: zh branch of locale switch
+            commandFailed = "执行失败", // i18n-ignore: zh branch of locale switch
+            compactedHistory = "已压缩 {items} 条历史记录（约 {tokens} tokens）", // i18n-ignore: zh branch of locale switch
+            interrupted = "生成已中断", // i18n-ignore: zh branch of locale switch
+            modelAttemptFailed = "模型请求失败", // i18n-ignore: zh branch of locale switch
+            modelRetrying = "正在重试模型请求", // i18n-ignore: zh branch of locale switch
+            modelRetried = "已重试模型请求", // i18n-ignore: zh branch of locale switch
+            generationFailed = "生成失败", // i18n-ignore: zh branch of locale switch
+            generationCancelled = "生成已取消", // i18n-ignore: zh branch of locale switch
+            outputTruncated = "输出已截断，保留开头和末尾" // i18n-ignore: zh branch of locale switch
         )
     } else {
         ConversationProjectionLabels()

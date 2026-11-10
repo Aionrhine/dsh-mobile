@@ -16,8 +16,8 @@ android {
         applicationId = "com.clarklevis.dsh.android"
         minSdk = 24
         targetSdk = 36
-        versionCode = 38
-        versionName = "1.7.15"
+        versionCode = 39
+        versionName = "1.8.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -145,6 +145,17 @@ val buildTsnetAar = tasks.register<Exec>("buildTsnetAar") {
         commandLine(listOf("/bin/sh", goEnvironment.absolutePath) + args)
     }
 }
+
+// 本地化守卫：中英文目录、格式参数，以及 iOS / widget / Android / shared 中未本地化的中文字面量。
+// 挂在单元测试前，任何新增的硬编码中文都会让 testDebugUnitTest 失败。
+val verifyLocalizations = tasks.register<Exec>("verifyLocalizations") {
+    group = "verification"
+    description = "python3 scripts/verify-localizations.py"
+    // 无声明输出：每次都运行（约 2 秒），避免漏掉 iOS / shared 源文件的变化。
+    workingDir = rootProject.projectDir
+    commandLine("python3", rootProject.file("scripts/verify-localizations.py").absolutePath)
+}
+tasks.withType<Test>().configureEach { dependsOn(verifyLocalizations) }
 
 dependencies {
     implementation(project(":shared"))

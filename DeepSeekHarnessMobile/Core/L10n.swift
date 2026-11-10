@@ -1,4 +1,5 @@
 import Foundation
+import DeepSeekHarnessShared
 
 /// Centralized user-facing strings that are compared programmatically, shared
 /// across screens, or need stable localization keys with interpolated
@@ -114,4 +115,38 @@ enum L10n {
         default: level
         }
     }
+
+    /// User-visible wrapper for bridge invariant failures; the English detail is for bug reports.
+    static func internalError(_ detail: String) -> String {
+        String(localized: "diagnostic.internal", defaultValue: "内部错误（\(detail)）")
+    }
+
+    // MARK: Shared UI messages
+
+    /// Key of a shared `UiMessage` whose single argument is host- or OS-provided text.
+    static let rawMessageKey = "raw"
+
+    /// Resolves a shared message key: raw text stays verbatim; semantic keys use the catalog.
+    /// When the first argument is "1" and the catalog has a `<key>.one` entry (e.g.
+    /// `tool.lines.one`), that singular template is used, mirroring Android.
+    static func message(key: String, args: [String]) -> String {
+        if key == rawMessageKey { return args.first ?? "" }
+        var template = String(localized: String.LocalizationValue(key))
+        if args.first == "1" {
+            let singularKey = key + ".one"
+            let singular = String(localized: String.LocalizationValue(singularKey))
+            if singular != singularKey { template = singular }
+        }
+        return args.isEmpty ? template : String(format: template, arguments: args)
+    }
+}
+
+extension UiMessage {
+    /// Localized text for a message produced by shared code.
+    var localized: String { L10n.message(key: key, args: args) }
+}
+
+extension String {
+    /// Wraps platform-provided text so shared stores display it verbatim.
+    var rawUiMessage: UiMessage { UiMessage(key: L10n.rawMessageKey, args: [self]) }
 }

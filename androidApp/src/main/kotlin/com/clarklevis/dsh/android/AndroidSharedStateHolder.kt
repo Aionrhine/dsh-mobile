@@ -31,6 +31,7 @@ import com.clarklevis.dsh.shared.gateway.GatewayRequests
 import com.clarklevis.dsh.shared.gateway.GatewayRuntimeEvent
 import com.clarklevis.dsh.shared.gateway.GatewayRuntimeState
 import com.clarklevis.dsh.shared.gateway.gatewayAttachmentCacheKey
+import com.clarklevis.dsh.shared.i18n.UiMessage
 import com.clarklevis.dsh.shared.projection.TrajectoryNode
 import com.clarklevis.dsh.shared.protocol.GatewayApprovalOutcome
 import com.clarklevis.dsh.shared.protocol.GatewayDirectoryItem
@@ -84,7 +85,7 @@ class AndroidSharedStateHolder(
     private var persistedTeamAvatars = "[]"
     private var switchingTeamMember = false
     private val teamDrafts = mutableMapOf<String, Pair<String, List<AndroidPreparedImage>>>()
-    val teamSessionTitle get() = snapshot.sessions.firstOrNull { it.id == teamLeadSessionId }?.title ?: "Lead 会话"
+    val teamSessionTitle get() = snapshot.sessions.firstOrNull { it.id == teamLeadSessionId }?.title ?: appText("Lead 会话")
     val isViewingTeamMember get() = snapshot.selectedSessionId?.let(teamStore::isChild) == true
     val selectedMemberCanSend get() = snapshot.selectedSessionId?.let(teamStore::canSend) != false
     val selectedSessionIsRunning get() = teamSnapshot.members.firstOrNull { it.id == snapshot.selectedSessionId }?.running
@@ -454,15 +455,15 @@ class AndroidSharedStateHolder(
         appGraph.gatewayScope.launch {
             val sent = appGraph.gatewayRuntime.sendRequest(request)
             if (!sent) withContext(Dispatchers.Main.immediate) {
-                queueState = queueStore.failPending(appText("队列操作未发送，请重试"))
-                platformError = queueState.lastError
+                queueState = queueStore.failPending(UiMessage.raw(appText("队列操作未发送，请重试")))
+                platformError = queueState.lastError?.let { appText(it) }
             }
         }
     }
 
     private fun acceptQueueFrame(json: String) {
         queueState = queueStore.acceptFrame(json)
-        queueState.lastError?.let { platformError = it }
+        queueState.lastError?.let { platformError = appText(it) }
         restoreQueuedDraft()
     }
 
@@ -508,7 +509,7 @@ class AndroidSharedStateHolder(
                     }
                     handleWorkspaceFrame(frame)
                 }
-                .onFailure { error -> platformError = GatewayWireDecoder.failureSummary(payload, error) }
+                .onFailure { error -> platformError = appText(GatewayWireDecoder.failureSummary(payload, error)) }
             return
         }
         appGraph.gatewayScope.launch {
@@ -527,7 +528,7 @@ class AndroidSharedStateHolder(
                 }
                 .onFailure { error ->
                     withContext(Dispatchers.Main.immediate) {
-                        platformError = GatewayWireDecoder.failureSummary(payload, error)
+                        platformError = appText(GatewayWireDecoder.failureSummary(payload, error))
                     }
                 }
         }
@@ -854,7 +855,7 @@ class AndroidSharedStateHolder(
                 pluginUpdateRequestId = null
                 pluginPendingName = null
                 pluginUpdateStep = "unverified"
-                pluginNotice = "更新及恢复结果待核实，请刷新目录并检查 Host 日志"
+                pluginNotice = appText("更新及恢复结果待核实，请刷新目录并检查 Host 日志")
                 refreshPlugins()
             }
         }
@@ -893,9 +894,9 @@ class AndroidSharedStateHolder(
                     "plugin-update-result", "error" -> {
                         pluginUpdateResult = frame.result
                         pluginNotice = when {
-                            frame.result?.get("restore")?.get("application")?.stringValue == "failed" -> "更新失败，旧版本恢复失败。请刷新目录并检查 Host 日志。"
-                            frame.result?.get("result")?.get("application")?.stringValue == "restart-required" -> "请重启 DSH 后刷新目录确认实际版本"
-                            frame.result?.get("result")?.get("application")?.stringValue in setOf("failed", "cancelled", "overridden") -> "目标版本更新未生效，请检查更新及恢复结果"
+                            frame.result?.get("restore")?.get("application")?.stringValue == "failed" -> appText("更新失败，旧版本恢复失败。请刷新目录并检查 Host 日志。")
+                            frame.result?.get("result")?.get("application")?.stringValue == "restart-required" -> appText("请重启 DSH 后刷新目录确认实际版本")
+                            frame.result?.get("result")?.get("application")?.stringValue in setOf("failed", "cancelled", "overridden") -> appText("目标版本更新未生效，请检查更新及恢复结果")
                             else -> frame.message
                         }
                         pluginUpdateRequestId = null
@@ -950,15 +951,15 @@ class AndroidSharedStateHolder(
     fun createScheduledTask(title: String, prompt: String, timingJson: String, targetKind: String, sessionId: String?): String? {
         if ("schedule-management-v2" !in gatewayState.capabilities || scheduledTaskPendingId != null) return null
         val timing = runCatching { JsonValue.fromJsonElement(kotlinx.serialization.json.Json.parseToJsonElement(timingJson)) }.getOrNull()
-            ?: run { scheduledTaskMutationError = "执行规则 JSON 无效"; return null }
+            ?: run { scheduledTaskMutationError = appText("执行规则 JSON 无效"); return null }
         val target = mutableMapOf<String, JsonValue>("kind" to JsonValue.StringValue(targetKind))
         if (targetKind == "session") {
-            if (sessionId.isNullOrBlank()) { scheduledTaskMutationError = "请选择目标会话"; return null }
+            if (sessionId.isNullOrBlank()) { scheduledTaskMutationError = appText("请选择目标会话"); return null }
             target["sessionId"] = JsonValue.StringValue(sessionId)
         }
         val id = UUID.randomUUID().toString()
         val request = runCatching { GatewayRequests.scheduleCreate(id, title, prompt, timing, JsonValue.ObjectValue(target)) }
-            .getOrElse { scheduledTaskMutationError = "标题或任务内容无效"; return null }
+            .getOrElse { scheduledTaskMutationError = appText("标题或任务内容无效"); return null }
         scheduledTaskMutationRequestId = id
         scheduledTaskMutationKind = "schedule-create"
         scheduledTaskPendingId = "creating"
@@ -991,7 +992,7 @@ class AndroidSharedStateHolder(
         val appGraph = graph ?: return
         appGraph.gatewayScope.launch {
             if (!appGraph.gatewayRuntime.sendRequest(request)) withContext(Dispatchers.Main.immediate) {
-                if (request.correlationId == scheduledTaskMutationRequestId) finishScheduledTaskMutation("操作未发送，请重试")
+                if (request.correlationId == scheduledTaskMutationRequestId) finishScheduledTaskMutation(appText("操作未发送，请重试"))
             }
         }
     }
@@ -1752,7 +1753,7 @@ class AndroidSharedStateHolder(
 
     private fun applySessionAgentPresetTransition(transition: SharedSessionAgentPresetTransition) {
         sessionAgentPreset = transition.snapshot
-        transition.error?.let { platformError = it }
+        transition.error?.let { platformError = appText(it) }
         if (transition.refreshCommands) transition.snapshot.sessionId?.let { sessionId ->
             applySlashCommandTransition(slashCommandStore.invalidateCatalog(
                 sessionId, "commands" in gatewayState.capabilities, Locale.getDefault().toLanguageTag()
@@ -1768,7 +1769,7 @@ class AndroidSharedStateHolder(
                 if (!appGraph.gatewayRuntime.sendRequest(request)) {
                     withContext(Dispatchers.Main.immediate) {
                         applySessionAgentPresetTransition(sessionAgentPresetStore.requestFailed(
-                            request.requestType, request.targetSessionId, request.correlationId, appText("请求发送失败，请重试")
+                            request.requestType, request.targetSessionId, request.correlationId, UiMessage.raw(appText("请求发送失败，请重试"))
                         ))
                     }
                 }
@@ -1972,8 +1973,9 @@ class AndroidSharedStateHolder(
                 if (result.isSuccess) {
                     if (pairingPayload == payload) pairingPayload = ""
                 } else {
-                    val message = if (result.exceptionOrNull() is GatewayPairingPayloadException) {
-                        result.exceptionOrNull()?.message ?: appText("配对信息无效")
+                    val failure = result.exceptionOrNull()
+                    val message = if (failure is GatewayPairingPayloadException) {
+                        appText(failure.uiMessage)
                     } else {
                         appText("无法提交配对信息，请稍后重试。")
                     }
@@ -2053,7 +2055,7 @@ class AndroidSharedStateHolder(
     }
 
     fun sendMessage(mode: String = "queue") {
-        if (!selectedMemberCanSend) { platformError = "此子智能体会话为只读，无法继续对话"; return }
+        if (!selectedMemberCanSend) { platformError = appText("此子智能体会话为只读，无法继续对话"); return }
         if (localSearchIsFragment || localSearchIsOpening) {
             platformError = appText("当前为只读本地搜索片段，请先返回最新消息。")
             return
@@ -2065,7 +2067,7 @@ class AndroidSharedStateHolder(
         val submission = captureMessageSubmission(mode)
         val commandExecution = if (isViewingTeamMember) null else slashCommandStore.commandExecutionForInput(submission.draft)
         if (commandExecution != null && submission.fileIds.isNotEmpty()) {
-            platformError = "斜杠命令不支持文件，请使用普通消息发送"
+            platformError = appText("斜杠命令不支持文件，请使用普通消息发送")
             return
         }
         if (commandExecution == null || submission.images.isEmpty() || commandExecution.allowsImages) {
@@ -3226,7 +3228,7 @@ class AndroidSharedStateHolder(
                                     if (event.frame.kind == "error" && !event.isBackgroundHistory &&
                                         event.frame.requestType in setOf("message", "subscribe", "history", "session-cancel")) {
                                         withContext(Dispatchers.Main.immediate) {
-                                            platformError = event.frame.message ?: "子智能体请求失败"
+                                            platformError = event.frame.message ?: appText("子智能体请求失败")
                                             if (event.frame.requestType == "message") {
                                                 pendingMessageSubmission?.takeIf {
                                                     event.frame.requestId == it.requestId || (it.fileIds.isEmpty() && event.frame.requestId == null)
@@ -3429,13 +3431,13 @@ class AndroidSharedStateHolder(
                                     }
                                     withContext(Dispatchers.Main.immediate) {
                                         applySessionAgentPresetTransition(sessionAgentPresetStore.requestFailed(
-                                            event.requestType, event.targetSessionId, event.correlationId, appText("请求未完成，请重试")
+                                            event.requestType, event.targetSessionId, event.correlationId, UiMessage.raw(appText("请求未完成，请重试"))
                                         ))
                                         handleSessionCancellationFailure(event.requestType, event.targetSessionId)
                                         if (event.requestType == "message") pendingMessageSubmission = null
                                         if (event.requestType == "queue-update") {
-                                            queueState = queueStore.failPending(appText("队列操作未完成，请检查最新状态后重试"))
-                                            platformError = queueState.lastError
+                                            queueState = queueStore.failPending(UiMessage.raw(appText("队列操作未完成，请检查最新状态后重试")))
+                                            platformError = queueState.lastError?.let { appText(it) }
                                         }
                                     }
                                     if (event.requestType == "command-execute") {
@@ -3501,13 +3503,13 @@ class AndroidSharedStateHolder(
                                     }
                                     withContext(Dispatchers.Main.immediate) {
                                         applySessionAgentPresetTransition(sessionAgentPresetStore.requestFailed(
-                                            event.requestType, event.targetSessionId, event.correlationId, appText("请求未完成，请重试")
+                                            event.requestType, event.targetSessionId, event.correlationId, UiMessage.raw(appText("请求未完成，请重试"))
                                         ))
                                         handleSessionCancellationFailure(event.requestType, event.targetSessionId)
                                         if (event.requestType == "message") pendingMessageSubmission = null
                                         if (event.requestType == "queue-update") {
-                                            queueState = queueStore.failPending(appText("队列操作未完成，请检查最新状态后重试"))
-                                            platformError = queueState.lastError
+                                            queueState = queueStore.failPending(UiMessage.raw(appText("队列操作未完成，请检查最新状态后重试")))
+                                            platformError = queueState.lastError?.let { appText(it) }
                                         }
                                     }
                                     if (event.requestType == "command-execute") {
@@ -3570,13 +3572,13 @@ class AndroidSharedStateHolder(
                                     }
                                     withContext(Dispatchers.Main.immediate) {
                                         applySessionAgentPresetTransition(sessionAgentPresetStore.requestFailed(
-                                            event.requestType, event.targetSessionId, event.correlationId, appText("请求未完成，请重试")
+                                            event.requestType, event.targetSessionId, event.correlationId, UiMessage.raw(appText("请求未完成，请重试"))
                                         ))
                                         handleSessionCancellationFailure(event.requestType, event.targetSessionId)
                                         if (event.requestType == "message") pendingMessageSubmission = null
                                         if (event.requestType == "queue-update") {
-                                            queueState = queueStore.failPending(appText("队列操作未完成，请检查最新状态后重试"))
-                                            platformError = queueState.lastError
+                                            queueState = queueStore.failPending(UiMessage.raw(appText("队列操作未完成，请检查最新状态后重试")))
+                                            platformError = queueState.lastError?.let { appText(it) }
                                         }
                                     }
                                     if (event.requestType == "command-execute") {
@@ -3692,7 +3694,7 @@ class AndroidSharedStateHolder(
         private const val MAXIMUM_STATUS_COUNT = 256L
         private const val DEFAULT_THUMBNAIL_TARGET_PIXELS = 720
         const val DEFAULT_WIRE_PAYLOAD =
-            """{"sessionId":"android-demo","seq":4,"time":1786937355,"event":{"type":"assistant/message","turn":1,"step":1,"text":"最终消息会替换流式临时消息。"}}"""
+            """{"sessionId":"android-demo","seq":4,"time":1786937355,"event":{"type":"assistant/message","turn":1,"step":1,"text":"The final message replaces the temporary streamed message."}}"""
     }
 }
 

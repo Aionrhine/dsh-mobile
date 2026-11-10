@@ -354,7 +354,7 @@ final class AgentLiveActivityLifecycleTests: XCTestCase {
         XCTAssertTrue(requestedDetails.isEmpty)
         appState = .active
         manager.applicationDidBecomeActive()
-        XCTAssertEqual(requestedDetails, ["正在执行 Bash"])
+        XCTAssertEqual(requestedDetails, [String(localized: "activity.tool.running", defaultValue: "正在执行 \("Bash")")])
         // 请求失败后，后续高频进度不能不断重试系统调用。
         manager.stepStarted(gatewayID: "gateway", sessionID: "session", title: "任务", step: 2)
         XCTAssertEqual(requestedDetails.count, 1)
@@ -485,8 +485,8 @@ final class AgentLiveActivityEventProjectionTests: XCTestCase {
             ])
         )))
 
-        XCTAssertEqual(projected.headline, "写入")
-        XCTAssertEqual(projected.detail, "articles/北京中轴线.md · 2 行")
+        XCTAssertEqual(projected.headline, L10n.message(key: "tool.kind.write", args: []))
+        XCTAssertEqual(projected.detail, "articles/北京中轴线.md · \(L10n.message(key: "tool.lines", args: ["2"]))")
         XCTAssertEqual(projected.kind, .writing)
     }
 
@@ -497,7 +497,7 @@ final class AgentLiveActivityEventProjectionTests: XCTestCase {
             toolName: nil
         ))
 
-        XCTAssertEqual(projected.headline, "思考")
+        XCTAssertEqual(projected.headline, String(localized: "思考"))
         XCTAssertEqual(projected.detail, "Now check character count")
         XCTAssertEqual(projected.kind, .reasoning)
     }
@@ -508,7 +508,10 @@ final class AgentLiveActivityEventProjectionTests: XCTestCase {
             completedToolLabel: "写入"
         ))
 
-        XCTAssertEqual(projected.headline, "写入完成")
+        XCTAssertEqual(
+            projected.headline,
+            String(localized: "activity.tool.completed", defaultValue: "\("写入")完成")
+        )
         XCTAssertEqual(projected.detail, "saved")
         XCTAssertEqual(projected.kind, .result)
     }
@@ -3899,7 +3902,7 @@ final class GatewayProtocolTests: XCTestCase {
         try await deliverHistoryLoadingFrame(store,
             #"{"kind":"session-stream-reset","sessionId":"mask-session","subscriptionId":"sub","streamId":"opening","retrying":false,"message":"Host refuses this format v0 Session"}"#)
         XCTAssertFalse(store.isPreparingConversation(session.id))
-        XCTAssertEqual(store.historyLoadErrors[session.id], "Host refuses this format v0 Session")
+        XCTAssertEqual(store.historyLoadErrors[session.id], .hostRejectedFormat("Host refuses this format v0 Session"))
         _ = await store.prepareConversation(for: session)
         XCTAssertNil(store.historyLoadErrors[session.id])
         try await deliverHistoryLoadingFrame(store,
@@ -10969,6 +10972,68 @@ final class InterfaceStylePresentationTests: XCTestCase {
 
 @MainActor
 final class ScheduledTaskCardPresentationTests: XCTestCase {
+    @available(iOS 17.0, *)
+    func testFirstCardShadowBoundary() async throws {
+        let frame = try GatewayWireDecoder.decode(Data(#"{"kind":"schedule-catalog","items":[{"id":"shadow","sessionId":"s1","status":"active","kind":"daily","title":"每日新闻汇总","prompt":"汇总科技和金融新闻","time":"08:00:00.000","timeZone":"Asia/Shanghai","scheduledAt":"2099-01-01T00:00:00Z"}]}"#.utf8))
+        let task = try XCTUnwrap(frame.items?.first.flatMap(ScheduledTask.init))
+        func root(_ reserveShadow: Bool) -> some View {
+            List {
+                ScheduledTaskCard(task: task, sessionTitle: "新闻会话", expanded: false, onOpen: {}, onExpand: {})
+                    .background(ComposerFrameProbe(identifier: "shadow-card"))
+                    .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
+                    .listRowSeparator(.hidden).listRowBackground(Color.clear)
+            }
+            .listStyle(.plain).scrollContentBackground(.hidden)
+            .modifier(ScheduledTaskListShadowInset(enabled: reserveShadow))
+            .background(Color.white)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                Color.white.frame(height: 48).background(ComposerFrameProbe(identifier: "shadow-header"))
+            }
+        }
+        let host = UIHostingController(rootView: root(false))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 650)
+        window.rootViewController = host; window.makeKeyAndVisible()
+        host.overrideUserInterfaceStyle = .light
+        defer { window.isHidden = true; window.rootViewController = nil }
+        func find(_ id: String, in view: UIView) -> UIView? {
+            if view.accessibilityIdentifier == id { return view }
+            return view.subviews.lazy.compactMap { find(id, in: $0) }.first
+        }
+        var edgeSteps: [Bool: Int] = [:]
+        for reserved in [false, true] {
+            host.rootView = root(reserved)
+            try await Task.sleep(for: .milliseconds(250))
+            let card = try XCTUnwrap(find("shadow-card", in: host.view))
+            let header = try XCTUnwrap(find("shadow-header", in: host.view))
+            let headerBottom = header.convert(header.bounds, to: window).maxY
+            if reserved {
+                XCTAssertGreaterThanOrEqual(card.convert(card.bounds, to: window).minY - headerBottom, 23)
+            }
+            let format = UIGraphicsImageRendererFormat(); format.scale = 1; format.preferredRange = .standard
+            let image = UIGraphicsImageRenderer(size: window.bounds.size, format: format).image { _ in
+                window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+            }
+            let cgImage = try XCTUnwrap(image.cgImage)
+            XCTAssertEqual(cgImage.bitsPerPixel, 32)
+            let data = try XCTUnwrap(cgImage.dataProvider?.data)
+            let pixels = try XCTUnwrap(CFDataGetBytePtr(data))
+            let boundary = Int(headerBottom.rounded())
+            func brightness(_ y: Int) -> Int {
+                let offset = y * cgImage.bytesPerRow + (cgImage.width / 2) * 4
+                return (Int(pixels[offset]) + Int(pixels[offset + 1]) + Int(pixels[offset + 2])) / 3
+            }
+            edgeSteps[reserved] = abs(brightness(boundary + 1) - brightness(boundary - 1))
+            let attachment = XCTAttachment(image: image)
+            attachment.name = reserved ? "首张卡片阴影-完整渐变" : "首张卡片阴影-原始截断"
+            attachment.lifetime = .keepAlways; add(attachment)
+        }
+        let fixed = try XCTUnwrap(edgeSteps[true])
+        XCTAssertLessThanOrEqual(fixed, 2, "筛选栏下沿不应出现阴影亮度的硬切线")
+        XCTAssertLessThan(fixed, try XCTUnwrap(edgeSteps[false]))
+    }
+
     func testPausedCardParityInLightAndDark() throws {
         let frame = try GatewayWireDecoder.decode(Data(#"{"kind":"schedule-catalog","items":[{"id":"p1","sessionId":"s1","status":"paused","kind":"daily","title":"每日新闻汇总","prompt":"汇总科技和金融新闻","time":"08:00:37.000","timeZone":"Asia/Shanghai","scheduledAt":"2099-01-31T00:00:00Z"}]}"#.utf8))
         let task = try XCTUnwrap(frame.items?.first.flatMap(ScheduledTask.init))

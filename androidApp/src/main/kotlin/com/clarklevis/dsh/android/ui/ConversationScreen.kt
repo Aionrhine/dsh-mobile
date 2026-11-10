@@ -188,6 +188,7 @@ import com.clarklevis.dsh.android.AndroidSharedStateHolder
 import com.clarklevis.dsh.android.AttachmentLoadState
 import com.clarklevis.dsh.android.R
 import com.clarklevis.dsh.android.localization.appText
+import com.clarklevis.dsh.android.localization.appTextKey
 import com.clarklevis.dsh.android.platform.AndroidAttachmentThumbnailer
 import com.clarklevis.dsh.android.platform.AndroidPreparedImage
 import com.clarklevis.dsh.shared.facade.VoiceInputInteraction
@@ -246,7 +247,7 @@ private fun ConversationScreenContent(
     onSettings: () -> Unit = {}
 ) {
     val session = stateHolder.snapshot.sessions.firstOrNull { it.id == stateHolder.snapshot.selectedSessionId }
-    val title = stateHolder.teamSnapshot.members.firstOrNull { it.id == stateHolder.snapshot.selectedSessionId && it.role != "lead" }?.name ?: session?.title ?: if (stateHolder.snapshot.selectedSessionId != null) "已缓存会话" else appText("新建 DeepSeek Harness")
+    val title = stateHolder.teamSnapshot.members.firstOrNull { it.id == stateHolder.snapshot.selectedSessionId && it.role != "lead" }?.name ?: session?.title ?: if (stateHolder.snapshot.selectedSessionId != null) appText("已缓存会话") else appText("新建 DeepSeek Harness")
     val agentPresetId = stateHolder.sessionAgentPreset.agentPreset
         .takeIf { stateHolder.sessionAgentPreset.sessionId == stateHolder.snapshot.selectedSessionId }
         ?: session?.agentPreset ?: stateHolder.snapshot.agentPresetDefault
@@ -584,11 +585,11 @@ private fun ConversationPage(
             ) {
                 Text(
                     if (stateHolder.localSearchIsOpening) {
-                        "正在定位搜索结果"
+                        appText("正在定位搜索结果")
                     } else if (stateHolder.localSearchIsFragment) {
-                        "只读本地搜索片段"
+                        appText("只读本地搜索片段")
                     } else {
-                        "已定位搜索结果"
+                        appText("已定位搜索结果")
                     },
                     fontSize = 12.sp,
                     modifier = Modifier.weight(1f)
@@ -1441,13 +1442,13 @@ private fun deepSearchActivityAt(cues: List<DeepSearchProgressCue>, cutoff: Doub
 }
 
 private val DEEP_SEARCH_PHRASES = mapOf(
-    DeepSearchActivity.THINKING to listOf("梳理脉络中", "推敲细节中", "酝酿下一步中", "沿着思路前行中"),
-    DeepSearchActivity.GATHERING to listOf("翻阅已有线索中", "收拢相关信息中", "寻找切入点中", "铺开问题脉络中"),
-    DeepSearchActivity.EXPLORING to listOf("向外寻找线索中", "打捞新线索中", "沿途探查中", "搜集更多拼图中"),
-    DeepSearchActivity.REVIEWING to listOf("对照新发现中", "拼合新线索中", "检视所得中", "把发现串起来中"),
-    DeepSearchActivity.REVISITING to listOf("回看已有线索中", "重新校准方向中", "再推敲一遍中", "换个角度审视中"),
-    DeepSearchActivity.COMPOSING to listOf("组织回应中", "整理表达中", "将思路落成文字中", "勾勒答案中"),
-    DeepSearchActivity.WORKING to listOf("继续推进中", "稳步探索中", "梳理当前进展中", "逐步展开中")
+    DeepSearchActivity.THINKING to listOf(appTextKey("梳理脉络中"), appTextKey("推敲细节中"), appTextKey("酝酿下一步中"), appTextKey("沿着思路前行中")),
+    DeepSearchActivity.GATHERING to listOf(appTextKey("翻阅已有线索中"), appTextKey("收拢相关信息中"), appTextKey("寻找切入点中"), appTextKey("铺开问题脉络中")),
+    DeepSearchActivity.EXPLORING to listOf(appTextKey("向外寻找线索中"), appTextKey("打捞新线索中"), appTextKey("沿途探查中"), appTextKey("搜集更多拼图中")),
+    DeepSearchActivity.REVIEWING to listOf(appTextKey("对照新发现中"), appTextKey("拼合新线索中"), appTextKey("检视所得中"), appTextKey("把发现串起来中")),
+    DeepSearchActivity.REVISITING to listOf(appTextKey("回看已有线索中"), appTextKey("重新校准方向中"), appTextKey("再推敲一遍中"), appTextKey("换个角度审视中")),
+    DeepSearchActivity.COMPOSING to listOf(appTextKey("组织回应中"), appTextKey("整理表达中"), appTextKey("将思路落成文字中"), appTextKey("勾勒答案中")),
+    DeepSearchActivity.WORKING to listOf(appTextKey("继续推进中"), appTextKey("稳步探索中"), appTextKey("梳理当前进展中"), appTextKey("逐步展开中"))
 )
 
 private const val TIMELINE_STREAM_RESUME_DELAY_MILLISECONDS = 120L
@@ -1983,18 +1984,19 @@ private fun PreparedImagePreview(image: AndroidPreparedImage, onRemove: () -> Un
             PreparedImagePreviewState.Loading -> Text(appText("正在加载图片…"), fontSize = 10.sp)
             PreparedImagePreviewState.Unavailable -> Text(appText("无法预览图片"), fontSize = 10.sp)
         }
-        Text(
-            "×",
+        Box(
             modifier = Modifier.align(Alignment.TopEnd)
                 .offset(x = 5.dp, y = (-5).dp)
                 .size(20.dp)
-                .background(Color.Black.copy(alpha = 0.65f), CircleShape)
-                .clickable(onClick = onRemove)
+                .clip(CircleShape)
+                .background(Color.Black.copy(alpha = 0.68f))
+                .clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onRemove)
                 .semantics { contentDescription = appText("移除图片") },
-            color = Color.White,
-            textAlign = TextAlign.Center,
-            fontWeight = FontWeight.Bold
-        )
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(painterResource(R.drawable.ic_close), contentDescription = null,
+                modifier = Modifier.size(16.dp), tint = Color.White)
+        }
     }
 }
 
@@ -2066,7 +2068,7 @@ internal fun QueueDock(
                                 Icon(painterResource(R.drawable.ic_question_bubble), contentDescription = null, modifier = Modifier.padding(end = 6.dp).size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             Column(Modifier.weight(1f)) {
-                                Text(item.preview, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
+                                Text(appText(item.preview), maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
                                 if (item.attachmentCount > 0) Text(appText("%1\$s 个附件", item.attachmentCount), style = MaterialTheme.typography.labelSmall)
                             }
                             if (pendingItemId == item.id) {
@@ -2934,12 +2936,12 @@ private fun ProcessToolDisclosure(tool: ConversationProcessTool) {
     val failed = tool.result?.isError == true
     val summary = remember(tool.call?.title, tool.call?.text, tool.result?.title) {
         com.clarklevis.dsh.shared.projection.ToolActivitySummaryFormatter.summarize(
-            tool.call?.title ?: tool.result?.title ?: appText("工具"), tool.call?.text.orEmpty()
-        ).let(::localizedToolActivitySummary)
+            tool.call?.title ?: tool.result?.title.orEmpty(), tool.call?.text.orEmpty()
+        )
     }
     ProcessDisclosure(
         id = "tool-${tool.id}",
-        title = listOf(summary.label, summary.annotation).filter(String::isNotBlank).joinToString(" · "),
+        title = toolActivityTitle(summary),
         preview = listOf(
             summary.detail,
             if (failed) appText("失败") else if (tool.result == null) appText("等待结果") else ""

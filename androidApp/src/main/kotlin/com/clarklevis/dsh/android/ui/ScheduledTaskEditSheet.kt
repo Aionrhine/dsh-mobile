@@ -4,17 +4,15 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -22,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -33,7 +32,6 @@ import com.clarklevis.dsh.shared.protocol.ScheduleTimingEditor
 import com.clarklevis.dsh.shared.protocol.ScheduleTargetEditor
 import kotlinx.serialization.json.Json
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ScheduledTaskEditSheet(
     task: MobileScheduledTask,
@@ -56,7 +54,7 @@ internal fun ScheduledTaskEditSheet(
     }
     val cleanTitle = title.trim()
     val cleanPrompt = prompt.trim()
-    val targetError = if (target != originalTarget) ScheduleTargetEditor.validationError(target, recordJson) else null
+    val targetError = if (target != originalTarget) ScheduleTargetEditor.validationError(target, recordJson)?.let { appText(it) } else null
     val targetChange = ScheduleTargetEditor.changeJson(target, recordJson)?.let {
         JsonValue.fromJsonElement(Json.parseToJsonElement(it))
     }
@@ -74,27 +72,25 @@ internal fun ScheduledTaskEditSheet(
         }
     }
 
-    ModalBottomSheet(
-        modifier = Modifier.adaptiveSheetBounds(),
-        sheetMaxWidth = adaptiveSheetWidth(),
-        onDismissRequest = { if (pendingRequestId == null) onDismiss() },
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = MaterialTheme.colorScheme.surface
+    ScheduledTaskModalSheet(
+        modifier = Modifier.testTag("scheduled-task-edit-sheet"),
+        onDismiss = { if (pendingRequestId == null) onDismiss() }
     ) {
         ScheduleKeyboardDismissHost {
         DshMenuColumnHost {
-            Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
-                ScheduleSheetHeader(appText("编辑定时任务"), onDismiss,
+            Column(Modifier.fillMaxSize().navigationBarsPadding()) {
+                DshPickerHeader(appText("编辑定时任务"), onDismiss,
                     action = appText("保存"), enabled = canSave, dismissEnabled = pendingRequestId == null, onAction = {
                         localError = null
                         pendingRequestId = stateHolder.updateScheduledTask(task, title, prompt, timeChange, targetChange)
                         if (pendingRequestId == null) localError = stateHolder.scheduledTaskMutationError ?: appText("操作正在进行，请稍后重试")
                     })
-                Column(Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState())
+                Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp, vertical = 28.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(appText("标题"), fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                        ScheduleFilledField(title, { title = it }, appText("任务标题"), enabled = pendingRequestId == null, singleLine = true)
+                        ScheduleFilledField(title, { title = it }, appText("任务标题"), enabled = pendingRequestId == null, singleLine = true,
+                            modifier = Modifier.testTag("scheduled-task-edit-title"))
                         Text(appText("最多 120 个字"), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -105,9 +101,9 @@ internal fun ScheduledTaskEditSheet(
                         ScheduleTargetControls(target, ScheduleTargetEditor.currentSessionId(recordJson) != null,
                             stateHolder.availableWorkspaces, enabled = pendingRequestId == null) { target = it }
                     }
-                    targetError?.let { Text(appText(it), color = MaterialTheme.colorScheme.error, fontSize = 13.sp) }
+                    targetError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp) }
                     ScheduleTimingControls(timing, enabled = pendingRequestId == null) { timing = it }
-                    timingError?.let { Text(appText(it), color = MaterialTheme.colorScheme.error, fontSize = 13.sp) }
+                    timingError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp) }
                     (localError ?: if (pendingRequestId != null) stateHolder.scheduledTaskMutationError else null)?.let {
                         Text(it, color = MaterialTheme.colorScheme.error, fontSize = 14.sp)
                     }
