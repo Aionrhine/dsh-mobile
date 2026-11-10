@@ -29906,6 +29906,134 @@
           }
         }
       }
+    },
+    "会话已切换，已取消导入所选文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Session switched — the selected file import was canceled"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "会话已切换，已取消导入所选文件"
+          }
+        }
+      }
+    },
+    "无法准备文件上传会话，请稍后重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't prepare the file upload session — try again later"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法准备文件上传会话，请稍后重试"
+          }
+        }
+      }
+    },
+    "a11y.quote.selection": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quote selected text"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "引用选中的文字"
+          }
+        }
+      }
+    },
+    "取消引用选中文字": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove quoted selection"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消引用选中文字"
+          }
+        }
+      }
+    },
+    "a11y.quote.count": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld passages quoted"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已引用 %lld 段文字"
+          }
+        }
+      }
+    },
+    "引用选中文字": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quote selected text"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "引用选中文字"
+          }
+        }
+      }
+    },
+    "无法导入所选文件：文件上传通道未就绪或连接已变化": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't import the selected file: upload channel not ready or connection changed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法导入所选文件：文件上传通道未就绪或连接已变化"
+          }
+        }
+      }
+    },
+    "%lld 条对话引用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld conversation quotes"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 条对话引用"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
