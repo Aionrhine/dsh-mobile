@@ -506,7 +506,7 @@ struct ConversationView: View {
     @State private var isImportingImages = false
     @State private var showsContextUsage = false
     @State private var showTurnJumpSheet = false
-    @State private var pendingTurnJump: Int?
+    @State private var pendingTurnJump: TurnOutlineEntry?
     @State private var showsSessionStats = false
     @State private var showsSessionStatsPopover = false
     @State private var tasksExpanded = false
@@ -608,7 +608,7 @@ struct ConversationView: View {
         }
         .sheet(isPresented: $showTurnJumpSheet) {
             TurnJumpSheet(outline: selectedTurnOutline) { entry in
-                pendingTurnJump = entry.turn
+                pendingTurnJump = entry
             }
         }
         .sheet(isPresented: $showsSessionStats) {
@@ -2543,15 +2543,33 @@ struct ConversationView: View {
         store.turnOutlines[store.selectedSessionId ?? ""] ?? []
     }
 
-    /// 轮次跳转的目标行：第一条带该轮次号的条目（user 消息或过程组）。
+    /// 轮次跳转的目标行：优先匹配该轮用户提问文本，兜底匹配该轮 seq 序列号。
     private var turnJumpViewportID: String? {
-        guard let turn = pendingTurnJump else { return nil }
-        return ConversationDisplayEntry.make(from: conversationItems).first(where: { entry in
-            switch entry.content {
-            case .message(let item): item.turn == turn
-            case .process(let group): group.items.contains { $0.turn == turn }
+        guard let jump = pendingTurnJump, let sessionID = store.selectedSessionId else { return nil }
+        let seqSuffix = "-\(jump.seq)"
+        let entries = ConversationDisplayEntry.make(from: conversationItems)
+
+        if let prompt = jump.prompt, !prompt.isEmpty {
+            if let match = entries.first(where: { entry in
+                guard case .message(let item) = entry.content, item.kind == .user else { return false }
+                return item.text == prompt || item.text.hasPrefix(prompt) || prompt.hasPrefix(item.text)
+            }) {
+                return match.id
             }
-        })?.id
+        }
+
+        if let match = entries.first(where: { entry in
+            switch entry.content {
+            case .message(let item):
+                return item.id.contains(seqSuffix)
+            case .process(let group):
+                return group.items.contains { $0.id.contains(seqSuffix) }
+            }
+        }) {
+            return match.id
+        }
+
+        return "message-\(sessionID)-\(jump.seq)"
     }
 
     private var searchTargetViewportID: String? {
