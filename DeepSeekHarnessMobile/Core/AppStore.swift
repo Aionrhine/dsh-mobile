@@ -3380,6 +3380,10 @@ final class AppStore: ObservableObject {
             goalProjections = [:]
             for (id, projection) in frame.projections?.objectValue ?? [:] {
                 installTaskGoalBaseline(projection, sessionID: id)
+                if let outlineValues = projection["values"]?["turnOutline"]?.arrayValue {
+                    let entries = outlineValues.compactMap { $0.decode(TurnOutlineEntry.self) }
+                    turnOutlines[id] = entries.isEmpty ? nil : entries
+                }
             }
             return
         }
