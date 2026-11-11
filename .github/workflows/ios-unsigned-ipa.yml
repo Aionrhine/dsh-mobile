@@ -64,7 +64,16 @@ jobs:
         run: python3 scripts/apply-text-selection.py && grep -n 'textSelection(.enabled)' DeepSeekHarnessMobile/Views/ConversationView.swift | head -5
 
       - name: Resolve Swift packages
-        run: xcodebuild -resolvePackageDependencies -project DeepSeekHarnessMobile.xcodeproj -scheme DeepSeekHarnessMobile
+        run: |
+          for i in 1 2 3; do
+            echo "Attempt $i to resolve package dependencies..."
+            if xcodebuild -resolvePackageDependencies -project DeepSeekHarnessMobile.xcodeproj -scheme DeepSeekHarnessMobile; then
+              exit 0
+            fi
+            echo "::warning::Package resolution attempt $i failed, retrying in 10s..."
+            sleep 10
+          done
+          exit 1
 
       - name: Build Tsnetgo xcframework
         run: |
