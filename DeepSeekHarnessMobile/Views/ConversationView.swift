@@ -2546,23 +2546,23 @@ struct ConversationView: View {
     /// 轮次跳转的目标行：第一条带该轮次号的条目（user 消息或过程组）。
     private var turnJumpViewportID: String? {
         guard let turn = pendingTurnJump else { return nil }
-        return ConversationDisplayEntry.make(from: conversationItems).first { entry in
+        return ConversationDisplayEntry.make(from: conversationItems).first(where: { entry in
             switch entry.content {
-            case .message(let item): return item.turn == turn
-            case .process(let group): return group.items.contains { $0.turn == turn }
+            case .message(let item): item.turn == turn
+            case .process(let group): group.items.contains { $0.turn == turn }
             }
-        }?.id
+        })?.id
     }
 
     private var searchTargetViewportID: String? {
         guard let target = store.conversationSearchTarget else { return nil }
         let eventID = String(target.dropFirst("message-".count))
-        return ConversationDisplayEntry.make(from: conversationItems).first { entry in
+        return ConversationDisplayEntry.make(from: conversationItems).first(where: { entry in
             switch entry.content {
             case .message(let item): item.id == eventID || item.id.hasPrefix(eventID + "-")
             case .process(let group): group.items.contains { $0.id == eventID || $0.id.hasPrefix(eventID + "-") }
             }
-        }?.id ?? target
+        })?.id ?? target
     }
 
     private func makeConversationViewportEntries(from items: [ConversationItem]) -> [ConversationViewportEntry] {
