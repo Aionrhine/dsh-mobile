@@ -356,7 +356,14 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
         historyPresentationStamp: HistoryPresentationStamp?
     )?
     var cacheScope = ""
-    var searchTargetID: String?
+    var searchTargetID: String? {
+        didSet {
+            // 跳转/搜索目标可能在两次快照提交之间到达（例如面板收起后无新内容），
+            // 提交完成路径只覆盖「有提交」的情况，这里补一次主动定位。
+            guard searchTargetID != oldValue else { return }
+            DispatchQueue.main.async { [weak self] in self?.positionSearchTargetIfPossible() }
+        }
+    }
     private var positionedSearchTargetID: String?
     private struct ReusableHeights {
         var heights: [CellMeasurementKey: CGFloat]
@@ -2555,6 +2562,21 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
         } else {
             scrollToBottom()
         }
+    }
+
+    /// 主动定位搜索/轮次跳转目标：目标行已在数据源里、且没有快照提交正在进行时直接滚动；
+    /// 否则交给提交完成路径处理，或等待历史回溯把目标行带进数据源后再定位。
+    private func positionSearchTargetIfPossible() {
+        guard let target = searchTargetID, target != positionedSearchTargetID,
+              let dataSource else { return }
+        guard !isApplyingSnapshot, pendingApply == nil, deferredTimelineSnapshot == nil else { return }
+        guard let path = dataSource.indexPath(for: target) else { return }
+        needsBottomAlignment = false
+        bottomAlignmentGeneration &+= 1
+        collectionView.scrollToItem(at: path, at: .centeredVertically, animated: false)
+        positionedSearchTargetID = target
+        setPinned(false)
+        onBottomAlignmentCompleted()
     }
 
     private func setPinned(_ value: Bool) {

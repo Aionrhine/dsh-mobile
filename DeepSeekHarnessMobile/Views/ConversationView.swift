@@ -609,6 +609,10 @@ struct ConversationView: View {
         .sheet(isPresented: $showTurnJumpSheet) {
             TurnJumpSheet(outline: selectedTurnOutline) { entry in
                 pendingTurnJump = entry
+                // 目标轮次比已加载历史更早时先回溯一页；后续由行数变化联动继续加载。
+                if turnJumpViewportID == nil, let sessionID = store.selectedSessionId {
+                    store.loadHistory(for: sessionID, older: true)
+                }
             }
         }
         .sheet(isPresented: $showsSessionStats) {
@@ -1387,6 +1391,12 @@ struct ConversationView: View {
         .onChangeCompat(of: store.conversationSearchTarget) { _, _ in
             // 新的搜索跳转压过更早的轮次跳转目标，避免陈旧轮次 id 抢占定位。
             pendingTurnJump = nil
+        }
+        .onChangeCompat(of: conversationItems.count) { _, _ in
+            // 轮次跳转目标还没进内存时，行数一变就继续向更早回溯，直到目标行出现。
+            guard let sessionID = store.selectedSessionId, pendingTurnJump != nil,
+                  turnJumpViewportID == nil else { return }
+            store.loadHistory(for: sessionID, older: true)
         }
         // 附件选择器呈现在稳定祖先上：挂在 attachmentMenu 的 Menu 链上时，
         // 菜单收起与选择器呈现竞争会丢失回调（选中文件后点「打开」无响应）。
@@ -2543,33 +2553,48 @@ struct ConversationView: View {
         store.turnOutlines[store.selectedSessionId ?? ""] ?? []
     }
 
-    /// 轮次跳转的目标行：优先匹配该轮用户提问文本，兜底匹配该轮 seq 序列号。
+    /// 轮次跳转的目标行。turn/start 事件本身不生成会话行（投影里没有对应 kind），
+    /// 所以不能指望「某行的 id 恰好等于 turn/start 的 seq」：
+    /// ① 先按提问文本匹配用户行（两端去空白后双向前后缀比较）；
+    /// ② 再把会话行 id 里的 event seq（message-<sessionId>-<seq> / process-<sessionId>-<seq>）
+    ///    解析出来，取第一条落在 [本轮 start, 下一轮 start) 区间的行，即该轮第一行；
+    /// ③ 区间内还没有行 ⇒ 目标轮次比已加载历史更早：返回 nil（不下目标），
+    ///    由 onJump 与 conversationItems.count 的联动逐页 loadHistory 回溯，行出现后 viewport 自动定位。
     private var turnJumpViewportID: String? {
         guard let jump = pendingTurnJump, let sessionID = store.selectedSessionId else { return nil }
-        let seqSuffix = "-\(jump.seq)"
         let entries = ConversationDisplayEntry.make(from: conversationItems)
 
-        if let prompt = jump.prompt, !prompt.isEmpty {
+        if let prompt = jump.prompt?.trimmingCharacters(in: .whitespacesAndNewlines), !prompt.isEmpty {
             if let match = entries.first(where: { entry in
                 guard case .message(let item) = entry.content, item.kind == .user else { return false }
-                return item.text == prompt || item.text.hasPrefix(prompt) || prompt.hasPrefix(item.text)
+                let text = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                return !text.isEmpty
+                    && (text == prompt || text.hasPrefix(prompt) || prompt.hasPrefix(text))
             }) {
                 return match.id
             }
         }
 
-        if let match = entries.first(where: { entry in
-            switch entry.content {
-            case .message(let item):
-                return item.id.contains(seqSuffix)
-            case .process(let group):
-                return group.items.contains { $0.id.contains(seqSuffix) }
+        let nextTurnStart = selectedTurnOutline
+            .first(where: { $0.turn > jump.turn })?.seq ?? Int.max
+        let messagePrefix = "message-\(sessionID)-"
+        let processPrefix = "process-\(sessionID)-"
+        for entry in entries {
+            let remainder: String?
+            if entry.id.hasPrefix(messagePrefix) {
+                remainder = String(entry.id.dropFirst(messagePrefix.count))
+            } else if entry.id.hasPrefix(processPrefix) {
+                remainder = String(entry.id.dropFirst(processPrefix.count))
+            } else {
+                remainder = nil
             }
-        }) {
-            return match.id
+            guard let digits = remainder, !digits.isEmpty, digits.allSatisfy(\.isNumber),
+                  let seq = Int(digits) else { continue }
+            if seq >= jump.seq && seq < nextTurnStart {
+                return entry.id
+            }
         }
-
-        return "message-\(sessionID)-\(jump.seq)"
+        return nil
     }
 
     private var searchTargetViewportID: String? {
