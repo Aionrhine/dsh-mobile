@@ -2608,6 +2608,7 @@ struct ConversationView: View {
         let eventID = String(target.dropFirst("message-".count))
         return ConversationDisplayEntry.make(from: conversationItems).first(where: { entry in
             switch entry.content {
+            case .timeSeparator: false
             case .message(let item): item.id == eventID || item.id.hasPrefix(eventID + "-")
             case .process(let group): group.items.contains { $0.id == eventID || $0.id.hasPrefix(eventID + "-") }
             }
@@ -2658,6 +2659,12 @@ struct ConversationView: View {
                     // The viewport measures their SwiftUI root directly before
                     // caching, including fenced-code horizontal scroll views.
                     clipsContentToBounds: true
+                )]
+            case .timeSeparator(let date):
+                return [ConversationViewportEntry(
+                    id: entry.id,
+                    revision: revision,
+                    content: AnyView(ConversationTimeSeparator(date: date))
                 )]
             case .process(let group):
                 return processViewportEntries(for: group)
@@ -2796,6 +2803,10 @@ struct ConversationView: View {
         hasher.combine(entry.id)
         hasher.combine(entry.showsCopyButton)
         switch entry.content {
+        case .timeSeparator(let date):
+            hasher.combine(date)
+            hasher.combine(Calendar.current.startOfDay(for: .now))
+            hasher.combine(TimeZone.current.identifier)
         case .message(let item):
             hasher.combine(item.id)
             hasher.combine(item.title)
@@ -4176,9 +4187,42 @@ struct ConversationProcessGroup: Identifiable {
     }
 }
 
+enum ConversationTimeLabel {
+    static func text(for date: Date, now: Date = .now, timeZone: TimeZone = .current, locale: Locale = .current) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.calendar = calendar
+        formatter.timeZone = timeZone
+        if calendar.isDate(date, inSameDayAs: now) {
+            formatter.dateFormat = "H:mm"
+        } else if calendar.component(.year, from: date) == calendar.component(.year, from: now) {
+            formatter.dateFormat = String(localized: "conversation.time.date", locale: locale)
+        } else {
+            formatter.dateFormat = String(localized: "conversation.time.yearDate", locale: locale)
+        }
+        return formatter.string(from: date)
+    }
+}
+
+private struct ConversationTimeSeparator: View {
+    let date: Date
+
+    var body: some View {
+        Text(ConversationTimeLabel.text(for: date))
+            .appFont(.system(size: 12))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .accessibilityIdentifier("conversation-time-separator")
+    }
+}
+
 struct ConversationDisplayEntry: Identifiable {
     enum Content {
         case message(ConversationItem)
+        case timeSeparator(Date)
         case process(ConversationProcessGroup)
     }
 
@@ -4189,6 +4233,7 @@ struct ConversationDisplayEntry: Identifiable {
     static func make(from items: [ConversationItem]) -> [ConversationDisplayEntry] {
         var result: [ConversationDisplayEntry] = []
         var processItems: [ConversationItem] = []
+        var previousMessageDate: Date?
 
         func flushProcess() {
             guard let first = processItems.first else { return }
@@ -4209,6 +4254,13 @@ struct ConversationDisplayEntry: Identifiable {
                 processItems.append(item)
             case .user, .assistant, .generatedImages, .system:
                 flushProcess()
+                // 只比较正式对话消息，工具和状态事件不影响半小时间隔。
+                if item.kind != .system, item.date.timeIntervalSince1970.isFinite, item.date.timeIntervalSince1970 > 0 {
+                    if let previousMessageDate, item.date.timeIntervalSince(previousMessageDate) > 30 * 60 {
+                        result.append(.init(id: "time-\(item.id)", content: .timeSeparator(item.date), showsCopyButton: false))
+                    }
+                    previousMessageDate = item.date
+                }
                 result.append(.init(id: "message-\(item.id)", content: .message(item), showsCopyButton: false))
             }
         }

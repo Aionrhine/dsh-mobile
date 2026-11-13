@@ -1,29 +1,6 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
-    "1": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "1"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "1"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "1"
-          }
-        }
-      }
-    },
     " 等工具": {
       "extractionState": "stale",
       "localizations": {
@@ -436,6 +413,22 @@
         }
       }
     },
+    "%lld 条对话引用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld conversation quotes"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 条对话引用"
+          }
+        }
+      }
+    },
     "%lld 行 · UTF-8": {
       "localizations": {
         "en": {
@@ -548,6 +541,29 @@
           "stringUnit": {
             "state": "translated",
             "value": "0秒"
+          }
+        }
+      }
+    },
+    "1": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1"
           }
         }
       }
@@ -971,6 +987,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Cron は 5 つのフィールドを使用します。RRULE は DTSTART のタイムゾーンを使用します。ルールはホストが検証するため、エラーが出ても編集を続けられます。"
+          }
+        }
+      }
+    },
+    "Cron 需要 5 个字段；RRULE 需要 DTSTART 和 RRULE 两行。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cron needs five fields; RRULE needs DTSTART and RRULE lines."
           }
         }
       }
@@ -2372,6 +2399,38 @@
         }
       }
     },
+    "a11y.quote.count": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld passages quoted"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已引用 %lld 段文字"
+          }
+        }
+      }
+    },
+    "a11y.quote.selection": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quote selected text"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "引用选中的文字"
+          }
+        }
+      }
+    },
     "a11y.send-message": {
       "extractionState": "manual",
       "localizations": {
@@ -3706,6 +3765,38 @@
         }
       }
     },
+    "conversation.time.date": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "M月d日 H:mm"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MMM d, H:mm"
+          }
+        }
+      }
+    },
+    "conversation.time.yearDate": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "yyyy年M月d日 H:mm"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MMM d, yyyy H:mm"
+          }
+        }
+      }
+    },
     "cwd": {
       "localizations": {
         "en": {
@@ -4253,6 +4344,102 @@
           "stringUnit": {
             "state": "translated",
             "value": "パブリック接続には WSS を使用する必要があります"
+          }
+        }
+      }
+    },
+    "genui.failed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GenUI failed to render"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GenUI 渲染失败"
+          }
+        }
+      }
+    },
+    "genui.failed.process": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The rendering process was reclaimed by the system"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "渲染进程已被系统回收"
+          }
+        }
+      }
+    },
+    "genui.failed.resources": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GenUI resources are missing"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "渲染资源缺失"
+          }
+        }
+      }
+    },
+    "genui.failed.unknown": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unknown error"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未知错误"
+          }
+        }
+      }
+    },
+    "genui.mount": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tap to render the GenUI component"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "点按渲染 GenUI 组件"
+          }
+        }
+      }
+    },
+    "genui.mount.hint": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Three are already rendering; tap to load this one"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已同时渲染 3 个，为省内存点按后再加载"
           }
         }
       }
@@ -8364,6 +8551,22 @@
         }
       }
     },
+    "upload.channelNotReady": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't import the selected file: upload channel not ready or connection changed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法导入所选文件：文件上传通道未就绪或连接已变化"
+          }
+        }
+      }
+    },
     "upload.failed": {
       "extractionState": "manual",
       "localizations": {
@@ -9977,6 +10180,125 @@
         }
       }
     },
+    "上传中": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uploading"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上传中"
+          }
+        }
+      }
+    },
+    "上传响应不匹配": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The upload response did not match"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上传响应不匹配"
+          }
+        }
+      }
+    },
+    "上传响应无效": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid upload response"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上传响应无效"
+          }
+        }
+      }
+    },
+    "上传失败": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Upload failed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上传失败"
+          }
+        }
+      }
+    },
+    "上传校验失败，请重试": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Upload verification failed. Please retry"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上传校验失败，请重试"
+          }
+        }
+      }
+    },
+    "上传确认偏移无效，请重试": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid acknowledged upload offset. Please retry"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上传确认偏移无效，请重试"
+          }
+        }
+      }
+    },
+    "上传确认超时，请重试": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Upload confirmation timed out. Please retry"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上传确认超时，请重试"
+          }
+        }
+      }
+    },
     "下一题": {
       "extractionState": "stale",
       "localizations": {
@@ -10846,6 +11168,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "セッションはアーカイブされ、一覧から非表示になります。履歴は保持されます。"
+          }
+        }
+      }
+    },
+    "会话已切换，已取消导入所选文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Session switched — the selected file import was canceled"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "会话已切换，已取消导入所选文件"
           }
         }
       }
@@ -12924,6 +13262,17 @@
         }
       }
     },
+    "即将达到录音上限 · 松手转文字": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recording limit approaching · Release to transcribe"
+          }
+        }
+      }
+    },
     "卸载中": {
       "extractionState": "manual",
       "localizations": {
@@ -13203,6 +13552,22 @@
         }
       }
     },
+    "取消引用选中文字": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove quoted selection"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消引用选中文字"
+          }
+        }
+      }
+    },
     "取消扫描": {
       "extractionState": "stale",
       "localizations": {
@@ -13398,6 +13763,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "複数選択可能"
+          }
+        }
+      }
+    },
+    "可发送": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ready to send"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可发送"
           }
         }
       }
@@ -14823,6 +15205,23 @@
         }
       }
     },
+    "对端数量": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Peers"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对端数量"
+          }
+        }
+      }
+    },
     "对话": {
       "localizations": {
         "en": {
@@ -15970,6 +16369,17 @@
         }
       }
     },
+    "已达到录音上限，正在转文字": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recording limit reached. Transcribing…"
+          }
+        }
+      }
+    },
     "已连接": {
       "extractionState": "stale",
       "localizations": {
@@ -16301,6 +16711,22 @@
         }
       }
     },
+    "引用选中文字": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quote selected text"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "引用选中文字"
+          }
+        }
+      }
+    },
     "当前 Host 不支持插件管理": {
       "extractionState": "manual",
       "localizations": {
@@ -16399,6 +16825,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "現在のホスト：%@。ホストを切り替え"
+          }
+        }
+      }
+    },
+    "当前任务尚无可用的关联会话，请选择新建会话。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This task has no available linked conversation. Choose a new conversation."
           }
         }
       }
@@ -16818,6 +17255,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "このゲートウェイはファイルのアップロードをサポートしていません。ファイルのアップロードに対応した Mobile Gateway にアップグレードして、再接続してください。"
+          }
+        }
+      }
+    },
+    "当前网关尚不支持语音输入。请在桌面端升级移动网关插件，并在「插件」模块启用官方「语音输入」插件，完成模型初始化准备。完成后重新连接网关。": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This gateway does not support voice input yet. Update the Mobile Gateway plugin on your desktop, then enable the official Voice Input plugin in Plugins and complete model initialization. Reconnect afterward."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前网关尚不支持语音输入。请在桌面端升级移动网关插件，并在「插件」模块启用官方「语音输入」插件，完成模型初始化准备。完成后重新连接网关。"
           }
         }
       }
@@ -19404,6 +19858,23 @@
         }
       }
     },
+    "文件读取失败，请重新选择": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unable to read the file. Select it again"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件读取失败，请重新选择"
+          }
+        }
+      }
+    },
     "文件超过 2 MB，请使用系统应用打开": {
       "extractionState": "manual",
       "localizations": {
@@ -19704,6 +20175,22 @@
         }
       }
     },
+    "无法准备文件上传会话，请稍后重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't prepare the file upload session — try again later"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法准备文件上传会话，请稍后重试"
+          }
+        }
+      }
+    },
     "无法创建文件下载临时文件：%@": {
       "extractionState": "manual",
       "localizations": {
@@ -19750,6 +20237,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "録音データを変換できませんでした。もう一度お試しください。"
+          }
+        }
+      }
+    },
+    "无法导入所选文件：文件上传通道未就绪或连接已变化": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't import the selected file: upload channel not ready or connection changed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法导入所选文件：文件上传通道未就绪或连接已变化"
           }
         }
       }
@@ -20463,6 +20966,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "時刻不明"
+          }
+        }
+      }
+    },
+    "时间格式为 HH:mm:ss，可保留最多 3 位毫秒。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use HH:mm:ss, with up to three fractional digits."
           }
         }
       }
@@ -21614,6 +22128,40 @@
         }
       }
     },
+    "松手取消": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Release to cancel"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "松手取消"
+          }
+        }
+      }
+    },
+    "松手转文字 · 上滑取消": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Release to transcribe · Slide up to cancel"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "松手转文字 · 上滑取消"
+          }
+        }
+      }
+    },
     "极简模式": {
       "extractionState": "stale",
       "localizations": {
@@ -21858,6 +22406,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "タイトル"
+          }
+        }
+      }
+    },
+    "桌面端正在准备语音模型，请等待下载和初始化完成后再试。": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The desktop is preparing the speech model. Wait for download and initialization to finish, then try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "桌面端正在准备语音模型，请等待下载和初始化完成后再试。"
           }
         }
       }
@@ -22234,6 +22799,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "新しいアカウントのルートを準備中…"
+          }
+        }
+      }
+    },
+    "正在准备语音模型": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparing speech model"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在准备语音模型"
           }
         }
       }
@@ -22799,6 +23381,23 @@
         }
       }
     },
+    "正在获取麦克风权限": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Requesting microphone access"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在获取麦克风权限"
+          }
+        }
+      }
+    },
     "正在补齐较早的轨迹记录…": {
       "extractionState": "stale",
       "localizations": {
@@ -23248,6 +23847,17 @@
         }
       }
     },
+    "此重复规则仅支持整秒，请将毫秒设为 000。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This recurrence supports whole seconds. Set milliseconds to 000."
+          }
+        }
+      }
+    },
     "步骤": {
       "extractionState": "stale",
       "localizations": {
@@ -23295,6 +23905,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "毎週"
+          }
+        }
+      }
+    },
+    "每周至少选择一天。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select at least one weekday."
           }
         }
       }
@@ -23363,6 +23984,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "毎月の日付"
+          }
+        }
+      }
+    },
+    "每月日期请输入 1 到 31。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter a day from 1 to 31."
           }
         }
       }
@@ -23934,6 +24566,22 @@
         }
       }
     },
+    "滚动到最新消息": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scroll to latest"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "滚动到最新消息"
+          }
+        }
+      }
+    },
     "灰色日期不在可导出的日志范围内": {
       "extractionState": "stale",
       "localizations": {
@@ -24050,6 +24698,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "ステータス同期中"
+          }
+        }
+      }
+    },
+    "状态未知": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unknown status"
           }
         }
       }
@@ -24715,6 +25374,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "ステップ %lld 完了"
+          }
+        }
+      }
+    },
+    "第 %lld 轮": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn %lld"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第 %lld 轮"
           }
         }
       }
@@ -26702,6 +27377,23 @@
         }
       }
     },
+    "请先连接网关，再使用语音输入。": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect to the gateway before using voice input."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先连接网关，再使用语音输入。"
+          }
+        }
+      }
+    },
     "请先选择一个具体工作区，再创建新会话。": {
       "extractionState": "manual",
       "localizations": {
@@ -26800,6 +27492,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "DSH のプラグイン管理で公式の音声入力プラグインを有効にしてください"
+          }
+        }
+      }
+    },
+    "请在桌面端的「插件」模块启用官方「语音输入」插件，并完成模型下载和初始化准备。准备完成后再试。": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enable the official Voice Input plugin in Plugins on your desktop and complete model download and initialization, then try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请在桌面端的「插件」模块启用官方「语音输入」插件，并完成模型下载和初始化准备。准备完成后再试。"
           }
         }
       }
@@ -27033,6 +27742,17 @@
         }
       }
     },
+    "请输入 Cron 或 DTSTART/RRULE 规则。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter a Cron or DTSTART/RRULE rule."
+          }
+        }
+      }
+    },
     "请连接网关后重试。": {
       "extractionState": "manual",
       "localizations": {
@@ -27046,6 +27766,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "ゲートウェイに接続してから再試行してください。"
+          }
+        }
+      }
+    },
+    "请选择执行位置。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose where to run the task."
+          }
+        }
+      }
+    },
+    "请选择有效日期。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose a valid date."
           }
         }
       }
@@ -27097,6 +27839,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "未来の日時を選択してください。"
+          }
+        }
+      }
+    },
+    "请选择重复类型。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose a repeat frequency."
           }
         }
       }
@@ -27377,6 +28130,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "システムに合わせる"
+          }
+        }
+      }
+    },
+    "跳转到轮次": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jump to turn"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "跳转到轮次"
           }
         }
       }
@@ -28011,6 +28780,23 @@
         }
       }
     },
+    "连接或会话已变化，请重新上传": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The connection or session has changed. Upload the file again"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接或会话已变化，请重新上传"
+          }
+        }
+      }
+    },
     "连接方式": {
       "extractionState": "stale",
       "localizations": {
@@ -28474,6 +29260,17 @@
         }
       }
     },
+    "重复间隔请输入 1 到 10000 的整数。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter an integer from 1 to 10000 for the repeat interval."
+          }
+        }
+      }
+    },
     "重新加载历史": {
       "extractionState": "stale",
       "localizations": {
@@ -28711,6 +29508,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "キューの状態形式が無効です"
+          }
+        }
+      }
+    },
+    "附件凭证已失效，请重新上传": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The attachment receipt has expired. Upload the file again"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "附件凭证已失效，请重新上传"
           }
         }
       }
@@ -29229,6 +30043,22 @@
         }
       }
     },
+    "（无文字输入）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(No text input)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "（无文字输入）"
+          }
+        }
+      }
+    },
     "，": {
       "extractionState": "manual",
       "localizations": {
@@ -29248,804 +30078,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "、"
-          }
-        }
-      }
-    },
-    "状态未知": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unknown status"
-          }
-        }
-      }
-    },
-    "请选择执行位置。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Choose where to run the task."
-          }
-        }
-      }
-    },
-    "当前任务尚无可用的关联会话，请选择新建会话。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This task has no available linked conversation. Choose a new conversation."
-          }
-        }
-      }
-    },
-    "请输入 Cron 或 DTSTART/RRULE 规则。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Enter a Cron or DTSTART/RRULE rule."
-          }
-        }
-      }
-    },
-    "Cron 需要 5 个字段；RRULE 需要 DTSTART 和 RRULE 两行。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cron needs five fields; RRULE needs DTSTART and RRULE lines."
-          }
-        }
-      }
-    },
-    "请选择重复类型。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Choose a repeat frequency."
-          }
-        }
-      }
-    },
-    "重复间隔请输入 1 到 10000 的整数。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Enter an integer from 1 to 10000 for the repeat interval."
-          }
-        }
-      }
-    },
-    "请选择有效日期。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Choose a valid date."
-          }
-        }
-      }
-    },
-    "时间格式为 HH:mm:ss，可保留最多 3 位毫秒。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Use HH:mm:ss, with up to three fractional digits."
-          }
-        }
-      }
-    },
-    "每周至少选择一天。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Select at least one weekday."
-          }
-        }
-      }
-    },
-    "每月日期请输入 1 到 31。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Enter a day from 1 to 31."
-          }
-        }
-      }
-    },
-    "此重复规则仅支持整秒，请将毫秒设为 000。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This recurrence supports whole seconds. Set milliseconds to 000."
-          }
-        }
-      }
-    },
-    "上传中": {
-      "extractionState": "stale",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Uploading"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "上传中"
-          }
-        }
-      }
-    },
-    "上传响应不匹配": {
-      "extractionState": "stale",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The upload response did not match"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "上传响应不匹配"
-          }
-        }
-      }
-    },
-    "上传响应无效": {
-      "extractionState": "stale",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Invalid upload response"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "上传响应无效"
-          }
-        }
-      }
-    },
-    "上传失败": {
-      "extractionState": "stale",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Upload failed"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "上传失败"
-          }
-        }
-      }
-    },
-    "上传校验失败，请重试": {
-      "extractionState": "stale",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Upload verification failed. Please retry"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "上传校验失败，请重试"
-          }
-        }
-      }
-    },
-    "上传确认偏移无效，请重试": {
-      "extractionState": "stale",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Invalid acknowledged upload offset. Please retry"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "上传确认偏移无效，请重试"
-          }
-        }
-      }
-    },
-    "上传确认超时，请重试": {
-      "extractionState": "stale",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Upload confirmation timed out. Please retry"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "上传确认超时，请重试"
-          }
-        }
-      }
-    },
-    "即将达到录音上限 · 松手转文字": {
-      "extractionState": "stale",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Recording limit approaching · Release to transcribe"
-          }
-        }
-      }
-    },
-    "可发送": {
-      "extractionState": "stale",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ready to send"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "可发送"
-          }
-        }
-      }
-    },
-    "对端数量": {
-      "extractionState": "stale",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Peers"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "对端数量"
-          }
-        }
-      }
-    },
-    "已达到录音上限，正在转文字": {
-      "extractionState": "stale",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Recording limit reached. Transcribing…"
-          }
-        }
-      }
-    },
-    "当前网关尚不支持语音输入。请在桌面端升级移动网关插件，并在「插件」模块启用官方「语音输入」插件，完成模型初始化准备。完成后重新连接网关。": {
-      "extractionState": "stale",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This gateway does not support voice input yet. Update the Mobile Gateway plugin on your desktop, then enable the official Voice Input plugin in Plugins and complete model initialization. Reconnect afterward."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "当前网关尚不支持语音输入。请在桌面端升级移动网关插件，并在「插件」模块启用官方「语音输入」插件，完成模型初始化准备。完成后重新连接网关。"
-          }
-        }
-      }
-    },
-    "文件读取失败，请重新选择": {
-      "extractionState": "stale",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unable to read the file. Select it again"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "文件读取失败，请重新选择"
-          }
-        }
-      }
-    },
-    "松手取消": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Release to cancel"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "松手取消"
-          }
-        }
-      }
-    },
-    "松手转文字 · 上滑取消": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Release to transcribe · Slide up to cancel"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "松手转文字 · 上滑取消"
-          }
-        }
-      }
-    },
-    "桌面端正在准备语音模型，请等待下载和初始化完成后再试。": {
-      "extractionState": "stale",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The desktop is preparing the speech model. Wait for download and initialization to finish, then try again."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "桌面端正在准备语音模型，请等待下载和初始化完成后再试。"
-          }
-        }
-      }
-    },
-    "正在准备语音模型": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Preparing speech model"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在准备语音模型"
-          }
-        }
-      }
-    },
-    "正在获取麦克风权限": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Requesting microphone access"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在获取麦克风权限"
-          }
-        }
-      }
-    },
-    "请先连接网关，再使用语音输入。": {
-      "extractionState": "stale",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Connect to the gateway before using voice input."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "请先连接网关，再使用语音输入。"
-          }
-        }
-      }
-    },
-    "请在桌面端的「插件」模块启用官方「语音输入」插件，并完成模型下载和初始化准备。准备完成后再试。": {
-      "extractionState": "stale",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Enable the official Voice Input plugin in Plugins on your desktop and complete model download and initialization, then try again."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "请在桌面端的「插件」模块启用官方「语音输入」插件，并完成模型下载和初始化准备。准备完成后再试。"
-          }
-        }
-      }
-    },
-    "连接或会话已变化，请重新上传": {
-      "extractionState": "stale",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The connection or session has changed. Upload the file again"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "连接或会话已变化，请重新上传"
-          }
-        }
-      }
-    },
-    "附件凭证已失效，请重新上传": {
-      "extractionState": "stale",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The attachment receipt has expired. Upload the file again"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "附件凭证已失效，请重新上传"
-          }
-        }
-      }
-    },
-    "genui.failed": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "GenUI failed to render"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "GenUI 渲染失败"
-          }
-        }
-      }
-    },
-    "genui.failed.resources": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "GenUI resources are missing"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "渲染资源缺失"
-          }
-        }
-      }
-    },
-    "genui.failed.unknown": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unknown error"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "未知错误"
-          }
-        }
-      }
-    },
-    "genui.failed.process": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The rendering process was reclaimed by the system"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "渲染进程已被系统回收"
-          }
-        }
-      }
-    },
-    "genui.mount": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tap to render the GenUI component"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "点按渲染 GenUI 组件"
-          }
-        }
-      }
-    },
-    "genui.mount.hint": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Three are already rendering; tap to load this one"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已同时渲染 3 个，为省内存点按后再加载"
-          }
-        }
-      }
-    },
-    "跳转到轮次": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Jump to turn"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "跳转到轮次"
-          }
-        }
-      }
-    },
-    "第 %lld 轮": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Turn %lld"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "第 %lld 轮"
-          }
-        }
-      }
-    },
-    "（无文字输入）": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "(No text input)"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "（无文字输入）"
-          }
-        }
-      }
-    },
-    "滚动到最新消息": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Scroll to latest"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "滚动到最新消息"
-          }
-        }
-      }
-    },
-    "会话已切换，已取消导入所选文件": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Session switched — the selected file import was canceled"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "会话已切换，已取消导入所选文件"
-          }
-        }
-      }
-    },
-    "无法准备文件上传会话，请稍后重试": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Couldn't prepare the file upload session — try again later"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无法准备文件上传会话，请稍后重试"
-          }
-        }
-      }
-    },
-    "a11y.quote.selection": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Quote selected text"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "引用选中的文字"
-          }
-        }
-      }
-    },
-    "取消引用选中文字": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Remove quoted selection"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "取消引用选中文字"
-          }
-        }
-      }
-    },
-    "a11y.quote.count": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld passages quoted"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已引用 %lld 段文字"
-          }
-        }
-      }
-    },
-    "引用选中文字": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Quote selected text"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "引用选中文字"
-          }
-        }
-      }
-    },
-    "无法导入所选文件：文件上传通道未就绪或连接已变化": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Couldn't import the selected file: upload channel not ready or connection changed"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无法导入所选文件：文件上传通道未就绪或连接已变化"
-          }
-        }
-      }
-    },
-    "%lld 条对话引用": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld conversation quotes"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld 条对话引用"
-          }
-        }
-      }
-    },
-    "upload.channelNotReady": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Couldn't import the selected file: upload channel not ready or connection changed"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无法导入所选文件：文件上传通道未就绪或连接已变化"
           }
         }
       }
