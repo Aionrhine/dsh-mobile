@@ -607,8 +607,9 @@ class AndroidSharedStateHolder(
 
     fun selectSession(sessionId: String) {
         fileUploads.select(sessionId, !isViewingTeamMember && !switchingTeamMember)
-        if (switchingTeamMember || isViewingTeamMember) {
-            (pendingSelectedSessionId ?: snapshot.selectedSessionId)?.let { teamDrafts[it] = messageDraft to preparedImages }
+        val previousSessionId = pendingSelectedSessionId ?: snapshot.selectedSessionId
+        if (previousSessionId != sessionId) {
+            previousSessionId?.let { teamDrafts[it] = messageDraft to preparedImages }
             val saved = teamDrafts[sessionId]
             messageDraft = saved?.first.orEmpty()
             preparedImages = saved?.second.orEmpty()
@@ -1153,6 +1154,11 @@ class AndroidSharedStateHolder(
             if (frame?.kind != "session-created" || sessionId == null) {
                 platformError = frame?.message ?: appText("创建会话失败，请检查连接后重试")
                 return false
+            }
+            if (workspaceSelectionToken == 0L) {
+                (pendingSelectedSessionId ?: snapshot.selectedSessionId)?.let { teamDrafts[it] = messageDraft to preparedImages }
+                messageDraft = ""
+                preparedImages = emptyList()
             }
             pendingSelectedSessionId = sessionId
             inputGeneration += 1

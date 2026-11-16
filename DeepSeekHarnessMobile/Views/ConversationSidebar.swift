@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// 侧栏触发的导航动作，由会话页传入，最终交给持有导航栈的 RootNavigationHost。
-/// 默认值都是空操作，侧栏脱离导航栈单独预览时不会崩溃。
+/// 所有入口必须显式接线，避免新增菜单在包装导航动作时被默认空操作吞掉。
 struct ConversationSidebarActions {
     var openSession: (SessionSummary) -> Void = { _ in }
     var openPlugins: () -> Void = {}
