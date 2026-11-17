@@ -8,7 +8,7 @@ struct RootView: View {
     @EnvironmentObject private var hosts: MultiGatewayStore
 
     var body: some View {
-        RootNavigationHost(store: store)
+        RootNavigationHost(store: store, hosts: hosts)
             .equatable()
             // 直接观察当前 AppStore，避免外层主机容器漏掉外观设置更新。
             .preferredColorScheme(store.interfaceStyle.colorScheme)
@@ -53,6 +53,9 @@ struct AppConnectionLifecycleModifier: ViewModifier {
 /// publications no longer invalidate the `NavigationStack` that owns the bar.
 private struct RootNavigationHost: View, Equatable {
     let store: AppStore
+    /// Unobserved like `store`: only read when a deep link arrives, so gateway list
+    /// publications must not invalidate the navigation tree.
+    let hosts: MultiGatewayStore
     @State private var navigationPath: [AppRoute] = []
     @State private var newConversationTask: Task<Void, Never>?
     /// 侧栏切换 / 新建会话的当前操作编号：被取消的旧任务收尾时，
@@ -61,7 +64,7 @@ private struct RootNavigationHost: View, Equatable {
     @State private var pendingLiveActivitySessionID: String?
 
     static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.store === rhs.store
+        lhs.store === rhs.store && lhs.hosts === rhs.hosts
     }
 
     var body: some View {
@@ -225,13 +228,15 @@ private struct RootNavigationHost: View, Equatable {
     }
 
     private func openLiveActivityURL(_ url: URL) {
-        guard url.scheme == "dshmobile", url.host == "session",
-              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let gatewayID = components.queryItems?.first(where: { $0.name == "gateway" })?.value,
-              gatewayID == store.gatewayLocalID,
-              let sessionID = components.queryItems?.first(where: { $0.name == "id" })?.value else { return }
-        pendingLiveActivitySessionID = sessionID
-        guard let session = store.sessions.first(where: { $0.id == sessionID }) else { return }
+        guard let route = AgentNotificationSessionRoute.parseDeepLink(
+            url, profiles: hosts.profiles, activeGatewayID: store.gatewayLocalID
+        ) else { return }
+        if route.gatewayID != store.gatewayLocalID {
+            AgentUserNotificationManager.shared.requestSessionRoute(route)
+            return
+        }
+        pendingLiveActivitySessionID = route.sessionID
+        guard let session = store.sessions.first(where: { $0.id == route.sessionID }) else { return }
         openLiveActivitySession(session)
     }
 
