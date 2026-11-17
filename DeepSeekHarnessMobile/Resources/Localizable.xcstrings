@@ -22064,6 +22064,23 @@
         }
       }
     },
+    "未记录模式": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No recorded mode"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "モード記録なし"
+          }
+        }
+      }
+    },
     "未识别到人声": {
       "extractionState": "manual",
       "localizations": {
@@ -23474,6 +23491,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "決定を送信中"
+          }
+        }
+      }
+    },
+    "正在播放另一首歌曲，请稍后重试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Another song is starting. Please try again shortly."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在播放另一首歌曲，请稍后重试。"
           }
         }
       }
@@ -28198,6 +28231,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "ゲートウェイに接続してから再試行してください。"
+          }
+        }
+      }
+    },
+    "请选择具体歌曲进行播放。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select a specific song to play."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请选择具体歌曲进行播放。"
           }
         }
       }

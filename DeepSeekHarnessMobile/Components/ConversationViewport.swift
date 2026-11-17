@@ -69,6 +69,10 @@ struct ConversationViewportEntry: Identifiable {
     let allowsHeightCaching: Bool
     let allowsScrollAnchoring: Bool
     let clipsContentToBounds: Bool
+    // 正文版本用于高度缓存；视图身份独立保留，避免每个 token 重建代码块、表格和菜单。
+    let preservesContentIdentity: Bool
+
+    var contentIdentityRevision: Int { preservesContentIdentity ? 0 : layoutRevision }
 
     fileprivate var cellKind: CellKind {
         if streamingAssistant != nil { return .streamingAssistant }
@@ -82,7 +86,9 @@ struct ConversationViewportEntry: Identifiable {
         content: AnyView,
         allowsHeightCaching: Bool = true,
         allowsScrollAnchoring: Bool = true,
-        clipsContentToBounds: Bool = false
+        clipsContentToBounds: Bool = false,
+        layoutRevision: Int? = nil,
+        preservesContentIdentity: Bool = false
     ) {
         self.id = id
         self.revision = revision
@@ -90,6 +96,7 @@ struct ConversationViewportEntry: Identifiable {
         self.allowsHeightCaching = allowsHeightCaching
         self.allowsScrollAnchoring = allowsScrollAnchoring
         self.clipsContentToBounds = clipsContentToBounds
+        self.preservesContentIdentity = preservesContentIdentity
         streamingAssistant = nil
         userMessage = nil
     }
@@ -106,6 +113,7 @@ struct ConversationViewportEntry: Identifiable {
         allowsHeightCaching = true
         allowsScrollAnchoring = true
         clipsContentToBounds = false
+        preservesContentIdentity = false
     }
 
     init(id: String, revision: Int, userMessage: UserMessage, markdownContent: AnyView, layoutRevision: Int? = nil) {
@@ -126,6 +134,7 @@ struct ConversationViewportEntry: Identifiable {
         allowsHeightCaching = true
         allowsScrollAnchoring = true
         clipsContentToBounds = false
+        preservesContentIdentity = false
     }
 }
 
@@ -2068,7 +2077,7 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
         let host = UIHostingController(
             rootView: TopPinnedConversationContent(
                 id: entry.id,
-                revision: entry.revision,
+                revision: entry.contentIdentityRevision,
                 content: entry.content,
                 onHeightChange: nil
             )
@@ -2889,7 +2898,7 @@ final class HostedConversationCell: StableSelfSizingCollectionViewCell {
         let root = AnyView(
             TopPinnedConversationContent(
                 id: entry.id,
-                revision: entry.revision,
+                revision: entry.contentIdentityRevision,
                 content: entry.content,
                 onHeightChange: { [weak self] height in
                     guard let self, self.representedIdentity == identity else { return }
@@ -3990,7 +3999,7 @@ final class DebugPreparedConversationHost {
         carrier.accessibilityElementsHidden = true
         carrier.isUserInteractionEnabled = false
         host = UIHostingController(rootView: AnyView(TopPinnedConversationContent(id: entry.id,
-            revision: entry.revision, content: entry.content,
+            revision: entry.contentIdentityRevision, content: entry.content,
             onHeightChange: { [weak relay] in relay?.report($0) })))
         if #available(iOS 16.4, *) { host.safeAreaRegions = [] }
         host.view.backgroundColor = .clear

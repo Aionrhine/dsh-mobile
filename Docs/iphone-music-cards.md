@@ -9,7 +9,7 @@
 - 网关只根据真实结果中的官方 URL 生成 musicLinks，最多 20 条，不根据 library:、catalog: 或旧媒体 persistent ID 拼链接。无官方 URL 的本地导入条目仍显示文字，不能自动假定目录里的同名歌曲就是该条目。
 - 旧 music.search 及数字 ID 播放接口保持原行为。公开目录结果不表示歌曲已经添加到用户资料库，也不能将 catalog: ID 传给个人曲库播放工具。
 
-Agent 使用返回的 musicLinks 原始 URL，在回答中单独一段输出 `[歌名 · 歌手](URL)`。普通行内链接和代码示例保留原有格式。歌曲可能以专辑 URL 加 i 参数定位，校验与跳转保留该参数，其他跟踪参数不转发。只接受 HTTPS 的 music.apple.com 内容路径，排除凭据、非内容页面及伪造域名。
+Agent 使用返回的 musicLinks 原始 URL，在回答中单独一段输出 `[歌名 · 歌手](URL)`。普通行内链接和代码示例保留原有格式。歌曲可能以专辑 URL 加 i 参数定位，校验与歌曲解析保留该参数，其他跟踪参数不转发。只接受 HTTPS 的 music.apple.com 内容路径，排除凭据、非内容页面及伪造域名。
 
 ## 封面与曲目信息
 
@@ -23,9 +23,9 @@ musicLinks 保留无片段的 url，另附 cardURL。Agent 优先原样输出 `[
 
 公开目录搜歌沿用音乐连接器、本机系统授权、主机权限及前台执行要求，新工具需手机显式声明，旧手机不接收新增调用。曲库和公开目录查询不会自动播放、添加收藏或改变歌单。目录网络、账号或 MusicKit 服务失败返回 music_catalog_unavailable，不返回伪空结果；拒绝授权及取消仍分别处理。
 
-MusicCatalogSearchRequest 需要正确配置 App ID 的 MusicKit 服务与可用网络。真机需验证签名配置、所在地区的目录可用性和点击后由 Apple Music 处理链接的行为；模拟器及注入数据测试不代表用户真实曲库或账号已经验收。
+MusicCatalogSearchRequest 需要正确配置 App ID 的 MusicKit 服务与可用网络。真机需验证签名配置、所在地区的目录可用性和点击后直接播放并留在聊天页面的行为；模拟器及注入数据测试不代表用户真实曲库或账号已经验收。
 
-参考：[Song.url](https://developer.apple.com/documentation/musickit/song/url)、[MusicCatalogSearchRequest](https://developer.apple.com/documentation/musickit/musiccatalogsearchrequest)、[App ID MusicKit 服务](https://developer.apple.com/help/account/services/musickit)、[仅通过 Universal Link 打开应用](https://developer.apple.com/documentation/uikit/uiapplication/openexternalurloptionskey/universallinksonly)。
+参考：[Song.url](https://developer.apple.com/documentation/musickit/song/url)、[MusicCatalogSearchRequest](https://developer.apple.com/documentation/musickit/musiccatalogsearchrequest)、[App ID MusicKit 服务](https://developer.apple.com/help/account/services/musickit)。
 
 ## 2026-11-15 真机报告后的播放与目录诊断
 
