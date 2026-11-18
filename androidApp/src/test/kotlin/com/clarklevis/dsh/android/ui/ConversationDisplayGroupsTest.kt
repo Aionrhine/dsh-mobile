@@ -52,7 +52,7 @@ class ConversationDisplayGroupsTest {
     }
 
     @Test
-    fun toolImageCardsAreHiddenWhileAssistantBodyAndUserUploadsRemain() {
+    fun matchingAssistantBodyImagesHideOnlyDuplicateToolCards() {
         val image = com.clarklevis.dsh.shared.protocol.GatewayImageAttachment("image", "image/png", 10, 100, 80)
         val generated = item("result-images", ConversationItemKind.GENERATED_IMAGES, text = "").copy(images = listOf(image))
         val entries = makeConversationDisplayEntries(listOf(
