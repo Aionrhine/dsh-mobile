@@ -10,6 +10,9 @@ import com.clarklevis.dsh.android.ui.WorkspaceFilePreviewHost
 import com.clarklevis.dsh.android.ui.ConversationScreen
 import com.clarklevis.dsh.android.ui.DshTheme
 import com.clarklevis.dsh.android.ui.decodeWorkspaceLoadingLogo
+import com.clarklevis.dsh.android.ui.AppearanceSettings
+import com.clarklevis.dsh.android.ui.rememberComposerCamera
+import com.clarklevis.dsh.android.ui.rememberAppearanceSettings
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import com.clarklevis.dsh.shared.protocol.GatewayDirectoryItem
@@ -174,9 +177,17 @@ class AndroidAppGraphFakeIntegrationDeviceTest {
         try {
             waitUntil("transport.specs.isNotEmpty()") { transport.specs.isNotEmpty() }
             transport.open()
-            transport.receive("""{"kind":"hello","authenticated":true,"protocol":3,"capabilities":["file-downloads","file-references-v1"]}""")
+            val imagesCapability = if (systemCamera) ",\"images\"" else ""
+            transport.receive("""{"kind":"hello","authenticated":true,"protocol":3,"capabilities":["file-downloads","file-references-v1"$imagesCapability]}""")
             waitUntil("holder.gatewayState.connection.name == \"CONNECTED\"") { holder.gatewayState.connection.name == "CONNECTED" }
-            onMain { holder.loadFixture() }
+            if (systemCamera) {
+                // 普通会话用于拍照，默认预览样例里的待回答问题会替换输入框。
+                transport.receive("""{"kind":"sessions","items":[{"sessionId":"android-demo","updatedAt":2,"running":false,"blank":false}]}""")
+                waitUntil { holder.snapshot.sessions.any { it.id == "android-demo" } }
+                onMain { holder.selectSession("android-demo") }
+            } else {
+                onMain { holder.loadFixture() }
+            }
             waitUntil("holder.snapshot.selectedSessionId == \"android-demo\"") { holder.snapshot.selectedSessionId == "android-demo" }
             compose.setContent { MaterialTheme { WorkspaceFilePreviewHost(holder) } }
             try {

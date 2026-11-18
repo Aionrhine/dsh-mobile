@@ -218,7 +218,8 @@ internal fun ConversationScreen(
     onPlugins: () -> Unit = {},
     onScheduledTasks: () -> Unit = {},
     onSettings: () -> Unit = {},
-    onConnectors: () -> Unit = {}
+    onConnectors: () -> Unit = {},
+    onTakePhoto: () -> Unit = {}
 ) {
     val quote: ((String) -> Unit)? = if ("message-quotes-v1" in stateHolder.gatewayState.capabilities) {
         { selected ->
@@ -233,7 +234,7 @@ internal fun ConversationScreen(
         }
     } else null
     androidx.compose.runtime.CompositionLocalProvider(LocalMessageQuote provides quote) {
-        ConversationScreenContent(stateHolder, onPickImage, onBack, onPickFile, onPlugins, onScheduledTasks, onSettings, onConnectors)
+        ConversationScreenContent(stateHolder, onPickImage, onBack, onPickFile, onPlugins, onScheduledTasks, onSettings, onConnectors, onTakePhoto)
     }
 }
 
@@ -246,7 +247,8 @@ private fun ConversationScreenContent(
     onPlugins: () -> Unit = {},
     onScheduledTasks: () -> Unit = {},
     onSettings: () -> Unit = {},
-    onConnectors: () -> Unit = {}
+    onConnectors: () -> Unit = {},
+    onTakePhoto: () -> Unit
 ) {
     val session = stateHolder.snapshot.sessions.firstOrNull { it.id == stateHolder.snapshot.selectedSessionId }
     val title = stateHolder.teamSnapshot.members.firstOrNull { it.id == stateHolder.snapshot.selectedSessionId && it.role != "lead" }?.name ?: session?.title ?: if (stateHolder.snapshot.selectedSessionId != null) appText("已缓存会话") else appText("新建 DeepSeek Harness")
@@ -391,7 +393,11 @@ private fun ConversationScreenContent(
                     stateHolder = stateHolder,
                     onPickImage = onPickImage,
                     onPickFile = onPickFile,
+<<<<<<< HEAD
                     onShowFullStats = { showStats = true },
+=======
+                    onTakePhoto = onTakePhoto,
+>>>>>>> f4bb701 (Add camera capture to the conversation composer)
                     onDismissInput = dismissInput,
                     topContentInset = topContentInset
                 )
@@ -541,7 +547,11 @@ private fun ConversationPage(
     stateHolder: AndroidSharedStateHolder,
     onPickImage: () -> Unit,
     onPickFile: () -> Unit,
+<<<<<<< HEAD
     onShowFullStats: () -> Unit,
+=======
+    onTakePhoto: () -> Unit,
+>>>>>>> f4bb701 (Add camera capture to the conversation composer)
     onDismissInput: () -> Unit,
     topContentInset: Dp = 0.dp
 ) {
@@ -693,6 +703,19 @@ private fun ConversationPage(
                                     onViewFullStats = onShowFullStats
                                 )
                             }
+<<<<<<< HEAD
+=======
+                            TaskGoalPanels(
+                                stateHolder = stateHolder,
+                                modifier = Modifier.padding(horizontal = 14.dp)
+                            )
+                            SlashCommandMenus(
+                                stateHolder = stateHolder,
+                                modifier = Modifier.padding(horizontal = 14.dp)
+                            )
+                            WorkspaceChangesDock(stateHolder)
+                            Composer(stateHolder, onPickImage, onPickFile, onTakePhoto, onDismissInput)
+>>>>>>> f4bb701 (Add camera capture to the conversation composer)
                         }
                         TaskGoalPanels(
                             stateHolder = stateHolder,
@@ -1560,6 +1583,7 @@ private fun Composer(
     stateHolder: AndroidSharedStateHolder,
     onPickImage: () -> Unit,
     onPickFile: () -> Unit,
+    onTakePhoto: () -> Unit,
     onDismissInput: () -> Unit
 ) {
     val voice = stateHolder.voiceInput
@@ -1774,9 +1798,15 @@ private fun Composer(
                                 var attachmentMenu by remember { mutableStateOf(false) }
                                 ComposerIconButton(R.drawable.ic_composer_add, appText("添加附件"), { attachmentMenu = true })
                                 DshMenu(expanded = attachmentMenu, onDismissRequest = { attachmentMenu = false }) {
+<<<<<<< HEAD
                                     DshMenuItem(text = { Text(appText("图片")) },
                                         enabled = "images" in stateHolder.gatewayState.capabilities && stateHolder.preparedImages.size < 20,
                                         onClick = { attachmentMenu = false; onPickImage() })
+=======
+                                    val canAddImage = "images" in stateHolder.gatewayState.capabilities && !stateHolder.preparingImages &&
+                                        !stateHolder.messageSubmissionPending &&
+                                        stateHolder.preparedImages.size < com.clarklevis.dsh.android.platform.AndroidImagePreprocessor.MAXIMUM_IMAGE_COUNT
+>>>>>>> f4bb701 (Add camera capture to the conversation composer)
                                     DshMenuItem(text = { Text(appText("文件")) },
                                         enabled = !stateHolder.isViewingTeamMember &&
                                             !stateHolder.fileUploads.preparing && stateHolder.fileUploads.drafts.size < 20 && !stateHolder.messageSubmissionPending,
@@ -1785,6 +1815,18 @@ private fun Composer(
                                             if (stateHolder.fileUploads.supported) onPickFile()
                                             else showsFileUploadUpgradeAlert = true
                                         })
+                                    DshMenuItem(text = { Text(appText("图片")) },
+                                        leadingIcon = {
+                                            Icon(painterResource(R.drawable.ic_photo_outline), null, Modifier.size(20.dp))
+                                        },
+                                        enabled = canAddImage,
+                                        onClick = { attachmentMenu = false; onPickImage() })
+                                    DshMenuItem(text = { Text(appText("相机")) },
+                                        leadingIcon = {
+                                            Icon(painterResource(R.drawable.ic_composer_camera), null, Modifier.size(20.dp))
+                                        },
+                                        enabled = canAddImage,
+                                        onClick = { attachmentMenu = false; onDismissInput(); onTakePhoto() })
                                 }
                             }
                         },

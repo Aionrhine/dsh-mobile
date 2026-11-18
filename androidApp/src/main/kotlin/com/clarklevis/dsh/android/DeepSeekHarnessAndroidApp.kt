@@ -56,6 +56,7 @@ import com.clarklevis.dsh.shared.projection.ConversationItem
 import kotlinx.coroutines.flow.distinctUntilChanged
 import com.clarklevis.dsh.android.ui.DshProductApp
 import com.clarklevis.dsh.android.ui.DshTheme
+import com.clarklevis.dsh.android.ui.rememberComposerCamera
 
 @Composable
 fun DeepSeekHarnessAndroidApp() {
@@ -97,6 +98,7 @@ fun DeepSeekHarnessAndroidApp() {
         }
     }
     DshTheme {
+        val takePhoto = rememberComposerCamera(stateHolder)
         Surface(modifier = Modifier.fillMaxSize()) {
             AdaptiveWindowHost {
                 androidx.compose.runtime.key(stateHolder) {
@@ -105,7 +107,8 @@ fun DeepSeekHarnessAndroidApp() {
                         onPickImage = { imageOwner.value = stateHolder; imagePicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                         onPickFile = { fileOwner.value = stateHolder to stateHolder.snapshot.selectedSessionId; filePicker.launch(arrayOf("*/*")) },
                         notificationRoute = notificationRoute?.takeIf { it.gatewayId == hosts.activeId },
-                        onNotificationRouteOpened = application::clearNotificationSession
+                        onNotificationRouteOpened = application::clearNotificationSession,
+                        onTakePhoto = takePhoto
                     )
                 }
             }

@@ -41,6 +41,14 @@ struct DeepSeekHarnessMobileApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
+                #if DEBUG
+                if ProcessInfo.processInfo.environment["DSH_COMPOSER_CAMERA_UI_TEST"] == "1" {
+                    ComposerCameraUITestHarness()
+                } else if ProcessInfo.processInfo.environment["DSH_WORKSPACE_REVIEW_UI_TEST"] == "1" {
+                    WorkspaceReviewUITestHarness()
+                } else if hosts.isReady { RootView() }
+                else { ProgressView() }
+                #else
                 if hosts.isReady { RootView() }
                 else { ProgressView() }
             }
