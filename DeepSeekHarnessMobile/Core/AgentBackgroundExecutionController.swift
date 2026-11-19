@@ -17,7 +17,7 @@ final class AgentBackgroundExecutionController {
     private static let logger = LocalLogger(subsystem: "ai.dsh.mobile.ios", category: "agent-background")
 
     private func traceBackground(_ event: String) {
-        Self.logger.notice("[AgentBackground] event=\(event) background=\(self.applicationIsInBackground) turns=\(self.outstandingTurns) questions=\(self.questionAllowanceSessionIDs.count) queued=\(self.queuedSessionIDs.count) idleAllowance=\(self.holdsIdleBackgroundAllowance) hasTask=\(self.taskIdentifier != .invalid) longKeepAlive=\(self.longRunningKeepAlive?.isKeepingAlive == true)")
+        Self.logger.notice("[AgentBackground] event=\(event) background=\(self.applicationIsInBackground) turns=\(self.outstandingTurns) questions=\(self.questionAllowanceSessionIDs.count) queued=\(self.queuedSessionIDs.count) idleAllowance=\(self.holdsIdleBackgroundAllowance) hasTask=\(self.taskIdentifier != .invalid) longKeepAlive=\(self.longRunningKeepAlive?.isKeepingAlive == true) continued=\(self.continuedProcessing?.isRunning == true)")
     }
 
     private let application: BackgroundTaskApplication
@@ -232,6 +232,8 @@ final class AgentBackgroundExecutionController {
     }
 
     func cancel() {
+        if isAgentWorkActive { traceBackground("cancel-work") }
+        continuedProcessing?.finish(success: false)
         holdsIdleBackgroundAllowance = false
         queuedSessionIDs.removeAll()
         outstandingTurnsBySessionID.removeAll()
@@ -281,5 +283,135 @@ final class AgentBackgroundExecutionController {
         traceBackground("end-background-task")
         application.endBackgroundTask(identifier)
         return true
+    }
+}
+
+@MainActor
+protocol AgentContinuedProcessing: AnyObject {
+    var isRunning: Bool { get }
+    var onExpired: (() -> Void)? { get set }
+    func beginUserInitiatedWork()
+    func recordProgress()
+    func finish(success: Bool)
+}
+
+/// 每个用户发起的工作周期只申请一次；实际进度由服务端事件驱动，不用定时器伪造。
+@MainActor
+private final class SystemAgentContinuedProcessing: AgentContinuedProcessing {
+    private static let logger = LocalLogger(subsystem: "ai.dsh.mobile.ios", category: "agent-continued")
+    private var identifier: String?
+    private var task: BGTask?
+    private var attempted = false
+    private var completedEvents: Int64 = 0
+    private var lastProgressUpdate = Date.distantPast
+    var onExpired: (() -> Void)?
+    var isRunning: Bool { task != nil }
+
+    func beginUserInitiatedWork() {
+#if !targetEnvironment(macCatalyst)
+        guard #available(iOS 26.0, *), !attempted,
+              UIApplication.shared.applicationState == .active,
+              let bundleID = Bundle.main.bundleIdentifier else { return }
+        attempted = true
+        let id = "\(bundleID).agent.continued.\(UUID().uuidString)"
+        identifier = id
+        let registered = BGTaskScheduler.shared.register(forTaskWithIdentifier: id, using: .main) { [weak self] task in
+            MainActor.assumeIsolated {
+                guard let self, self.identifier == id,
+                      let continued = task as? BGContinuedProcessingTask else {
+                    task.setTaskCompleted(success: false)
+                    return
+                }
+                self.task = continued
+                Self.logger.notice("[AgentContinued] event=started progressEvents=\(self.completedEvents)")
+                continued.expirationHandler = { [weak self] in
+                    Task { @MainActor in
+                        guard let self, self.identifier == id else { return }
+                        Self.logger.notice("[AgentContinued] event=expired progressEvents=\(self.completedEvents)")
+                        self.finish(success: false)
+                        self.onExpired?()
+                    }
+                }
+                self.updateProgress()
+            }
+        }
+        guard registered else {
+            identifier = nil
+            Self.logger.notice("[AgentContinued] registration-refused")
+            return
+        }
+        let request = BGContinuedProcessingTaskRequest(
+            identifier: id,
+            title: String(localized: "Whaleness 任务进行中"),
+            subtitle: String(localized: "正在同步任务进展")
+        )
+        request.strategy = .fail
+        Self.logger.notice("[AgentContinued] event=submit")
+        if #available(iOS 27.0, *) {
+            // 新 SDK 的提交会异步返回，过期回调必须核对申请身份。
+            Task {
+                guard identifier == id else { return }
+                do {
+                    try await BGTaskScheduler.shared.submitTaskRequest(request)
+                    if identifier != id { BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: id) }
+                }
+                catch { submissionFailed(id: id, error: error) }
+            }
+        } else {
+            do { try BGTaskScheduler.shared.submit(request) }
+            catch { submissionFailed(id: id, error: error) }
+        }
+#endif
+    }
+
+    private func submissionFailed(id: String, error: Error) {
+        guard identifier == id else { return }
+        let failure = error as NSError
+        Self.logger.notice("[AgentContinued] event=submission-refused domain=\(failure.domain) code=\(failure.code)")
+        identifier = nil
+    }
+
+    func recordProgress() {
+        guard identifier != nil else { return }
+        completedEvents += 1
+        // 只合并真实事件；没有新事件时不推进进度。
+        guard Date().timeIntervalSince(lastProgressUpdate) >= 1 else { return }
+        updateProgress()
+    }
+
+    private func updateProgress() {
+#if !targetEnvironment(macCatalyst)
+        guard #available(iOS 26.0, *), let continued = task as? BGContinuedProcessingTask else { return }
+        lastProgressUpdate = Date()
+        // 回合总长度未知：单位是已收到的进展事件，保留一个尚未完成的回合单位。
+        continued.progress.totalUnitCount = completedEvents + 1
+        continued.progress.completedUnitCount = completedEvents
+#endif
+    }
+
+    func finish(success: Bool) {
+        let oldID = identifier
+        let oldTask = task
+        if oldID != nil {
+            Self.logger.notice("[AgentContinued] event=finished success=\(success) started=\(oldTask != nil) progressEvents=\(completedEvents)")
+        }
+        identifier = nil
+        task = nil
+        attempted = false
+        completedEvents = 0
+        lastProgressUpdate = .distantPast
+        if let oldID { BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: oldID) }
+        if success, let oldTask { oldTask.progressIfContinuedCompleted() }
+        oldTask?.setTaskCompleted(success: success)
+    }
+}
+
+private extension BGTask {
+    func progressIfContinuedCompleted() {
+#if !targetEnvironment(macCatalyst)
+        if #available(iOS 26.0, *), let task = self as? BGContinuedProcessingTask {
+            task.progress.completedUnitCount = task.progress.totalUnitCount
+        }
+#endif
     }
 }

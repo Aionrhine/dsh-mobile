@@ -10657,6 +10657,133 @@ private final class MalformedHistoryEventBridge:
     }
 }
 
+final class AgentContinuedProcessingTests: XCTestCase {
+    @MainActor
+    func testIdleSessionSnapshotDoesNotEndBackgroundWorkBeforeSendAcknowledgement() async throws {
+        let continued = AgentContinuedProcessingSpy()
+        let controller = AgentBackgroundExecutionController(
+            application: BackgroundTaskApplicationSpy(), continuedProcessing: continued
+        )
+        let session = SessionSummary(id: "s", title: "Test", lastActivity: .now, isRunning: false, hasUnread: false)
+        let store = AppStore(
+            preferences: AppPreferencesSpy(endpoint: "", selectedWorkspaceID: nil, sessions: [session]),
+            backgroundExecutionController: controller,
+            chatHistoryCache: nil
+        )
+        defer { store.deactivateGateway() }
+        store.gateway.installConnectedTransportForTesting()
+        let prepared = await store.prepareConversation(for: session)
+        XCTAssertTrue(prepared)
+        XCTAssertTrue(store.send("Test message"))
+        continued.isRunning = true
+        store.handleScenePhase(.background)
+        controller.begin(sessionID: "other", startsNewTurn: false)
+
+        let idle = try GatewayWireDecoder.decode(Data(#"""
+        {"kind":"sessions","items":[
+            {"sessionId":"s","updatedAt":2,"running":false,"blank":false},
+            {"sessionId":"other","updatedAt":1,"running":false,"blank":false}
+        ]}
+        """#.utf8))
+        store.gateway.onFrame?(idle)
+        XCTAssertTrue(store.messageSubmissionPending)
+        XCTAssertTrue(controller.isAgentWorkActive(sessionID: session.id))
+        XCTAssertFalse(controller.isAgentWorkActive(sessionID: "other"))
+        XCTAssertTrue(continued.completions.isEmpty)
+
+        let acknowledgement = try GatewayWireDecoder.decode(Data(#"{"kind":"sent","sessionId":"s"}"#.utf8))
+        store.gateway.onFrame?(acknowledgement)
+        XCTAssertFalse(store.messageSubmissionPending)
+        store.gateway.onFrame?(idle)
+        XCTAssertFalse(controller.isAgentWorkActive)
+        XCTAssertEqual(continued.completions, [true])
+        XCTAssertEqual(continued.beginCount, 1)
+    }
+
+    @MainActor
+    func testOnlyForegroundUserWorkRequestsContinuedProcessing() {
+        let continued = AgentContinuedProcessingSpy()
+        let controller = AgentBackgroundExecutionController(
+            application: BackgroundTaskApplicationSpy(), continuedProcessing: continued
+        )
+        controller.begin(sessionID: "remote", startsNewTurn: false)
+        controller.updateQueuedSessions(["remote"])
+        XCTAssertEqual(continued.beginCount, 0)
+        controller.begin(sessionID: "user", startsNewTurn: true)
+        XCTAssertEqual(continued.beginCount, 1)
+        controller.applicationDidEnterBackground()
+        controller.begin(sessionID: "background", startsNewTurn: true)
+        controller.beginQuestionAnswer(rpcID: "answer", sessionID: "background")
+        XCTAssertEqual(continued.beginCount, 1)
+    }
+
+    @MainActor
+    func testFiniteAllowanceExpiryKeepsRunningContinuedTask() async {
+        let application = BackgroundTaskApplicationSpy()
+        let continued = AgentContinuedProcessingSpy()
+        let controller = AgentBackgroundExecutionController(application: application, continuedProcessing: continued)
+        controller.begin(sessionID: "s", startsNewTurn: true)
+        continued.isRunning = true
+        controller.applicationDidEnterBackground()
+        application.expirationHandler?()
+        await Task.yield()
+        XCTAssertTrue(controller.isAgentWorkActive)
+        XCTAssertTrue(controller.keepsConnectionAlive)
+        XCTAssertEqual(application.endedIdentifiers.count, 1)
+        controller.turnEnded(sessionID: "s")
+        XCTAssertFalse(controller.keepsConnectionAlive)
+        XCTAssertEqual(continued.completions, [true])
+    }
+
+    @MainActor
+    func testSystemExpiryReleasesAllLocalAllowancesWithoutRestarting() {
+        let application = BackgroundTaskApplicationSpy()
+        let continued = AgentContinuedProcessingSpy()
+        let keepAlive = AgentLongRunningKeepAliveSpy()
+        let controller = AgentBackgroundExecutionController(
+            application: application, longRunningKeepAlive: keepAlive, continuedProcessing: continued
+        )
+        var expired = 0
+        controller.onBackgroundAllowanceExpired = { expired += 1 }
+        controller.begin(sessionID: "s", startsNewTurn: true)
+        continued.isRunning = true
+        controller.applicationDidEnterBackground()
+        continued.onExpired?()
+        XCTAssertFalse(controller.isAgentWorkActive)
+        XCTAssertFalse(keepAlive.agentWorkIsActive)
+        XCTAssertFalse(controller.keepsConnectionAlive)
+        XCTAssertEqual(expired, 1)
+        XCTAssertEqual(continued.beginCount, 1)
+        XCTAssertEqual(continued.completions, [false])
+    }
+
+    @MainActor
+    func testProgressRequiresActiveSessionAndSnapshotFinishesTask() {
+        let continued = AgentContinuedProcessingSpy()
+        let controller = AgentBackgroundExecutionController(
+            application: BackgroundTaskApplicationSpy(), continuedProcessing: continued
+        )
+        controller.begin(sessionID: "s", startsNewTurn: true)
+        controller.recordProgress(sessionID: "other")
+        controller.recordProgress(sessionID: "s")
+        XCTAssertEqual(continued.progressCount, 1)
+        controller.reconcileSessions(runningBySessionID: ["s": false])
+        XCTAssertEqual(continued.completions, [true])
+    }
+}
+
+@MainActor
+private final class AgentContinuedProcessingSpy: AgentContinuedProcessing {
+    var isRunning = false
+    var onExpired: (() -> Void)?
+    var beginCount = 0
+    var progressCount = 0
+    var completions: [Bool] = []
+    func beginUserInitiatedWork() { beginCount += 1 }
+    func recordProgress() { progressCount += 1 }
+    func finish(success: Bool) { completions.append(success); isRunning = false }
+}
+
 @MainActor
 private final class BackgroundTaskApplicationSpy: BackgroundTaskApplication {
     private(set) var beginCallCount = 0
