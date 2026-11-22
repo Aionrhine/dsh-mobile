@@ -1109,12 +1109,7 @@ struct ConversationView: View {
             store.leaveSessionAgentPreset()
         }
         .onChangeCompat(of: store.selectedSessionId) { previous, current in
-            if store.isDraftWorkspaceReplacement(from: previous, to: current) {
-                store.copyComposerDraft(from: previous, to: current)
-            }
-            selectedPhotoItems = []
-            store.voiceInput.open(context: current ?? "new-session", draft: composerEditableText)
-            if previous != nil && current == nil { dismissConversation() }
+            handleSelectedSessionChange(previous: previous, current: current)
         }
         .onChangeCompat(of: store.sessionAgentPreset.canSelect) { _, canSelect in
             if !canSelect { showsAgentPresetMenu = false }
@@ -2049,6 +2044,16 @@ struct ConversationView: View {
     private func dismissPendingOverlay() {
         composerIsFocused = false
         if isPinnedToBottom { viewportScrollToBottomToken &+= 1 }
+    }
+
+    /// 会话切换的统一收尾：工作区替换时搬运草稿，重置选图并恢复语音输入上下文。
+    private func handleSelectedSessionChange(previous: String?, current: String?) {
+        if store.isDraftWorkspaceReplacement(from: previous, to: current) {
+            store.copyComposerDraft(from: previous, to: current)
+        }
+        selectedPhotoItems = []
+        store.voiceInput.open(context: current ?? "new-session", draft: composerEditableText)
+        if previous != nil && current == nil { dismissConversation() }
     }
 
     /// 历史加载完成后请求 UIKit 提交最终的自适应布局；遮罩只在
