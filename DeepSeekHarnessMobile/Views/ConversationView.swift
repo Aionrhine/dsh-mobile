@@ -571,8 +571,6 @@ struct ConversationView: View {
     @ObservedObject private var quoteInbox = ConversationQuoteInbox.shared
     @ObservedObject private var selectionOffer = ConversationSelectionObserver.shared
     @State private var quotesExpanded = false
-    @ObservedObject private var incomingShares = IncomingShareCoordinator.shared
-    @State private var importingShareID: UUID?
     @State private var initialDraftFocusPending = false
     @State private var draftSelection = NSRange(location: NSNotFound, length: 0)
     @State private var voiceSnapshot: SharedVoiceInputSnapshot?
@@ -2797,9 +2795,7 @@ struct ConversationView: View {
 
     private func makeConversationViewportEntries(from items: [ConversationItem]) -> [ConversationViewportEntry] {
         guard let sessionID = store.selectedSessionId else { return [] }
-        var entries = ConversationDisplayEntry.make(from: items, imageReference: { url in
-            store.galleryImageReference(url: url, sessionID: sessionID)
-        }).flatMap { entry in
+        var entries = ConversationDisplayEntry.make(from: items).flatMap { entry in
             let revision = viewportEntryRevision(entry)
             if case .message(let item) = entry.content,
                item.kind == .user,

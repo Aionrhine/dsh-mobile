@@ -218,7 +218,6 @@ internal fun ConversationScreen(
     onPlugins: () -> Unit = {},
     onScheduledTasks: () -> Unit = {},
     onSettings: () -> Unit = {},
-    onConnectors: () -> Unit = {},
     onTakePhoto: () -> Unit = {}
 ) {
     val quote: ((String) -> Unit)? = if ("message-quotes-v1" in stateHolder.gatewayState.capabilities) {
@@ -234,7 +233,7 @@ internal fun ConversationScreen(
         }
     } else null
     androidx.compose.runtime.CompositionLocalProvider(LocalMessageQuote provides quote) {
-        ConversationScreenContent(stateHolder, onPickImage, onBack, onPickFile, onPlugins, onScheduledTasks, onSettings, onConnectors, onTakePhoto)
+        ConversationScreenContent(stateHolder, onPickImage, onBack, onPickFile, onPlugins, onScheduledTasks, onSettings, onTakePhoto)
     }
 }
 
@@ -247,7 +246,6 @@ private fun ConversationScreenContent(
     onPlugins: () -> Unit = {},
     onScheduledTasks: () -> Unit = {},
     onSettings: () -> Unit = {},
-    onConnectors: () -> Unit = {},
     onTakePhoto: () -> Unit
 ) {
     val session = stateHolder.snapshot.sessions.firstOrNull { it.id == stateHolder.snapshot.selectedSessionId }
@@ -330,7 +328,6 @@ private fun ConversationScreenContent(
             onPlugins = onPlugins,
             onScheduledTasks = onScheduledTasks,
             onSettings = onSettings,
-            onConnectors = onConnectors
         )
     }
 

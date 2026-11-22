@@ -199,7 +199,6 @@ internal fun DshProductApp(
                     onPlugins = { navController.navigate(ROUTE_PLUGINS) { launchSingleTop = true } },
                     onScheduledTasks = { navController.navigate(ROUTE_SCHEDULED_TASKS) { launchSingleTop = true } },
                     onSettings = { navController.navigate(ROUTE_SETTINGS) { launchSingleTop = true } },
-                    onConnectors = { navController.navigate(CONNECTORS_ROUTE) { launchSingleTop = true } },
                     onTakePhoto = onTakePhoto
                 )
             }
