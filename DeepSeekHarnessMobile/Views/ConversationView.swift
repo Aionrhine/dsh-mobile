@@ -1075,18 +1075,7 @@ struct ConversationView: View {
             Text("删除后，智能体不再持有这个持续目标。")
         }
         .onChangeCompat(of: isLoadingSelectedHistory) { wasLoading, isLoading in
-            guard historyPresentationSessionID == store.selectedSessionId,
-                  isPreparingHistoryPresentation,
-                  wasLoading,
-                  !isLoading else { return }
-            guard !conversationItems.isEmpty else {
-                isPreparingHistoryPresentation = false
-                return
-            }
-            // History has finished publishing. Ask UIKit to commit the final
-            // self-sized layout at the bottom; the mask is removed only from
-            // `onBottomAlignmentCompleted` above.
-            viewportScrollToBottomToken &+= 1
+            finishHistoryPresentationIfReady(wasLoading: wasLoading, isLoading: isLoading)
         }
         .alert("语音输入暂不可用", isPresented: Binding(
             get: { voiceState.alertMessage != nil },
@@ -2060,6 +2049,20 @@ struct ConversationView: View {
     private func dismissPendingOverlay() {
         composerIsFocused = false
         if isPinnedToBottom { viewportScrollToBottomToken &+= 1 }
+    }
+
+    /// 历史加载完成后请求 UIKit 提交最终的自适应布局；遮罩只在
+    /// `onBottomAlignmentCompleted` 里移除。
+    private func finishHistoryPresentationIfReady(wasLoading: Bool, isLoading: Bool) {
+        guard historyPresentationSessionID == store.selectedSessionId,
+              isPreparingHistoryPresentation,
+              wasLoading,
+              !isLoading else { return }
+        guard !conversationItems.isEmpty else {
+            isPreparingHistoryPresentation = false
+            return
+        }
+        viewportScrollToBottomToken &+= 1
     }
 
     private var composerHasContent: Bool {
