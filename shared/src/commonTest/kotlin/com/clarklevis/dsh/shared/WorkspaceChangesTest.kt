@@ -6,8 +6,6 @@ import com.clarklevis.dsh.shared.protocol.*
 import kotlin.test.*
 
 class WorkspaceChangesTest {
-<<<<<<< HEAD
-=======
     @Test fun reviewAbsolutePathsUseHostWorkspaceWithoutDecodingFileNames() {
         assertEquals("/Users/demo/project/src/前 后%20.swift", WorkspaceReviewPresentation.absolutePath("./src/前 后%20.swift", "/Users/demo/project/"))
         assertEquals("/tmp/outside.txt", WorkspaceReviewPresentation.absolutePath("/tmp/outside.txt", "/project"))
@@ -46,7 +44,6 @@ class WorkspaceChangesTest {
         assertEquals(listOf("51", "52"), rows.first().uiMessage?.args)
         assertEquals(listOf(51, 52), rows.mapNotNull { it.lineNumber })
     }
->>>>>>> c714a2b (Localize workspace file changes UI)
     private fun event(seq: Int = 160, turn: Int = 3, session: String = "s1") = GatewayFrame(
         kind = "event", sessionId = session, seq = seq, event = GatewayEvent("workspace/changes", turn = turn))
 

@@ -393,11 +393,8 @@ private fun ConversationScreenContent(
                     stateHolder = stateHolder,
                     onPickImage = onPickImage,
                     onPickFile = onPickFile,
-<<<<<<< HEAD
                     onShowFullStats = { showStats = true },
-=======
                     onTakePhoto = onTakePhoto,
->>>>>>> f4bb701 (Add camera capture to the conversation composer)
                     onDismissInput = dismissInput,
                     topContentInset = topContentInset
                 )
@@ -547,11 +544,8 @@ private fun ConversationPage(
     stateHolder: AndroidSharedStateHolder,
     onPickImage: () -> Unit,
     onPickFile: () -> Unit,
-<<<<<<< HEAD
     onShowFullStats: () -> Unit,
-=======
     onTakePhoto: () -> Unit,
->>>>>>> f4bb701 (Add camera capture to the conversation composer)
     onDismissInput: () -> Unit,
     topContentInset: Dp = 0.dp
 ) {
@@ -703,19 +697,6 @@ private fun ConversationPage(
                                     onViewFullStats = onShowFullStats
                                 )
                             }
-<<<<<<< HEAD
-=======
-                            TaskGoalPanels(
-                                stateHolder = stateHolder,
-                                modifier = Modifier.padding(horizontal = 14.dp)
-                            )
-                            SlashCommandMenus(
-                                stateHolder = stateHolder,
-                                modifier = Modifier.padding(horizontal = 14.dp)
-                            )
-                            WorkspaceChangesDock(stateHolder)
-                            Composer(stateHolder, onPickImage, onPickFile, onTakePhoto, onDismissInput)
->>>>>>> f4bb701 (Add camera capture to the conversation composer)
                         }
                         TaskGoalPanels(
                             stateHolder = stateHolder,
@@ -726,7 +707,7 @@ private fun ConversationPage(
                             modifier = Modifier.padding(horizontal = 14.dp)
                         )
                         WorkspaceChangesDock(stateHolder)
-                        Composer(stateHolder, onPickImage, onPickFile, onDismissInput)
+                        Composer(stateHolder, onPickImage, onPickFile, onTakePhoto, onDismissInput)
                     }
                 }
             }
@@ -1798,15 +1779,9 @@ private fun Composer(
                                 var attachmentMenu by remember { mutableStateOf(false) }
                                 ComposerIconButton(R.drawable.ic_composer_add, appText("添加附件"), { attachmentMenu = true })
                                 DshMenu(expanded = attachmentMenu, onDismissRequest = { attachmentMenu = false }) {
-<<<<<<< HEAD
-                                    DshMenuItem(text = { Text(appText("图片")) },
-                                        enabled = "images" in stateHolder.gatewayState.capabilities && stateHolder.preparedImages.size < 20,
-                                        onClick = { attachmentMenu = false; onPickImage() })
-=======
                                     val canAddImage = "images" in stateHolder.gatewayState.capabilities && !stateHolder.preparingImages &&
                                         !stateHolder.messageSubmissionPending &&
                                         stateHolder.preparedImages.size < com.clarklevis.dsh.android.platform.AndroidImagePreprocessor.MAXIMUM_IMAGE_COUNT
->>>>>>> f4bb701 (Add camera capture to the conversation composer)
                                     DshMenuItem(text = { Text(appText("文件")) },
                                         enabled = !stateHolder.isViewingTeamMember &&
                                             !stateHolder.fileUploads.preparing && stateHolder.fileUploads.drafts.size < 20 && !stateHolder.messageSubmissionPending,
