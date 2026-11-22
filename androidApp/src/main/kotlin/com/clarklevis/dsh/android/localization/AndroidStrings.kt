@@ -190,6 +190,13 @@ internal object AndroidStrings {
     )
 
     internal val english: Map<String, String> = mapOf(
+        "本轮改动" to "Changes this turn",
+        "查看" to "View",
+        "收起改动 ⌃" to "Collapse changes ⌃",
+        "展开改动 ⌄" to "Expand changes ⌄",
+        "加载改动内容" to "Load changes",
+        "%1$d 个文件" to "%1$d files",
+        "已列出 %1$d / 总计 %2$d 个文件" to "%1$d of %2$d files listed",,
         "文件改动" to "File changes",
         "本轮文件" to "Files in this turn",
         "删除行显示旧行号，其余显示新行号" to "Deleted lines show old line numbers; other lines show new line numbers.",

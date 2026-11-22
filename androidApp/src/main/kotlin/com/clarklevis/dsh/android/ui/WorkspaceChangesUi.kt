@@ -56,13 +56,13 @@ internal fun WorkspaceChangesDock(holder: AndroidSharedStateHolder) {
         ) {
             Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                Text(state.summary?.let { "${it.total} 个文件" } ?: "文件改动", fontSize = 14.sp)
+                Text(state.summary?.let { appText("%1\$d 个文件", it.total) } ?: appText("文件改动"), fontSize = 14.sp)
                 state.summary?.let {
                     Text("+${it.added}", color = changeGreen, fontSize = 14.sp)
                     Text("−${it.deleted}", color = changeRed, fontSize = 14.sp)
                 }
                 if (state.loading) CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 1.5.dp)
-                else if (state.error != null) Text("查看", fontSize = 12.sp)
+                else if (state.error != null) Text(appText("查看"), fontSize = 12.sp)
             }
         }
     }
@@ -109,19 +109,19 @@ internal fun WorkspaceChangesSheet(
             Column(Modifier.fillMaxWidth().height(adaptiveWindowSize().height * .82f).testTag("workspace-changes-content")) {
                 Row(Modifier.fillMaxWidth().testTag("workspace-changes-header").padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("文件改动", style = MaterialTheme.typography.titleLarge)
+                        Text(appText("文件改动"), style = MaterialTheme.typography.titleLarge)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("本轮改动", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(appText("本轮改动"), color = MaterialTheme.colorScheme.onSurfaceVariant)
                             state.summary?.let {
                                 Text("+${it.added}", color = changeGreen)
                                 Text("−${it.deleted}", color = changeRed)
                             }
                         }
                     }
-                    TextButton(onClick = dismiss) { Text("完成") }
+                    TextButton(onClick = dismiss) { Text(appText("完成")) }
                 }
                 state.summary?.let { summary ->
-                    Text("已列出 ${summary.files.size} / 总计 ${summary.total} 个文件",
+                    Text(appText("已列出 %1\$d / 总计 %2\$d 个文件", summary.files.size, summary.total),
                         Modifier.padding(horizontal = 20.dp, vertical = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     LazyColumn(Modifier.weight(1f).nestedScroll(isolateScroll).padding(horizontal = 16.dp).testTag("workspace-changes-list"), state = listState,
                         contentPadding = PaddingValues(bottom = 24.dp)) {
@@ -142,7 +142,7 @@ internal fun WorkspaceChangesSheet(
                                     }
                                     if ('/' in file.display) Text(file.display.substringBeforeLast('/'),
                                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text(if (isOpen) "收起改动 ⌃" else "展开改动 ⌄", style = MaterialTheme.typography.labelSmall,
+                                    Text(if (isOpen) appText("收起改动 ⌃") else appText("展开改动 ⌄"), style = MaterialTheme.typography.labelSmall,
                                         modifier = Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
@@ -154,11 +154,11 @@ internal fun WorkspaceChangesSheet(
                                 if (preview != null) {
                                     val diff = preview.diff
                                     val message = when {
-                                        diff.kind == "binary" -> "二进制文件已改动，无法逐行对比。"
-                                        diff.kind == "oversized" -> "文件过大，无法逐行对比。"
-                                        diff.coarse -> "比较超时，按整段替换展示。"
-                                        diff.before == false && diff.after == true -> "新建文件"
-                                        diff.before == true && diff.after == false -> "已删除文件"
+                                        diff.kind == "binary" -> appText("二进制文件已改动，无法逐行对比。")
+                                        diff.kind == "oversized" -> appText("文件过大，无法逐行对比。")
+                                        diff.coarse -> appText("比较超时，按整段替换展示。")
+                                        diff.before == false && diff.after == true -> appText("新建文件")
+                                        diff.before == true && diff.after == false -> appText("已删除文件")
                                         else -> null
                                     }
                                     message?.let { item { Text(it, Modifier.padding(16.dp)) } }
@@ -173,7 +173,7 @@ internal fun WorkspaceChangesSheet(
                                         }
                                     }
                                 } else if (state.selectedIndex != index) item {
-                                    TextButton(onClick = { selectFile(index) }) { Text("加载改动内容") }
+                                    TextButton(onClick = { selectFile(index) }) { Text(appText("加载改动内容")) }
                                 }
                             }
                         }
@@ -190,6 +190,6 @@ internal fun WorkspaceChangesSheet(
 private fun ChangesFailure(code: String, retry: () -> Unit) {
     Column(Modifier.padding(20.dp)) {
         Text(changesError(code))
-        TextButton(onClick = retry) { Text("重试") }
+        TextButton(onClick = retry) { Text(appText("重试")) }
     }
 }
