@@ -122,3 +122,28 @@ jobs:
           name: DeepSeekHarnessMobile-unsigned-ipa
           path: DeepSeekHarnessMobile-unsigned.ipa
           retention-days: 14
+
+      # cue 构建（Linux）需要的 Apple 独占产物：KMP framework、Assets.car、
+      # Metal 着色器库、Tsnetgo xcframework。这些在 Linux 上无法生成
+      # （Kotlin/Native 禁止 Linux 主机产出 Apple 二进制，actool/metal 仅 macOS 有），
+      # 但几乎不随提交变化，cue 拿一次缓存后日常构建即可完全离线。
+      - name: Collect cue-side prebuilts
+        run: |
+          set -euo pipefail
+          APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' | head -1)
+          mkdir -p cue-prebuilts
+          # 1) KMP framework（含 framework 二进制与 Headers/Swift 接口）
+          find build/Build/Products/Release-iphoneos -maxdepth 1 -name 'DeepSeekHarnessShared.framework' -exec cp -R {} cue-prebuilts/ \;
+          # 2) 编译后的资源包与着色器库（app bundle 内取现成产物）
+          cp "$APP/Assets.car" cue-prebuilts/ 2>/dev/null || true
+          cp "$APP/*.metallib" cue-prebuilts/ 2>/dev/null || true
+          cp "$APP"/*.metallib cue-prebuilts/ 2>/dev/null || true
+          # 3) 内嵌 Tailscale xcframework（gradle 现场产出后链接进 app）
+          find /tmp/dsh-mobile-probe "$GITHUB_WORKSPACE" -path '*tsnetgo/build/tsnetgo/Tsnetgo.xcframework' -maxdepth 6 2>/dev/null | head -1 | xargs -I{} cp -R {} cue-prebuilts/ 2>/dev/null || true
+          ls -la cue-prebuilts/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cue-prebuilts
+          path: cue-prebuilts/
+          retention-days: 90
