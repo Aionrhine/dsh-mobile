@@ -358,20 +358,10 @@ private final class SystemAgentContinuedProcessing: AgentContinuedProcessing {
         )
         request.strategy = .fail
         Self.logger.notice("[AgentContinued] event=submit")
-        if #available(iOS 27.0, *) {
-            // 新 SDK 的提交会异步返回，过期回调必须核对申请身份。
-            Task {
-                guard identifier == id else { return }
-                do {
-                    try await BGTaskScheduler.shared.submitTaskRequest(request)
-                    if identifier != id { BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: id) }
-                }
-                catch { submissionFailed(id: id, error: error) }
-            }
-        } else {
-            do { try BGTaskScheduler.shared.submit(request) }
-            catch { submissionFailed(id: id, error: error) }
-        }
+        // iOS 27 的 submitTaskRequest(_:) 在 Xcode 26 SDK 尚不存在；
+        // 用 submit(_:) 兼容当前工具链，等 CI 升级 SDK 后再启用新分支。
+        do { try BGTaskScheduler.shared.submit(request) }
+        catch { submissionFailed(id: id, error: error) }
 #endif
     }
 

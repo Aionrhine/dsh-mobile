@@ -1060,16 +1060,8 @@ struct ConversationView: View {
                 if isFocused { viewportScrollToBottomToken &+= 1 }
             }
         }
-        .onChangeCompat(of: store.selectedPendingQuestionRequest?.rpcId) { _, rpcId in
-            guard rpcId != nil else { return }
-            composerIsFocused = false
-            if isPinnedToBottom { viewportScrollToBottomToken &+= 1 }
-        }
-        .onChangeCompat(of: store.selectedPendingApprovalRequest?.rpcId) { _, rpcId in
-            guard rpcId != nil else { return }
-            composerIsFocused = false
-            if isPinnedToBottom { viewportScrollToBottomToken &+= 1 }
-        }
+        .onChangeCompat(of: store.selectedPendingQuestionRequest?.rpcId) { _, _ in dismissPendingOverlay() }
+        .onChangeCompat(of: store.selectedPendingApprovalRequest?.rpcId) { _, _ in dismissPendingOverlay() }
         .alert("编辑目标", isPresented: $showsGoalEditor) {
             TextField("目标", text: $goalObjectiveDraft, axis: .vertical)
             Button("取消", role: .cancel) {}
@@ -2062,6 +2054,12 @@ struct ConversationView: View {
         .foregroundStyle(.secondary)
         .accessibilityLabel(label)
         .disabled(!enabled || !store.supportsQueueControl || !store.gateway.state.isConnected || store.queueState.pendingItemId != nil)
+    }
+
+    /// 问题/审批弹层出现时收起键盘并复位贴底，两端共用同一收尾。
+    private func dismissPendingOverlay() {
+        composerIsFocused = false
+        if isPinnedToBottom { viewportScrollToBottomToken &+= 1 }
     }
 
     private var composerHasContent: Bool {

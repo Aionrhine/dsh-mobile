@@ -142,3 +142,28 @@ extension View {
         if inverted { colorInvert() } else { self }
     }
 }
+
+/// 输入框与其上方的文件胶囊共用材质、边缘和阴影，仅轮廓半径不同。
+private struct ComposerGlassSurface: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+    let radius: CGFloat
+    let tint: Color?
+    let edge: Color?
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        content
+            .glassSurface(radius: radius, dark: tint != nil && colorScheme == .dark,
+                tint: tint ?? Color(uiColor: .secondarySystemBackground).opacity(colorScheme == .dark ? 0.52 : 0.48),
+                shadowOpacity: 0)
+            .clipShape(shape)
+            .overlay { shape.stroke(edge ?? Color.white.opacity(colorScheme == .dark ? 0.13 : 0.56), lineWidth: 0.7) }
+            .shadow(color: .black.opacity(colorScheme == .dark ? 0.24 : 0.10), radius: 10, x: 0, y: 2)
+    }
+}
+
+extension View {
+    func composerGlassSurface(radius: CGFloat, tint: Color? = nil, edge: Color? = nil) -> some View {
+        modifier(ComposerGlassSurface(radius: radius, tint: tint, edge: edge))
+    }
+}
