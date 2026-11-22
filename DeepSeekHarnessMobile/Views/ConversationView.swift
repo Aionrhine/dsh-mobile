@@ -751,7 +751,7 @@ struct ConversationView: View {
 
     private func chatContent(taskListMaximumHeight: CGFloat) -> some View {
         let sessionID = store.selectedSessionId
-        return ZStack(alignment: .bottom) {
+        let content = ZStack(alignment: .bottom) {
             ConversationViewport(
                 proxy: viewportProxy,
                 sessionID: sessionID,
@@ -1018,11 +1018,12 @@ struct ConversationView: View {
                 }
             }
         }
-        .chatPopoverOverlay(content)
-        .chatComposerMetrics(content)
-        .chatGoalAlerts(content)
-        .chatHistoryVoice(content)
-        .chatVoiceLifecycle(content)
+        return content
+            .chatPopoverOverlay()
+            .chatComposerMetrics()
+            .chatGoalAlerts()
+            .chatHistoryVoice()
+            .chatVoiceLifecycle()
     }
 
     /// 代理预设与统计弹层、语音 toast 浮层。拆分自 chatContent 主链，降低单个表达式的类型推断复杂度。

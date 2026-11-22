@@ -463,6 +463,12 @@ final class AppStore: ObservableObject {
         composerDraftImages[ComposerDraftKey(sessionID: sessionID)] = images
     }
 
+    /// fork 未搬运上游的 newConversationWorkspace 系统；工作区替换判定恒为 false，
+    /// 草稿在所有会话切换间照常搬运（与蒸馏前的行为一致）。
+    func isDraftWorkspaceReplacement(from previous: String?, to current: String?) -> Bool {
+        false
+    }
+
     func seedComposerDraft(_ text: String, for sessionID: String?) {
         let key = ComposerDraftKey(sessionID: sessionID)
         if composerDraftTexts[key] == nil { composerDraftTexts[key] = text }
