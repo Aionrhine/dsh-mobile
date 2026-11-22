@@ -1501,8 +1501,12 @@ struct ConversationView: View {
             token: store.slashCommands.commandToken,
             hint: store.slashCommands.argumentHint
         )
-        return ComposerAttachmentStack(shown: composerExpanded,
-                hasContent: !pendingImages.isEmpty || store.fileUploads.preparing || !store.fileUploads.drafts.isEmpty) {
+        // 划词待引用与已挂引用都必须独立撑开预览槽：划词时输入框尚未聚焦，
+        // 引用也不是图片/文件，沿用重构前的「有内容即显示」语义。
+        let hasQuoteContent = !quoteInbox.isEmpty || selectionOffer.excerpt != nil
+        return ComposerAttachmentStack(shown: composerExpanded || hasQuoteContent,
+                hasContent: !pendingImages.isEmpty || store.fileUploads.preparing || !store.fileUploads.drafts.isEmpty
+                    || hasQuoteContent) {
                 VStack(alignment: .leading, spacing: 12) {
                     if selectionOffer.excerpt != nil {
                         selectionOfferBar
@@ -1948,6 +1952,8 @@ struct ConversationView: View {
                     quoteInbox.capture(excerpt)
                 }
                 selectionOffer.clear()
+                // 引用已就位即进入输入状态，省掉再点一次输入框。
+                composerIsFocused = true
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "text.quote")
