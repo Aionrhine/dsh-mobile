@@ -63,6 +63,7 @@ struct ConversationViewportEntry: Identifiable {
 
     let id: String
     let revision: Int
+    let layoutRevision: Int
     let content: AnyView
     let streamingAssistant: StreamingAssistant?
     let userMessage: UserMessage?
@@ -92,6 +93,7 @@ struct ConversationViewportEntry: Identifiable {
     ) {
         self.id = id
         self.revision = revision
+        self.layoutRevision = layoutRevision ?? revision
         self.content = content
         self.allowsHeightCaching = allowsHeightCaching
         self.allowsScrollAnchoring = allowsScrollAnchoring
@@ -104,6 +106,7 @@ struct ConversationViewportEntry: Identifiable {
     init(id: String, revision: Int, streamingAssistant: StreamingAssistant) {
         self.id = id
         self.revision = revision
+        layoutRevision = revision
         content = AnyView(EmptyView())
         self.streamingAssistant = streamingAssistant
         userMessage = nil
@@ -128,6 +131,7 @@ struct ConversationViewportEntry: Identifiable {
     init(id: String, revision: Int, userMessage: UserMessage) {
         self.id = id
         self.revision = revision
+        layoutRevision = revision
         content = AnyView(EmptyView())
         streamingAssistant = nil
         self.userMessage = userMessage

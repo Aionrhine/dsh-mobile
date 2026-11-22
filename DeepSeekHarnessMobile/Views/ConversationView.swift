@@ -2966,7 +2966,7 @@ struct ConversationView: View {
         }
     }
 
-    private func viewportEntryRevision(_ entry: ConversationDisplayEntry) -> Int {
+    private func viewportEntryRevision(_ entry: ConversationDisplayEntry, includesImageState: Bool = true) -> Int {
         let sessionID = store.selectedSessionId ?? ""
         var hasher = Hasher()
         hasher.combine(store.supportsMessageQuotes)
@@ -2987,8 +2987,10 @@ struct ConversationView: View {
             hasher.combine(item.knownFiles)
             for image in item.images {
                 hasher.combine(image)
-                hasher.combine(store.imageData(for: image.id, sessionID: sessionID) != nil)
-                hasher.combine(store.imageLoadError(for: image.id, sessionID: sessionID))
+                if includesImageState {
+                    hasher.combine(store.imageData(for: image.id, sessionID: sessionID) != nil)
+                    hasher.combine(store.imageLoadError(for: image.id, sessionID: sessionID))
+                }
             }
         case .process(let group):
             for item in group.items {

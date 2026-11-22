@@ -1,4 +1,5 @@
 import UIKit
+import BackgroundTasks
 import OSLog
 
 @MainActor
@@ -22,6 +23,7 @@ final class AgentBackgroundExecutionController {
 
     private let application: BackgroundTaskApplication
     private let longRunningKeepAlive: AgentLongRunningKeepAlive?
+    private let continuedProcessing: AgentContinuedProcessing?
     private var taskIdentifier: UIBackgroundTaskIdentifier = .invalid
     private var holdsIdleBackgroundAllowance = false
     private var taskGeneration: UUID?
@@ -70,16 +72,25 @@ final class AgentBackgroundExecutionController {
     convenience init() {
         self.init(
             application: UIApplication.shared,
-            longRunningKeepAlive: AgentBackgroundKeepAliveManager.shared
+            longRunningKeepAlive: AgentBackgroundKeepAliveManager.shared,
+            continuedProcessing: SystemAgentContinuedProcessing()
         )
     }
 
     init(
         application: BackgroundTaskApplication,
-        longRunningKeepAlive: AgentLongRunningKeepAlive? = nil
+        longRunningKeepAlive: AgentLongRunningKeepAlive? = nil,
+        continuedProcessing: AgentContinuedProcessing? = nil
     ) {
         self.application = application
         self.longRunningKeepAlive = longRunningKeepAlive
+        self.continuedProcessing = continuedProcessing
+        continuedProcessing?.onExpired = { [weak self] in
+            // 系统卡片的“停止”和资源回收共用回调。结束本地后台额度，
+            // 不取消远端 Agent，也不把旧回合重新提交。
+            self?.cancel()
+            if self?.applicationIsInBackground == true { self?.onBackgroundAllowanceExpired?() }
+        }
     }
 
     func applicationDidBecomeActive() {

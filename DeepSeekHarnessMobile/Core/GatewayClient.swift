@@ -203,6 +203,14 @@ final class GatewayClient: ObservableObject {
 
 
     @Published private(set) var state: ConnectionState = .disconnected
+    /// 分享新建会话必须等前台探测完成，不能把后台遗留的 connected 当作可用连接。
+    @Published private(set) var isReadyForSessionCreation = false
+
+    private func refreshSessionCreationReadiness() {
+        let ready = state.isConnected && !isApplicationInBackground && !isRecoveringFromBackground &&
+            foregroundProbeTask == nil && (conversationClient?.isReadyForSessionCreation ?? true)
+        if isReadyForSessionCreation != ready { isReadyForSessionCreation = ready }
+    }
     private struct NetworkDiagnosticsObserver {
         let pong: (String) -> Void
         let traffic: (Int, Int) -> Void

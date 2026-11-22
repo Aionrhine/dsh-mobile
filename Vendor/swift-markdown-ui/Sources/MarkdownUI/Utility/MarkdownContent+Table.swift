@@ -1,6 +1,24 @@
 import Foundation
 
 extension MarkdownContent {
+  /// 只识别整段的单个链接，保留代码示例、普通行内链接及其周围文字。
+  public var standaloneLink: (destination: String, title: String)? {
+    guard blocks.count == 1, case .paragraph(let nodes) = blocks[0],
+          nodes.count == 1, case .link(let destination, let children) = nodes[0] else { return nil }
+    return (destination, MarkdownContent(block: .paragraph(content: children)).renderPlainText())
+  }
+
+  /// 收集会以独立段落渲染的链接；不将行内链接或代码示例视为独立卡片。
+  public var standaloneLinks: [(destination: String, title: String)] {
+    func collect(_ nodes: [BlockNode]) -> [(destination: String, title: String)] {
+      nodes.flatMap { node in
+        if let link = MarkdownContent(block: node).standaloneLink { return [link] }
+        return collect(node.children)
+      }
+    }
+    return collect(blocks)
+  }
+
   public var containsTable: Bool {
     func contains(_ nodes: [BlockNode]) -> Bool {
       nodes.contains { node in
@@ -72,6 +90,20 @@ extension MarkdownContent {
     return rows.map { row in row.cells.map { .init(block: .paragraph(content: $0.content)) } }
   }
 
+  /// 图片列需要保留可阅读的缩略图宽度，不能只按替代文本测量。
+  public var tableImageColumns: [Bool] {
+    guard blocks.count == 1, case .table(let alignments, let rows) = blocks[0] else { return [] }
+    func containsImage(_ nodes: [InlineNode]) -> Bool {
+      nodes.contains { node in
+        if case .image(let source, _) = node { return !source.hasPrefix("dsh-math:") }
+        return containsImage(node.children)
+      }
+    }
+    return alignments.indices.map { column in
+      rows.contains { $0.cells.indices.contains(column) && containsImage($0.cells[column].content) }
+    }
+  }
+
   public var tableColumnAlignments: [TextTableColumnAlignment] {
     guard blocks.count == 1, case .table(let alignments, _) = blocks[0] else { return [] }
     return alignments.map {
@@ -104,5 +136,27 @@ extension MarkdownContent {
       }.joined()
     }
     return rows.map { $0.cells.map { plain($0.content) } }
+  }
+}
+
+extension MarkdownContent {
+  /// 使用渲染器相同的语法树，排除代码示例并保留引用式图片和列表、表格中的图片。
+  public var imageSources: [String] {
+    func inline(_ nodes: [InlineNode]) -> [String] {
+      nodes.flatMap { node -> [String] in
+        if case .image(let source, _) = node { return source.hasPrefix("dsh-math:") ? [] : [source] }
+        return inline(node.children)
+      }
+    }
+    func collect(_ nodes: [BlockNode]) -> [String] {
+      nodes.flatMap { node -> [String] in
+        switch node {
+        case .paragraph(let content), .heading(_, let content): return inline(content)
+        case .table(_, let rows): return rows.flatMap { $0.cells.flatMap { inline($0.content) } }
+        default: return collect(node.children)
+        }
+      }
+    }
+    return collect(blocks)
   }
 }
