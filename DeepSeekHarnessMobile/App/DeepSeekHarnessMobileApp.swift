@@ -51,6 +51,7 @@ struct DeepSeekHarnessMobileApp: App {
                 #else
                 if hosts.isReady { RootView() }
                 else { ProgressView() }
+                #endif
             }
                 .id(ObjectIdentifier(hosts.activeStore))
                 .environmentObject(hosts.activeStore)
