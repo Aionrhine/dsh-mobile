@@ -1018,121 +1018,160 @@ struct ConversationView: View {
                 }
             }
         }
-        .overlayPreferenceValue(SessionAgentPresetPopoverAnchorKey.self) { anchor in
-            if let anchor {
-                GeometryReader { geometry in
-                    ComposerPopoverOverlay(
-                        sourceFrame: geometry[anchor],
-                        availableSize: geometry.size,
-                        isPresented: showsAgentPresetMenu,
-                        onDismiss: { showsAgentPresetMenu = false },
-                        preferredWidth: 292,
-                        alignsToTrailing: false,
-                        maximumContentHeight: 380
-                    ) {
-                        sessionAgentPresetMenuContent
+        .chatPopoverOverlay(content)
+        .chatComposerMetrics(content)
+        .chatGoalAlerts(content)
+        .chatHistoryVoice(content)
+        .chatVoiceLifecycle(content)
+    }
+
+    /// 代理预设与统计弹层、语音 toast 浮层。拆分自 chatContent 主链，降低单个表达式的类型推断复杂度。
+    @ViewBuilder
+    private func chatPopoverOverlay(_ base: some View) -> some View {
+        base
+            .overlayPreferenceValue(SessionAgentPresetPopoverAnchorKey.self) { anchor in
+                if let anchor {
+                    GeometryReader { geometry in
+                        ComposerPopoverOverlay(
+                            sourceFrame: geometry[anchor],
+                            availableSize: geometry.size,
+                            isPresented: showsAgentPresetMenu,
+                            onDismiss: { showsAgentPresetMenu = false },
+                            preferredWidth: 292,
+                            alignsToTrailing: false,
+                            maximumContentHeight: 380
+                        ) {
+                            sessionAgentPresetMenuContent
+                        }
                     }
                 }
             }
-        }
-        .overlay(alignment: .bottom) {
-            if let voiceToast {
-                Text(voiceToast)
-                    .appFont(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 18).padding(.vertical, 11)
-                    .background(Color.black.opacity(0.78), in: Capsule())
-                    .padding(.bottom, composerHeight + 16)
-                    .allowsHitTesting(false)
-                    .accessibilityIdentifier("voice-input-toast")
+            .overlay(alignment: .bottom) {
+                if let voiceToast {
+                    Text(voiceToast)
+                        .appFont(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 18).padding(.vertical, 11)
+                        .background(Color.black.opacity(0.78), in: Capsule())
+                        .padding(.bottom, composerHeight + 16)
+                        .allowsHitTesting(false)
+                        .accessibilityIdentifier("voice-input-toast")
+                }
             }
-        }
-        .onPreferenceChange(ComposerHeightPreferenceKey.self) { height in
-            guard height > 0, abs(height - composerHeight) > 0.5 else { return }
-            composerHeight = height
-        }
-        .onChangeCompat(of: composerIsFocused) { _, isFocused in
-            if isFocused { showsSessionStatsPopover = false }
-            // 焦点布局先提交，语音状态同步和历史贴底不占用动画起步的同一轮主线程。
-            DispatchQueue.main.async {
-                guard composerIsFocused == isFocused else { return }
-                store.voiceInput.keyboardChanged(isFocused)
-                if isFocused { viewportScrollToBottomToken &+= 1 }
+    }
+
+
+    /// 输入框高度测量与焦点变化联动。拆分自 chatContent 主链，降低单个表达式的类型推断复杂度。
+    @ViewBuilder
+    private func chatComposerMetrics(_ base: some View) -> some View {
+        base
+            .onPreferenceChange(ComposerHeightPreferenceKey.self) { height in
+                guard height > 0, abs(height - composerHeight) > 0.5 else { return }
+                composerHeight = height
             }
-        }
-        .onChangeCompat(of: store.selectedPendingQuestionRequest?.rpcId) { _, _ in dismissPendingOverlay() }
-        .onChangeCompat(of: store.selectedPendingApprovalRequest?.rpcId) { _, _ in dismissPendingOverlay() }
-        .alert("编辑目标", isPresented: $showsGoalEditor) {
-            TextField("目标", text: $goalObjectiveDraft, axis: .vertical)
-            Button("取消", role: .cancel) {}
-            Button("保存") { store.editGoal(objective: goalObjectiveDraft.trimmingCharacters(in: .whitespacesAndNewlines)) }
-                .disabled(goalObjectiveDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        }
-        .alert("删除当前目标？", isPresented: $confirmsGoalClear) {
-            Button("取消", role: .cancel) {}
-            Button("删除", role: .destructive) { store.clearGoal() }
-        } message: {
-            Text("删除后，智能体不再持有这个持续目标。")
-        }
-        .onChangeCompat(of: isLoadingSelectedHistory) { wasLoading, isLoading in
-            finishHistoryPresentationIfReady(wasLoading: wasLoading, isLoading: isLoading)
-        }
-        .alert("语音输入暂不可用", isPresented: Binding(
-            get: { voiceState.alertMessage != nil },
-            set: { if !$0 { store.voiceInput.dismissAlert() } }
-        )) {
-            Button("知道了", role: .cancel) { store.voiceInput.dismissAlert() }
-        } message: {
-            Text(voiceState.alertMessage?.localized ?? "")
-        }
-        .onReceive(store.voiceInput.$state) { voiceSnapshot = $0 }
-        .onReceive(store.voiceInput.$toastMessage) { voiceToast = $0 }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)) { _ in
-            // 键盘隐藏可能来自上一轮动画或其他输入框，不能用它发出失焦请求。
-            // 当前编辑会话由 UITextViewDelegate 回报；只在已结束编辑时同步提示状态。
-            guard !composerIsFocused else { return }
-            store.voiceInput.keyboardChanged(false)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
-            voiceTouchActive = false
-            store.voiceInput.cancel()
-        }
-        .onAppear {
-            store.seedComposerDraft(initialDraft, for: store.selectedSessionId)
-            store.voiceInput.onDraftUpdate = { composerTextBinding.wrappedValue = $0 }
-            store.voiceInput.open(context: store.selectedSessionId ?? "new-session", draft: composerEditableText)
-            store.voiceInput.keyboardChanged(composerIsFocused)
-        }
-        .onDisappear {
-            voiceTouchActive = false
-            store.voiceInput.leave()
-            store.leaveSessionAgentPreset()
-        }
-        .onChangeCompat(of: store.selectedSessionId) { previous, current in
-            handleSelectedSessionChange(previous: previous, current: current)
-        }
-        .onChangeCompat(of: store.sessionAgentPreset.canSelect) { _, canSelect in
-            if !canSelect { showsAgentPresetMenu = false }
-        }
-        .task(id: store.selectedSessionId) {
-            store.refreshSessionAgentPreset()
-            // 每次进入会话先收起历史任务；用户在当前会话手动展开后不会被后续推送重置。
-            tasksExpanded = false
-            guard let sessionID = store.selectedSessionId else {
-                historyPresentationSessionID = nil
-                isPreparingHistoryPresentation = false
-                return
+            .onChangeCompat(of: composerIsFocused) { _, isFocused in
+                if isFocused { showsSessionStatsPopover = false }
+                // 焦点布局先提交，语音状态同步和历史贴底不占用动画起步的同一轮主线程。
+                DispatchQueue.main.async {
+                    guard composerIsFocused == isFocused else { return }
+                    store.voiceInput.keyboardChanged(isFocused)
+                    if isFocused { viewportScrollToBottomToken &+= 1 }
+                }
             }
-            historyPresentationSessionID = sessionID
-            let hasUsableLocalContent = !conversationItems.isEmpty
-            // Cached content is immediately presentable. A background refresh
-            // must never replace it with a full-screen loading mask; the mask
-            // is reserved for a genuinely cold session with no local rows.
-            isPreparingHistoryPresentation = isLoadingSelectedHistory && !hasUsableLocalContent
-            if hasUsableLocalContent {
-                viewportScrollToBottomToken &+= 1
+    }
+
+
+    /// 待处理问题/审批收尾与目标编辑、删除确认弹层。拆分自 chatContent 主链，降低单个表达式的类型推断复杂度。
+    @ViewBuilder
+    private func chatGoalAlerts(_ base: some View) -> some View {
+        base
+            .onChangeCompat(of: store.selectedPendingQuestionRequest?.rpcId) { _, _ in dismissPendingOverlay() }
+            .onChangeCompat(of: store.selectedPendingApprovalRequest?.rpcId) { _, _ in dismissPendingOverlay() }
+            .alert("编辑目标", isPresented: $showsGoalEditor) {
+                TextField("目标", text: $goalObjectiveDraft, axis: .vertical)
+                Button("取消", role: .cancel) {}
+                Button("保存") { store.editGoal(objective: goalObjectiveDraft.trimmingCharacters(in: .whitespacesAndNewlines)) }
+                    .disabled(goalObjectiveDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-        }
+            .alert("删除当前目标？", isPresented: $confirmsGoalClear) {
+                Button("取消", role: .cancel) {}
+                Button("删除", role: .destructive) { store.clearGoal() }
+            } message: {
+                Text("删除后，智能体不再持有这个持续目标。")
+            }
+    }
+
+
+    /// 历史加载完成收尾与语音不可用提示。拆分自 chatContent 主链，降低单个表达式的类型推断复杂度。
+    @ViewBuilder
+    private func chatHistoryVoice(_ base: some View) -> some View {
+        base
+            .onChangeCompat(of: isLoadingSelectedHistory) { wasLoading, isLoading in
+                finishHistoryPresentationIfReady(wasLoading: wasLoading, isLoading: isLoading)
+            }
+            .alert("语音输入暂不可用", isPresented: Binding(
+                get: { voiceState.alertMessage != nil },
+                set: { if !$0 { store.voiceInput.dismissAlert() } }
+            )) {
+                Button("知道了", role: .cancel) { store.voiceInput.dismissAlert() }
+            } message: {
+                Text(voiceState.alertMessage?.localized ?? "")
+            }
+    }
+
+
+    /// 语音状态订阅、生命周期钩子与会话切换任务。拆分自 chatContent 主链，降低单个表达式的类型推断复杂度。
+    @ViewBuilder
+    private func chatVoiceLifecycle(_ base: some View) -> some View {
+        base
+            .onReceive(store.voiceInput.$state) { voiceSnapshot = $0 }
+            .onReceive(store.voiceInput.$toastMessage) { voiceToast = $0 }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)) { _ in
+                // 键盘隐藏可能来自上一轮动画或其他输入框，不能用它发出失焦请求。
+                // 当前编辑会话由 UITextViewDelegate 回报；只在已结束编辑时同步提示状态。
+                guard !composerIsFocused else { return }
+                store.voiceInput.keyboardChanged(false)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
+                voiceTouchActive = false
+                store.voiceInput.cancel()
+            }
+            .onAppear {
+                store.seedComposerDraft(initialDraft, for: store.selectedSessionId)
+                store.voiceInput.onDraftUpdate = { composerTextBinding.wrappedValue = $0 }
+                store.voiceInput.open(context: store.selectedSessionId ?? "new-session", draft: composerEditableText)
+                store.voiceInput.keyboardChanged(composerIsFocused)
+            }
+            .onDisappear {
+                voiceTouchActive = false
+                store.voiceInput.leave()
+                store.leaveSessionAgentPreset()
+            }
+            .onChangeCompat(of: store.selectedSessionId) { previous, current in
+                handleSelectedSessionChange(previous: previous, current: current)
+            }
+            .onChangeCompat(of: store.sessionAgentPreset.canSelect) { _, canSelect in
+                if !canSelect { showsAgentPresetMenu = false }
+            }
+            .task(id: store.selectedSessionId) {
+                store.refreshSessionAgentPreset()
+                // 每次进入会话先收起历史任务；用户在当前会话手动展开后不会被后续推送重置。
+                tasksExpanded = false
+                guard let sessionID = store.selectedSessionId else {
+                    historyPresentationSessionID = nil
+                    isPreparingHistoryPresentation = false
+                    return
+                }
+                historyPresentationSessionID = sessionID
+                let hasUsableLocalContent = !conversationItems.isEmpty
+                // Cached content is immediately presentable. A background refresh
+                // must never replace it with a full-screen loading mask; the mask
+                // is reserved for a genuinely cold session with no local rows.
+                isPreparingHistoryPresentation = isLoadingSelectedHistory && !hasUsableLocalContent
+                if hasUsableLocalContent {
+                    viewportScrollToBottomToken &+= 1
+                }
+            }
     }
 
     private var emptyState: some View {
