@@ -60,6 +60,8 @@ enum GenuiArtifact {
         if types.contains("echart") || types.contains("chart") || usesRawOption {
             assets.append(contentsOf: ["echarts-core", "echarts-full"])
         }
+        if types.contains("icon") { assets.append("icons") }
+        if types.contains("map") { assets.append("maplibre") }
         return assets
     }
 
@@ -641,7 +643,7 @@ enum GenuiRuntime {
     /// conversation is scrolling.
     static func warmUp() {
         queue.async {
-            _ = prepareLocked(assets: ["mermaid", "three", "echarts-core", "echarts-full"])
+            _ = prepareLocked(assets: ["mermaid", "three", "echarts-core", "echarts-full", "icons", "maplibre"])
         }
     }
 

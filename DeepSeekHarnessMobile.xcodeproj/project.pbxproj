@@ -30,6 +30,8 @@
 		AB018000000000000000000B /* three.js in Resources */ = {isa = PBXBuildFile; fileRef = AB018000000000000000000C /* three.js */; };
 		AB018000000000000000000D /* echarts-core.js in Resources */ = {isa = PBXBuildFile; fileRef = AB018000000000000000000E /* echarts-core.js */; };
 		AB018000000000000000000F /* echarts-full.js in Resources */ = {isa = PBXBuildFile; fileRef = AB0180000000000000000010 /* echarts-full.js */; };
+		AB0180000000000000000011 /* icons.js in Resources */ = {isa = PBXBuildFile; fileRef = AB0180000000000000000012 /* icons.js */; };
+		AB0180000000000000000013 /* maplibre.js in Resources */ = {isa = PBXBuildFile; fileRef = AB0180000000000000000014 /* maplibre.js */; };
 		A0C1234567890ABCDE0000003 /* WorkspaceChangesViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0C1234567890ABCDE0000004 /* WorkspaceChangesViewTests.swift */; };
 		A0C1234567890ABCDE0000001 /* WorkspaceChangesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0C1234567890ABCDE0000002 /* WorkspaceChangesView.swift */; };
 		10EBA8F511A44135A7B876AC /* TailscaleAccountTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D800EB089E66481480D3C8A0 /* TailscaleAccountTests.swift */; };
@@ -179,6 +181,8 @@
 		AB018000000000000000000C /* three.js */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.javascript; path = three.js; sourceTree = "<group>"; };
 		AB018000000000000000000E /* echarts-core.js */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.javascript; path = echarts-core.js; sourceTree = "<group>"; };
 		AB0180000000000000000010 /* echarts-full.js */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.javascript; path = echarts-full.js; sourceTree = "<group>"; };
+		AB0180000000000000000012 /* icons.js */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.javascript; path = icons.js; sourceTree = "<group>"; };
+		AB0180000000000000000014 /* maplibre.js */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.javascript; path = maplibre.js; sourceTree = "<group>"; };
 		A0C1234567890ABCDE0000004 /* WorkspaceChangesViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceChangesViewTests.swift; sourceTree = "<group>"; };
 		A0C1234567890ABCDE0000002 /* WorkspaceChangesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceChangesView.swift; sourceTree = "<group>"; };
 		D800EB089E66481480D3C8A0 /* TailscaleAccountTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TailscaleAccountTests.swift; sourceTree = "<group>"; };
@@ -457,6 +461,8 @@
 				AB018000000000000000000C /* three.js */,
 				AB018000000000000000000E /* echarts-core.js */,
 				AB0180000000000000000010 /* echarts-full.js */,
+				AB0180000000000000000012 /* icons.js */,
+				AB0180000000000000000014 /* maplibre.js */,
 				CA11E000000000000000000E /* InfoPlist.xcstrings */,
 			);
 			path = Resources;
@@ -711,6 +717,8 @@
 				AB018000000000000000000B /* three.js in Resources */,
 				AB018000000000000000000D /* echarts-core.js in Resources */,
 				AB018000000000000000000F /* echarts-full.js in Resources */,
+				AB0180000000000000000011 /* icons.js in Resources */,
+				AB0180000000000000000013 /* maplibre.js in Resources */,
 				CA11E000000000000000000D /* InfoPlist.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
