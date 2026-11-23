@@ -621,6 +621,7 @@ struct ConversationView: View {
     // 普通 State 作为单向的显式聚焦/失焦请求，UITextView 自己持有第一响应者。
     @State private var composerIsFocused = false
     @State private var showsAgentPresetMenu = false
+    @State private var showsNewWorkspaceMenu = false
     @ScaledMetric(relativeTo: .caption) private var composerCapsuleHeight: CGFloat = 34
     private let conversationBottomClearance: CGFloat = 22
 
@@ -683,10 +684,12 @@ struct ConversationView: View {
             if view != 0 { composerIsFocused = false }
             showsSessionStatsPopover = false
             showsAgentPresetMenu = false
+            showsNewWorkspaceMenu = false
         }
         .onChangeCompat(of: store.selectedSessionId) { _, _ in
             showsSessionStatsPopover = false
             showsAgentPresetMenu = false
+            showsNewWorkspaceMenu = false
             imageGalleryRequest = nil
             pendingTurnJump = nil
             resolvedTurnJumpViewportID = nil
@@ -694,6 +697,16 @@ struct ConversationView: View {
         }
         .onDisappear {
             if store.conversationFileIsOpening { store.cancelWorkspaceFileDownload() }
+        }
+        .alert(item: teamModeAlert) { target in
+            Alert(
+                title: Text("确认停用智能体团队协作？"),
+                message: Text("停用将关闭团队协调工具，可能影响缓存复用并增加后续用量。已有子代理和任务会保留。"),
+                primaryButton: .destructive(Text("确认停用")) {
+                    store.setTeamModeEnabled(false, sessionID: target.id, confirmed: true)
+                },
+                secondaryButton: .cancel(Text("取消"))
+            )
         }
         .sheet(item: conversationPreviewBinding) { request in
             WorkspaceFilePreviewLoadingSheet(store: store, request: request)
@@ -948,9 +961,9 @@ struct ConversationView: View {
                             sessionAgentPresetControl
                             if let snapshot = store.selectedSessionStatsSnapshot {
                                 sessionStatsBanner(snapshot)
-                            } else {
-                                Spacer(minLength: 0)
                             }
+                            Spacer(minLength: 0)
+                            newConversationWorkspaceControl
                         }
                         .padding(.horizontal, 14)
                         .padding(.bottom, 6)
@@ -1075,6 +1088,24 @@ struct ConversationView: View {
                 }
             }
         }
+        let chatWorkspacePopoverLayer = chatPopoverLayer
+        .overlayPreferenceValue(NewConversationWorkspaceAnchorKey.self) { anchor in
+            if let anchor {
+                GeometryReader { geometry in
+                    ComposerPopoverOverlay(
+                        sourceFrame: geometry[anchor],
+                        availableSize: geometry.size,
+                        isPresented: showsNewWorkspaceMenu && store.showsNewConversationWorkspace,
+                        onDismiss: { showsNewWorkspaceMenu = false },
+                        preferredWidth: 292,
+                        alignsToTrailing: true,
+                        maximumContentHeight: 380
+                    ) {
+                        newConversationWorkspaceMenu
+                    }
+                }
+            }
+        }
         .overlay(alignment: .bottom) {
             if let voiceToast {
                 Text(voiceToast)
@@ -1087,7 +1118,7 @@ struct ConversationView: View {
                     .accessibilityIdentifier("voice-input-toast")
             }
         }
-        let chatMetricsLayer = chatPopoverLayer
+        let chatMetricsLayer = chatWorkspacePopoverLayer
         .onPreferenceChange(ComposerHeightPreferenceKey.self) { height in
             guard height > 0, abs(height - composerHeight) > 0.5 else { return }
             composerHeight = height
@@ -1864,7 +1895,7 @@ struct ConversationView: View {
         .disabled(
             !store.selectedMemberCanSend || (showsSessionStopButton
                 ? store.isCancellingSelectedSession
-                : (composerHasContent && (store.sessionAgentPreset.blocksSending || store.waitingForNewSession || isImportingImages || store.fileUploads.preparing || (!store.fileUploads.drafts.isEmpty && !store.fileUploads.canSend) || store.commandSubmissionPending || store.messageSubmissionPending)))
+                : (composerHasContent && (store.teamMode.pending || store.isChangingNewConversationWorkspace || store.sessionAgentPreset.blocksSending || store.waitingForNewSession || isImportingImages || store.fileUploads.preparing || (!store.fileUploads.drafts.isEmpty && !store.fileUploads.canSend) || store.commandSubmissionPending || store.messageSubmissionPending)))
         )
         .opacity(
             showsSessionStopButton
@@ -2405,6 +2436,104 @@ struct ConversationView: View {
         }
     }
 
+    private var teamModeAlert: Binding<TeamModeAlert?> {
+        Binding(
+            get: { store.teamModeDisableTarget.map { TeamModeAlert(id: $0) } },
+            set: { if $0 == nil { store.teamModeDisableTarget = nil } }
+        )
+    }
+
+    @ViewBuilder
+    private var newConversationWorkspaceControl: some View {
+        if store.showsNewConversationWorkspace {
+            let selected = store.workspaces.first { $0.id == store.newConversationWorkspace.workspaceId }
+            Button {
+                viewportProxy.prepareForOverlayPresentation()
+                showsSessionStatsPopover = false
+                showsAgentPresetMenu = false
+                showsNewWorkspaceMenu = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image("DshWorkspace")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 16, height: 16)
+                        .accessibilityHidden(true)
+                    Text(store.isChangingNewConversationWorkspace ? String(localized: "切换中…")
+                         : selected?.title ?? String(localized: "未分组"))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Image(systemName: "chevron.down")
+                        .appFont(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .appFont(.subheadline.weight(.medium))
+                .padding(.horizontal, 12)
+                .frame(height: composerCapsuleHeight)
+                .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .glassSurface(radius: 16, tint: glassTint.opacity(0.88))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(glassEdge.opacity(0.9), lineWidth: 0.6)
+            }
+            .disabled(!store.gateway.state.isConnected || store.isChangingNewConversationWorkspace || isImportingImages || store.fileUploads.preparing)
+            .accessibilityLabel("选择工作区")
+            .accessibilityIdentifier("new-conversation-workspace-capsule")
+            .anchorPreference(key: NewConversationWorkspaceAnchorKey.self, value: .bounds) { $0 }
+        }
+    }
+
+    private var newConversationWorkspaceMenu: some View {
+        VStack(spacing: 0) {
+            newConversationWorkspaceItem(nil, title: String(localized: "未分组"), path: nil)
+            ForEach(store.workspaces) { workspace in
+                newConversationWorkspaceItem(workspace.id, title: workspace.title, path: workspace.path)
+            }
+        }
+    }
+
+    private func newConversationWorkspaceItem(_ id: String?, title: String, path: String?) -> some View {
+        Button {
+            showsNewWorkspaceMenu = false
+            Task { await store.selectNewConversationWorkspace(id) }
+        } label: {
+            HStack(spacing: 10) {
+                Image("DshWorkspace")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 18, height: 18)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .appFont(.body.weight(.medium))
+                        .lineLimit(1)
+                    if let path {
+                        Text(path)
+                            .appFont(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+                Spacer(minLength: 0)
+                if id == store.newConversationWorkspace.workspaceId {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(DSHColor.ocean)
+                }
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
     @ViewBuilder
     private var sessionAgentPresetControl: some View {
         let state = store.sessionAgentPreset
@@ -2416,6 +2545,7 @@ struct ConversationView: View {
                 else {
                     viewportProxy.prepareForOverlayPresentation()
                     showsSessionStatsPopover = false
+                    showsNewWorkspaceMenu = false
                     showsAgentPresetMenu = true
                 }
             } label: {
@@ -2447,7 +2577,7 @@ struct ConversationView: View {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .stroke(glassEdge.opacity(0.9), lineWidth: 0.6)
             }
-            .disabled(!store.gateway.state.isConnected || !(state.canSelect || retry))
+            .disabled(!store.gateway.state.isConnected || store.isChangingNewConversationWorkspace || !(state.canSelect || retry))
             .accessibilityLabel("选择会话模式")
             .accessibilityIdentifier("session-agent-preset-capsule")
             .anchorPreference(key: SessionAgentPresetPopoverAnchorKey.self, value: .bounds) { $0 }
@@ -4185,6 +4315,18 @@ private struct SessionAgentPresetPopoverAnchorKey: PreferenceKey {
     static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
         value = nextValue() ?? value
     }
+}
+
+private struct NewConversationWorkspaceAnchorKey: PreferenceKey {
+    static var defaultValue: Anchor<CGRect>? { nil }
+
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = nextValue() ?? value
+    }
+}
+
+private struct TeamModeAlert: Identifiable {
+    let id: String
 }
 
 /// 模式与统计共用液态玻璃和箭头，原生玻璃自行处理高光与投影。
@@ -6813,7 +6955,16 @@ private struct TeamMemberPopover: View {
 }
 
 /// 与 Web 团队入口一致的双人线框图标，使用矢量避免位图缩放模糊。
-private struct TeamGlyph: View {
+struct TeamGlyph: View {
+    @MainActor static let menuImage: UIImage = {
+        let renderer = ImageRenderer(content: TeamGlyph().frame(width: 18, height: 18))
+        renderer.scale = 3
+        return (renderer.uiImage ?? UIImage(systemName: "person.2") ?? UIImage()).withRenderingMode(.alwaysTemplate)
+    }()
+
+    @MainActor static let enabledMenuImage = menuImage.withTintColor(UIColor(DSHColor.ocean), renderingMode: .alwaysOriginal)
+    @MainActor static let disabledMenuImage = menuImage.withTintColor(.systemGray, renderingMode: .alwaysOriginal)
+
     var body: some View {
         Canvas { context, size in
             var path = Path()

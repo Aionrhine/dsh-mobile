@@ -261,7 +261,7 @@ final class GatewayClient: ObservableObject {
     private var foregroundProbeSequence = 0
     private var sessionCreationContinuations: [String: CheckedContinuation<String, Error>] = [:]
 
-    func createSession(workspaceId: String?) async throws -> String {
+    func createSession(workspaceId: String?, agentPreset: String? = nil) async throws -> String {
         try Task.checkCancellation()
         guard state.isConnected else { throw URLError(.notConnectedToInternet) }
         let requestId = UUID().uuidString
@@ -270,6 +270,7 @@ final class GatewayClient: ObservableObject {
                 sessionCreationContinuations[requestId] = continuation
                 var payload: [String: Any] = ["type": "session-create", "requestId": requestId]
                 if let workspaceId { payload["workspaceId"] = workspaceId }
+                if let agentPreset { payload["agentPreset"] = agentPreset }
                 send(payload)
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(15))

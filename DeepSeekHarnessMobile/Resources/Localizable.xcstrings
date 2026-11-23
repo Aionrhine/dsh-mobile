@@ -8131,6 +8131,40 @@
         }
       }
     },
+    "team.modeChangedElsewhere": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Another client changed the team setting. The latest host state is shown."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "团队设置已被其他客户端修改，当前显示宿主的最新状态。"
+          }
+        }
+      }
+    },
+    "team.modeUnconfirmed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The team setting could not be confirmed. Refresh before retrying."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "团队设置结果待确认，请刷新后重试。"
+          }
+        }
+      }
+    },
     "tool.annotation.lines": {
       "localizations": {
         "en": {
@@ -11931,6 +11965,23 @@
         }
       }
     },
+    "停用将关闭团队协调工具，可能影响缓存复用并增加后续用量。已有子代理和任务会保留。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turning this off disables team coordination tools and may reduce cache reuse and increase subsequent usage. Existing subagents and tasks are kept."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "停用将关闭团队协调工具，可能影响缓存复用并增加后续用量。已有子代理和任务会保留。"
+          }
+        }
+      }
+    },
     "停用移动网关？": {
       "extractionState": "manual",
       "localizations": {
@@ -14163,6 +14214,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "アプリ内トンネルを有効にする"
+          }
+        }
+      }
+    },
+    "启用智能体团队协作": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enable Agent Teams"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "启用智能体团队协作"
           }
         }
       }
@@ -23238,6 +23306,23 @@
         }
       }
     },
+    "正在保存团队设置…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saving team settings…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在保存团队设置…"
+          }
+        }
+      }
+    },
     "正在准备下一步": {
       "extractionState": "manual",
       "localizations": {
@@ -24082,6 +24167,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "セッション統計を読み込み中…"
+          }
+        }
+      }
+    },
+    "正在读取团队设置…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading team settings…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在读取团队设置…"
           }
         }
       }
@@ -25755,6 +25857,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "変更を適用"
+          }
+        }
+      }
+    },
+    "确认停用": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn Off"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "确认停用"
+          }
+        }
+      }
+    },
+    "确认停用智能体团队协作？": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn off Agent Teams?"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "确认停用智能体团队协作？"
           }
         }
       }
