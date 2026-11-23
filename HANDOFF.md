@@ -2,7 +2,7 @@
 
 > 交接时间：2026-11-23（晚间更新）
 > 仓库：`Aionrhine/dsh-mobile`（fork，上游 `Clarklevis1995/dsh-mobile`）
-> 当前代码基线：`61fd132`，CI 绿色（run `45163140296`），IPA 已瘦身至 27.1MB 并发布
+> 当前代码基线：`5492b8b`，CI 绿色（run `45171463510`），IPA 已瘦身至 27.1MB 并发布
 
 ---
 
@@ -27,8 +27,8 @@
 
 | 项 | 值 |
 |---|---|
-| 代码基线 | `61fd132` |
-| CI | 绿色（`ios-unsigned-ipa` run `45163140296` / `Localization checks` run `45163140513`） |
+| 代码基线 | `5492b8b` |
+| CI | 绿色（`ios-unsigned-ipa` run `45171463510` / `Localization checks` run `45171463492`） |
 | IPA | [unsigned-20261123-v1.8.4-batch1](https://github.com/Aionrhine/dsh-mobile/releases/tag/unsigned-20261123-v1.8.4-batch1) 27.1MB（移除 WebRTC 瘦身 5.5MB） |
 | 版本号 | `AppRelease/release-info.json` = 1.8.4 (build 43) / 网关 0.12.2 |
 | 上游落后 | C 档第一批 10 项纯 iOS + `shared` 改动已蒸馏完成；仅余三大整块按需项（`devicetools` / DS Bot / ShareExtension） |
@@ -41,6 +41,7 @@
 | `5445650` | 跨设备问答历史还原（`QuestionAnswerProjection`）、新建会话独立选择工作区（`SharedNewConversationWorkspace` + 草稿重绑 + `DshWorkspace` 图标）、Agent Team 团队模式开关（`TeamModeSnapshot` + 更多菜单开关 + 停用二次确认弹窗） |
 | `90cca0f` | 网关连接方式分类与记忆（LAN/公网/Tailscale、`recentSuccessfulEndpoints`、重配保留其他方式地址）、`ImagePreprocessor` 可配置压缩上限、定时任务轨迹竞态与归档会话过滤修复、本地化收口（1618 条 iOS 文案通过） |
 | `61fd132` | 移除 `AppStore.swift` 中遗留的 `isDraftWorkspaceReplacement` 旧 stub（消除重名编译冲突） |
+| `5492b8b` | 修复 GenUI `evaluateJavaScript` 返回 `Promise` 触发 `WKErrorJavaScriptResultTypeIsUnsupported` 导致全部渲染失败的问题 |
 
 ### 上一轮（2026-11-23 下午）完成的四件事（`998ca83` ~ `d10b1aa`）
 
