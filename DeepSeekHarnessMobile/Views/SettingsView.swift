@@ -62,6 +62,7 @@ struct SettingsView: View {
     let open: (SettingsRoute) -> Void
     @Environment(\.openURL) private var openURL
     @EnvironmentObject private var store: AppStore
+    @EnvironmentObject private var hosts: MultiGatewayStore
     @State private var pendingPermission: DefaultPermissionChoice?
     @State private var observedGatewayState: ConnectionState?
     @State private var observedConnectionMethod = ""
@@ -111,6 +112,28 @@ struct SettingsView: View {
 
     private var gatewayState: ConnectionState {
         observedGatewayState ?? store.gateway.state
+    }
+
+    private func gatewayAddressMenus(_ profile: GatewayProfile) -> some View {
+        let method = profile.selectedConnectionMethod ?? GatewayAddressMethod(endpoint: store.endpoint)
+        return Group {
+            SettingsChoiceMenu(title: LocalizedStringKey("连接方式"), value: method.title, identifier: "gateway-connection-method") {
+                Picker("连接方式", selection: Binding(get: { method }, set: hosts.selectConnectionMethod)) {
+                    ForEach(GatewayAddressMethod.allCases.filter { !profile.endpoints(for: $0).isEmpty }, id: \.self) { option in
+                        Text(verbatim: option.title).tag(option)
+                    }
+                }
+                .pickerStyle(.inline)
+            }
+            SettingsChoiceMenu(title: LocalizedStringKey("网关地址"), value: store.endpoint, identifier: "gateway-address-menu") {
+                Picker("网关地址", selection: Binding(get: { store.endpoint }, set: hosts.selectConnectionEndpoint)) {
+                    ForEach(profile.endpoints(for: method), id: \.self) { endpoint in
+                        Text(verbatim: endpoint).tag(endpoint)
+                    }
+                }
+                .pickerStyle(.inline)
+            }
+        }
     }
 
     private var selectedPresetName: String {
@@ -211,10 +234,14 @@ struct SettingsView: View {
             }
 
             Section {
-                TextField("ws://host:3080/ws/mobile", text: $store.endpoint)
-                    .textInputAutocapitalization(.never)
-                    .keyboardType(.URL)
-                    .autocorrectionDisabled()
+                if let profile = hosts.activeProfile {
+                    gatewayAddressMenus(profile)
+                } else {
+                    TextField("ws://host:3080/ws/mobile", text: $store.endpoint)
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.URL)
+                        .autocorrectionDisabled()
+                }
                 HStack {
                     ConnectionDot(state: gatewayState)
                     Text(gatewayState.label)
@@ -223,9 +250,11 @@ struct SettingsView: View {
                         Text("Port \(port)").foregroundStyle(.secondary)
                     }
                 }
-                LabeledContent(LocalizedStringKey("连接方式"), value: gatewayState.isConnected
-                    ? (observedConnectionMethod.isEmpty ? "WebSocket" : String(localized: String.LocalizationValue(observedConnectionMethod))) : String(localized: "未连接"))
-                    .accessibilityIdentifier("gateway-connection-method")
+                if hosts.activeProfile == nil {
+                    LabeledContent(LocalizedStringKey("连接方式"), value: gatewayState.isConnected
+                        ? (observedConnectionMethod.isEmpty ? "WebSocket" : String(localized: String.LocalizationValue(observedConnectionMethod))) : String(localized: "未连接"))
+                        .accessibilityIdentifier("gateway-connection-method")
+                }
                 SettingsNavigationButton(.networkDiagnostics, open: open) {
                     LabeledContent(LocalizedStringKey("网络检测"), value: String(localized: "实时延迟与丢包"))
                 }

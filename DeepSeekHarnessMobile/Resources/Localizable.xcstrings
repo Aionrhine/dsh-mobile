@@ -6754,6 +6754,75 @@
         }
       }
     },
+    "schedule.session.pending": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Created on first run"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "初回実行時に作成"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "待创建"
+          }
+        }
+      }
+    },
+    "schedule.session.perRun": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New conversation for each run"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "実行ごとに会話を作成"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每次新建会话"
+          }
+        }
+      }
+    },
+    "schedule.session.unavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Linked conversation unavailable"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "関連する会話は現在利用できません"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关联会话当前不可用"
+          }
+        }
+      }
+    },
     "schedule.status.active": {
       "extractionState": "manual",
       "localizations": {
@@ -11142,6 +11211,23 @@
         }
       }
     },
+    "任务不存在，可能已被删除": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Task not found. It may have been deleted."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "タスクが見つかりません。削除された可能性があります。"
+          }
+        }
+      }
+    },
     "任务内容": {
       "localizations": {
         "en": {
@@ -12189,6 +12275,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "すべてのセッション"
+          }
+        }
+      }
+    },
+    "公网": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Public network"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パブリックネットワーク"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "公网"
           }
         }
       }
@@ -15763,6 +15871,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "DeepSeek Harness に接続されていません。ホーム画面右上の 🔑 ボタンをタップして、ペアリング用 QR コードをスキャンするか、トークンを手動で入力して接続してください。"
+          }
+        }
+      }
+    },
+    "局域网": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local network"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ローカルネットワーク"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "局域网"
           }
         }
       }
@@ -27112,6 +27242,28 @@
         }
       }
     },
+    "网关地址": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gateway address"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ゲートウェイアドレス"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网关地址"
+          }
+        }
+      }
+    },
     "网关地址无效或候选地址超过 16 个。公网连接必须使用 WSS，地址不能包含账号、查询参数或片段。": {
       "extractionState": "manual",
       "localizations": {
@@ -27947,6 +28099,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "別のキーワードまたはタスクステータスをお試しください"
+          }
+        }
+      }
+    },
+    "该任务属于其他会话，请从对应会话进入": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This task belongs to another conversation. Open it there."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このタスクは別の会話に属しています。該当する会話から開いてください。"
           }
         }
       }
