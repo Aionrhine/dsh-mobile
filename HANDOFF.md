@@ -1,8 +1,8 @@
 # dsh-mobile 交接文档
 
-> 交接时间：2026-11-23
+> 交接时间：2026-11-23（下午更新）
 > 仓库：`Aionrhine/dsh-mobile`（fork，上游 `Clarklevis1995/dsh-mobile`）
-> 当前 main：`623bbd1`，CI 绿色，IPA 已发布
+> 当前代码基线：`d10b1aa`，CI 绿色（run `45124143673`），IPA 已发布且真机验证通过
 
 ---
 
@@ -27,13 +27,22 @@
 
 | 项 | 值 |
 |---|---|
-| main | `623bbd1` |
-| CI | 绿色（run 45057238078） |
-| IPA | [unsigned-20261123-auto](https://github.com/Aionrhine/dsh-mobile/releases/tag/unsigned-20261123-auto) 32.4MB |
-| 版本号 | `AppRelease/release-info.json` = 1.8.0 / 网关 0.12.0 |
-| 上游落后 | 14 个真新提交（详见第六节） |
+| 代码基线 | `d10b1aa` |
+| CI | 绿色（`ios-unsigned-ipa` run `45124143673` / `Localization checks` run `45124143873`） |
+| IPA | [unsigned-20261123-v1.8.4](https://github.com/Aionrhine/dsh-mobile/releases/tag/unsigned-20261123-v1.8.4) 32.6MB（真机已测通过） |
+| 版本号 | `AppRelease/release-info.json` = 1.8.4 (build 43) / 网关 0.12.2 |
+| 上游落后 | 12 个剩余提交（详见第六节；A 档与 B 档图片画廊/审阅图标已全部完成） |
 
-### 本次会话完成的两件事
+### 本轮会话完成的四件事（`998ca83` ~ `d10b1aa`）
+
+| 提交 | 内容 |
+|---|---|
+| `998ca83` | 同步上游 `953e4ab`（版本号 `1.8.4` / build `43`、网关 `0.12.2`、发布说明、`Localizable.xcstrings` 三方键级合并），并从 `f36c872` 补齐 `WorkspaceChangesView` 缺失的 4 个审阅 SVG 图标集与许可证 |
+| `2d0fd7c` | 蒸馏上游 `86d702d` iOS 会话图片画廊与工作区 Markdown 图片加载（`WorkspaceMarkdownImageLoader`、`WorkspaceMarkdownImageContext`、`MarkdownImageAsset`、`ConversationImageGalleryModel`、`SessionConversationImageGallery`），完整保留划词引用 |
+| `819dec8` | 优化「跳转到轮次」：`TurnJumpSheet` 倒序展示；`AppStore` 新增本地 SQLite 缓存按 `seq` 毫秒直达（复用 `presentSearchContext`）；`ConversationView` 改用 `.task` 异步回溯循环 + 优先按 `seq` 精确匹配 + 顶部可取消进度胶囊，根治卡死与重复短句误匹配 |
+| `d10b1aa` | iOS GenUI 全面加固：`genui.html` 原地卸载重挂与脚本去重 + `#root` 可缩矮测量 + `fontScale` 联动；`GenuiBlockView` 200ms 流式防抖原地重挂、共享 `WKProcessPool`（并发上限 `6`）、`GenuiRuntime.prepareAsync` 异步准备不阻塞主线程、捕获 JS 执行错误，并新增 `GenuiBlockViewTests.swift` |
+
+### 上一轮会话完成的两件事
 
 **1. 划词引用修复**（`eaf3f8f`）
 
@@ -178,25 +187,25 @@ open('DeepSeekHarnessMobile/Resources/Localizable.xcstrings','w',encoding='utf-8
 ```bash
 PYTHONUTF8=1 python3 scripts/verify-localizations.py
 ```
-期望输出：`本地化检查通过：1599 条 iOS 文案，19 条 Android 系统文案，1414 条 Android 界面文案。`
+期望输出：`本地化检查通过：1602 条 iOS 文案，19 条 Android 系统文案，1414 条 Android 界面文案。`
 
 ---
 
-## 六、剩余 14 个上游提交（未蒸馏）
+## 六、剩余 12 个上游提交（未蒸馏）
 
-### A 档：能摘，零风险
+### A 档：可跳过
 
 | 提交 | 内容 | 说明 |
 |---|---|---|
-| `953e4ab` | 版本号 1.8.3→1.8.4、网关 0.12.1→0.12.2、xcstrings 大整理、pbxproj | 纯配置/文案，10 分钟 |
-| `d655212` | 赞助二维码换新 | 与我们无关，可跳 |
+| `d655212` | 赞助二维码换新 | 与本 fork 无关，可跳 |
 
-### B 档：能摘但要补依赖
+> 已完成：`953e4ab`（已在 `998ca83` 同步）、`86d702d` iOS 图片画廊（已在 `2d0fd7c` 蒸馏）、`f36c872` 缺失审阅图标（已在 `998ca83` 补齐）。
+
+### B 档：剩余可选
 
 | 提交 | 内容 | 缺什么 |
 |---|---|---|
-| `86d702d` | **图片画廊**（点图看大图、左右翻页、会话内图片目录） | `MarkdownImageAsset`、`WorkspaceMarkdownImageContext`（fork 缺） |
-| `f36c872` | **工作区审阅 UI 打磨**（字体、图标、配色、换行开关） | `ReviewTheme`（46 处引用）、`Design/review-fonts` 字体包 |
+| `f36c872`（余项） | 工作区审阅自定义字体包 + `SharedTeamStore.kt` 团队兼容微调 | 17.7 MB `Design/review-fonts` 字体包（暂按轻量原则跳过，iOS 审阅视图与 4 个图标均已就位） |
 
 ### C 档：摘不动（10 个）
 
@@ -204,16 +213,17 @@ PYTHONUTF8=1 python3 scripts/verify-localizations.py
 |---|---|---|
 | `2029918` | 数学公式引擎 + 网站 + devicetools（84k 行） | 大杂烩，无法整摘 |
 | `6fdd34c` | 删素材 | 删的是上游自己的 |
-| `d5d677d` `cba7284` | Android 架构重构（1.1 万行） | 下游 25 个提交依赖它搬过的路径 |
+| `d5d677d` `cba7284` | Android 架构重构（1.1 万行） | 下游 25 个提交依赖它搬过的路径（本 fork 仅专注 iOS） |
 | `d65631f` | 连接器能力面板 | 依赖 devicetools 体系（fork 无） |
 | `d584e71` | 导航布局 | 11 处 connector 依赖 |
 | `350275b` `bd5b71f` `8aa6be3` `fc3c5a3` | **DS Bot 模式全套**（4 万行） | 互相咬合，只能整段 merge |
 
-### 三个「已知缺口」（不是提交，是 fork 主动放弃的）
+### 两个「已知缺口」（fork 主动放弃的）
 
-1. **`WorkspaceMarkdownImageContext` 系统** — 工作区图片渲染。跳过它导致「用户消息 Markdown 化」和「图片画廊」都摘不了
-2. **`devicetools` 连接器体系** — 日历/提醒/地图/音乐/闹钟。上游 `2029918` 引入，fork 完全没有
-3. **DS Bot 模式** — 上游 v1.8.4 主打功能
+1. **`devicetools` 连接器体系** — 日历/提醒/地图/音乐/闹钟。上游 `2029918` 引入，fork 完全没有
+2. **DS Bot 模式** — 上游 v1.8.4 主打功能
+
+> 注：原有的 `WorkspaceMarkdownImageContext` / `MarkdownImageAsset` 缺口已在 `2d0fd7c` 补齐。
 
 ---
 
@@ -275,14 +285,13 @@ gh release create unsigned-<日期>-auto <ipa路径> -R Aionrhine/dsh-mobile \
 
 ---
 
-## 十、给 Antigravity 的建议
+## 十、给下一轮开发的建议
 
-1. **先跑一遍 cue typecheck** 确认当前代码干净（应该只剩 `DeepSeekHarnessShared` 缺失）
-2. **从 A 档开始**：`953e4ab` 版本号更新，零风险，验证流程
-3. **改 Swift 前必读** `ARCHITECTURE.md` + `Docs/kmp-development.md`
-4. **不要碰** `Vendor/swift-markdown-ui/Sources/MarkdownUI/Views/Inlines/InlineText.swift` 的 `SelectableInlineText` 分支
-5. **推送前必跑** `PYTHONUTF8=1 python3 scripts/verify-localizations.py`
-6. **大文件批量编辑后**必须做修饰符序列 + 逐行文本双重比对
+1. **本 fork 仅专注 iOS 端开发**；继续跟踪真机体验反馈（划词引用、图片画廊、轮次跳转、GenUI 渲染）按需修复
+2. **改 Swift 前必读** `ARCHITECTURE.md` + `Docs/kmp-development.md`
+3. **不要碰** `Vendor/swift-markdown-ui/Sources/MarkdownUI/Views/Inlines/InlineText.swift` 的 `SelectableInlineText` 分支
+4. **推送前必跑**：`PYTHONUTF8=1 python3 scripts/verify-localizations.py` + `cue` 全量/增量 typecheck（建议只打包 `.swift` 源码目录压缩传输并加 `-o ServerAliveInterval=15` 防断连）
+5. **大文件批量编辑后**必须做修饰符序列 + 逐行文本双重比对
 
 ---
 
