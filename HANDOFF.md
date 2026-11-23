@@ -266,16 +266,7 @@ gh release create unsigned-<日期>-auto <ipa路径> -R Aionrhine/dsh-mobile \
 
 ---
 
-## 九、定时任务（当前启用）
-
-| ID | 时间 | 内容 |
-|---|---|---|
-| `schedule-5b994597-...` | 每天 04:00 | 重试构建 IPA，失败自动修，成功后发布 Release |
-| `schedule-df262bfe-...` | 每天 09:00 | 检查上游差异，只读汇报，不合并 |
-
----
-
-## 十、环境与凭据
+## 九、环境与凭据
 
 - **gh CLI**：已登录 `Aionrhine`，有 admin 权限（可改 Actions 权限）
 - **cue**：`ssh -i /root/.ssh/hermes-ssh root@100.64.0.13`（从 WSL 连）
@@ -284,7 +275,7 @@ gh release create unsigned-<日期>-auto <ipa路径> -R Aionrhine/dsh-mobile \
 
 ---
 
-## 十一、给 Antigravity 的建议
+## 十、给 Antigravity 的建议
 
 1. **先跑一遍 cue typecheck** 确认当前代码干净（应该只剩 `DeepSeekHarnessShared` 缺失）
 2. **从 A 档开始**：`953e4ab` 版本号更新，零风险，验证流程
@@ -295,7 +286,7 @@ gh release create unsigned-<日期>-auto <ipa路径> -R Aionrhine/dsh-mobile \
 
 ---
 
-## 十二、关键文件索引
+## 十一、关键文件索引
 
 | 文件 | 作用 |
 |---|---|
