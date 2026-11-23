@@ -40,6 +40,22 @@
         }
       }
     },
+    "%1$@ · 本轮改动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ · Changes this turn"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ · 本轮改动"
+          }
+        }
+      }
+    },
     "%@": {
       "localizations": {
         "en": {
@@ -313,6 +329,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@：%@ · %@"
+          }
+        }
+      }
+    },
+    "%lld 个文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld files"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个文件"
           }
         }
       }
@@ -2211,6 +2243,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Whaleness Harness"
+          }
+        }
+      }
+    },
+    "Whaleness 任务进行中": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Whaleness task in progress"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Whaleness 任务进行中"
           }
         }
       }
@@ -9671,49 +9719,52 @@
       }
     },
     "workspace.review.line": {
+      "extractionState": "stale",
       "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "第 %@ 行"
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Line %@"
           }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第 %@ 行"
+          }
         }
       }
     },
     "workspace.review.omitted": {
+      "extractionState": "stale",
       "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "省略 %@ 行未修改内容"
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "%@ unchanged lines omitted"
           }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "省略 %@ 行未修改内容"
+          }
         }
       }
     },
     "workspace.review.range": {
+      "extractionState": "stale",
       "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "第 %@–%@ 行"
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Lines %@–%@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第 %@–%@ 行"
           }
         }
       }
@@ -10106,17 +10157,18 @@
       }
     },
     "上一个文件": {
+      "extractionState": "stale",
       "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "上一个文件"
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Previous file"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上一个文件"
           }
         }
       }
@@ -10364,17 +10416,18 @@
       }
     },
     "下一个文件": {
+      "extractionState": "stale",
       "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "下一个文件"
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Next file"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下一个文件"
           }
         }
       }
@@ -10781,17 +10834,18 @@
       }
     },
     "二进制文件已改动，无法逐行对比。": {
+      "extractionState": "stale",
       "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "二进制文件已改动，无法逐行对比。"
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "This binary file has changed and cannot be compared line by line."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "二进制文件已改动，无法逐行对比。"
           }
         }
       }
@@ -12297,17 +12351,18 @@
       }
     },
     "关闭文件改动": {
+      "extractionState": "stale",
       "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "关闭文件改动"
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Close file changes"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭文件改动"
           }
         }
       }
@@ -12647,33 +12702,35 @@
       }
     },
     "切换为不自动换行": {
+      "extractionState": "stale",
       "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "切换为不自动换行"
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Turn off line wrapping"
           }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "切换为不自动换行"
+          }
         }
       }
     },
     "切换为自动换行": {
+      "extractionState": "stale",
       "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "切换为自动换行"
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Turn on line wrapping"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "切换为自动换行"
           }
         }
       }
@@ -13136,6 +13193,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "目標を削除"
+          }
+        }
+      }
+    },
+    "删除行显示旧行号，其余显示新行号": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deleted lines show old line numbers; other lines show new line numbers."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除行显示旧行号，其余显示新行号"
           }
         }
       }
@@ -16090,6 +16164,7 @@
       }
     },
     "已列出 %@ / %@ 个文件": {
+      "extractionState": "stale",
       "localizations": {
         "en": {
           "stringUnit": {
@@ -16105,18 +16180,51 @@
         }
       }
     },
-    "已删除文件": {
+    "已列出 %lld / %lld 个文件": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld of %lld files"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "已删除文件"
+            "value": "已列出 %lld / %lld 个文件"
+          }
+        }
+      }
+    },
+    "已列出 %lld / 总计 %lld 个文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld of %lld files listed"
           }
         },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已列出 %lld / 总计 %lld 个文件"
+          }
+        }
+      }
+    },
+    "已删除文件": {
+      "extractionState": "stale",
+      "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Deleted file"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已删除文件"
           }
         }
       }
@@ -16779,17 +16887,18 @@
       }
     },
     "开启": {
+      "extractionState": "stale",
       "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "开启"
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "On"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开启"
           }
         }
       }
@@ -17469,17 +17578,18 @@
       }
     },
     "当前网关暂不支持文件改动查询。": {
+      "extractionState": "stale",
       "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "当前网关暂不支持文件改动查询。"
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "The current gateway does not support querying file changes."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前网关暂不支持文件改动查询。"
           }
         }
       }
@@ -19682,17 +19792,18 @@
       }
     },
     "改动内容超过响应大小限制，无法完整展示。": {
+      "extractionState": "stale",
       "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "改动内容超过响应大小限制，无法完整展示。"
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "The changes exceed the response size limit and cannot be displayed in full."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改动内容超过响应大小限制，无法完整展示。"
           }
         }
       }
@@ -20036,6 +20147,23 @@
         }
       }
     },
+    "文件改动": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "File changes"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件改动"
+          }
+        }
+      }
+    },
     "文件菜单": {
       "extractionState": "manual",
       "localizations": {
@@ -20117,17 +20245,18 @@
       }
     },
     "文件过大，无法逐行对比。": {
+      "extractionState": "stale",
       "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "文件过大，无法逐行对比。"
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "This file is too large to compare line by line."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件过大，无法逐行对比。"
           }
         }
       }
@@ -20313,17 +20442,18 @@
       }
     },
     "新建文件": {
+      "extractionState": "stale",
       "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "新建文件"
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "New file"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建文件"
           }
         }
       }
@@ -20934,17 +21064,18 @@
       }
     },
     "无法读取改动内容，请重试。": {
+      "extractionState": "stale",
       "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无法读取改动内容，请重试。"
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Unable to load the changes. Try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法读取改动内容，请重试。"
           }
         }
       }
@@ -22383,34 +22514,69 @@
         }
       }
     },
-    "本轮改动文件": {
+    "本轮改动": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Changes this turn"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "本轮改动文件"
+            "value": "本轮改动"
           }
-        },
+        }
+      }
+    },
+    "本轮改动文件": {
+      "extractionState": "stale",
+      "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Files changed in this turn"
           }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本轮改动文件"
+          }
+        }
+      }
+    },
+    "本轮文件": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Files in this turn"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本轮文件"
+          }
         }
       }
     },
     "本轮没有可预览的文件改动。": {
+      "extractionState": "stale",
       "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "本轮没有可预览的文件改动。"
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "There are no file changes to preview in this turn."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本轮没有可预览的文件改动。"
           }
         }
       }
@@ -22609,17 +22775,18 @@
       }
     },
     "查看完整文件": {
+      "extractionState": "stale",
       "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "查看完整文件"
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "View full file"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查看完整文件"
           }
         }
       }
@@ -22658,17 +22825,18 @@
       }
     },
     "查看本轮文件改动": {
+      "extractionState": "stale",
       "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "查看本轮文件改动"
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "View file changes in this turn"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查看本轮文件改动"
           }
         }
       }
@@ -23331,6 +23499,22 @@
         }
       }
     },
+    "正在同步任务进展": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Syncing task progress"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在同步任务进展"
+          }
+        }
+      }
+    },
     "正在同步执行状态…": {
       "extractionState": "manual",
       "localizations": {
@@ -23496,6 +23680,7 @@
       }
     },
     "正在播放另一首歌曲，请稍后重试。": {
+      "extractionState": "stale",
       "localizations": {
         "en": {
           "stringUnit": {
@@ -23891,17 +24076,18 @@
       }
     },
     "正在读取文件改动…": {
+      "extractionState": "stale",
       "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在读取文件改动…"
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Loading file changes…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在读取文件改动…"
           }
         }
       }
@@ -24143,17 +24329,18 @@
       }
     },
     "此文件没有可显示的文本差异。": {
+      "extractionState": "stale",
       "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "此文件没有可显示的文本差异。"
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "There are no text differences to display for this file."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此文件没有可显示的文本差异。"
           }
         }
       }
@@ -24475,17 +24662,18 @@
       }
     },
     "比较超时，按整段替换展示。": {
+      "extractionState": "stale",
       "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "比较超时，按整段替换展示。"
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Comparison timed out. The content is shown as a complete replacement."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "比较超时，按整段替换展示。"
           }
         }
       }
@@ -24570,17 +24758,18 @@
       }
     },
     "没有权限读取该次改动，请检查连接认证。": {
+      "extractionState": "stale",
       "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "没有权限读取该次改动，请检查连接认证。"
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "You do not have permission to read these changes. Check your connection authentication."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有权限读取该次改动，请检查连接认证。"
           }
         }
       }
@@ -27065,17 +27254,18 @@
       }
     },
     "自动换行": {
+      "extractionState": "stale",
       "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "自动换行"
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Wrap lines"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动换行"
           }
         }
       }
@@ -27599,17 +27789,18 @@
       }
     },
     "该次改动记录已不可用，Host 重启后可能无法查看历史改动。": {
+      "extractionState": "stale",
       "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "该次改动记录已不可用，Host 重启后可能无法查看历史改动。"
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "This change record is no longer available. Historical changes may be unavailable after the host restarts."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "该次改动记录已不可用，Host 重启后可能无法查看历史改动。"
           }
         }
       }
@@ -28259,6 +28450,7 @@
       }
     },
     "请选择具体歌曲进行播放。": {
+      "extractionState": "stale",
       "localizations": {
         "en": {
           "stringUnit": {
@@ -29268,17 +29460,18 @@
       }
     },
     "连接已断开，请重连后重试。": {
+      "extractionState": "stale",
       "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "连接已断开，请重连后重试。"
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Disconnected. Reconnect and try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接已断开，请重连后重试。"
           }
         }
       }
@@ -29477,17 +29670,18 @@
       }
     },
     "选择文件": {
+      "extractionState": "stale",
       "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "选择文件"
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Select a file"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择文件"
           }
         }
       }
@@ -30614,166 +30808,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "、"
-          }
-        }
-      }
-    },
-    "文件改动": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "File changes"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "文件改动"
-          }
-        }
-      }
-    },
-    "本轮改动": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Changes this turn"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "本轮改动"
-          }
-        }
-      }
-    },
-    "本轮文件": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Files this turn"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "本轮文件"
-          }
-        }
-      }
-    },
-    "删除行显示旧行号，其余显示新行号": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Deleted lines show the old number; others show the new number"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "删除行显示旧行号，其余显示新行号"
-          }
-        }
-      }
-    },
-    "Whaleness 任务进行中": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Whaleness task in progress"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Whaleness 任务进行中"
-          }
-        }
-      }
-    },
-    "正在同步任务进展": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Syncing task progress"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在同步任务进展"
-          }
-        }
-      }
-    },
-    "%lld 个文件": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld files"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld 个文件"
-          }
-        }
-      }
-    },
-    "已列出 %lld / 总计 %lld 个文件": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld of %lld files listed"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已列出 %lld / 总计 %lld 个文件"
-          }
-        }
-      }
-    },
-    "已列出 %lld / %lld 个文件": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld of %lld files"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已列出 %lld / %lld 个文件"
-          }
-        }
-      }
-    },
-    "%1$@ · 本轮改动": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@ · Changes this turn"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@ · 本轮改动"
           }
         }
       }

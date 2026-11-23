@@ -1,18 +1,16 @@
 ## 功能更新
 
-- 适配 DSH 0.2.2-rc.1 与新版 Mobile Gateway，改善会话同步、历史预览及图片读取的兼容性。
-- 双端支持引用消息回复，可从消息操作栏或长按菜单添加引用；输入框支持多条引用预览，发送后以嵌套气泡展示，并适配深色模式。
-- 输入框随焦点展开与收起，保留草稿摘要，增加平滑过渡动画；优化引用、附件、关闭按钮及工具栏的布局。
-- 升级定时任务管理，新增已开启、已暂停、已结束和全部四项筛选，支持从新会话创建任务、查看运行轨迹和关联会话、清理已结束任务。
-- 定时任务支持修改执行位置、关联工作区、重复规则、间隔、日期、时刻及时区；统一双端选择器、图标与弹层布局，并增加 Android 滚轮及筛选触感反馈。
-- 插件详情支持查询可用版本、执行更新及查看更新进度、日志和恢复结果。
-- 优化 Android 应用更新下载，优先获取匹配设备架构的安装包，支持取消下载，修复下载界面无法退出的问题。
+- 新增工作区文件改动审阅视图并补齐审阅图标与多语言文案，支持用户消息 Markdown 渲染与会话时间分隔条。
+- 支持划词引用回复、输入草稿按会话保留、相机拍照上传，以及通过 `dshmobile://` 链接按网关 ID 直达会话。
+- iOS 会话图片支持全屏画廊预览与左右滑动翻页，修复未匹配生成图兜底预览问题。
+- 改善流式 Markdown 显示稳定性、修复轨迹中模型耗时的计时起点，并持久化外观偏好设置。
+- 改善后台任务日志续记与待办保留，优化 Apple Music 卡片播放状态反馈。
 
 ## 必需插件
 
-- 必须安装 [dsh-plugin-mobile-gateway](https://github.com/Clarklevis1995/dsh-plugin-mobile-gateway) `v0.12.0` 或更高版本。
+- 必须安装 [dsh-plugin-mobile-gateway](https://github.com/Clarklevis1995/dsh-plugin-mobile-gateway) `v0.12.2` 或更高版本。
 - 安装或升级后，需要完整退出并重新启动 `dsh web`。
 
 ```bash
-dsh plugin --profile web add dsh-plugin-mobile-gateway@latest
+dsh plugin --profile web add dsh-plugin-mobile-gateway@0.12.2
 ```
