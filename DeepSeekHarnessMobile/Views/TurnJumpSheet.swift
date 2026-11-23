@@ -11,7 +11,7 @@ struct TurnJumpSheet: View {
         NavigationStack {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 12) {
-                    ForEach(outline) { entry in
+                    ForEach(outline.reversed()) { entry in
                         Button {
                             dismiss()
                             onJump(entry)

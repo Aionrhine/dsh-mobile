@@ -1845,6 +1845,62 @@ final class AppStore: ObservableObject {
         if gateway.state.isConnected, !assistantStreamState.hasBaseline(sessionId: id) { loadHistory(for: id) }
     }
 
+    /// 轮次跳转优先命中内存或本地 SQLite 缓存：若目标 [startSeq, nextTurnStartSeq) 已在本地缓存，
+    /// 直接通过 searchContext 开窗秒达，避免从最新消息一页页倒着全量拉取与排版。
+    /// 返回 true 表示目标已就绪（在主时间线或已切入缓存上下文）；返回 false 表示需继续向网关回溯。
+    func jumpToTurnInCacheIfAvailable(sessionID: String, startSeq: Int, nextTurnStartSeq: Int) async -> Bool {
+        guard selectedSessionId == sessionID else { return false }
+        let matchesRange: ([SessionEvent]) -> Int? = { list in
+            list.first(where: { $0.seq >= startSeq && $0.seq < nextTurnStartSeq })?.seq
+        }
+        if isShowingSearchContext {
+            if let hitSeq = matchesRange(searchContextRecords) {
+                conversationSearchTarget = "message-\(sessionID)-\(hitSeq)"
+                return true
+            }
+            if matchesRange(events[sessionID, default: []]) != nil {
+                clearSearchContext()
+                return true
+            }
+        } else if matchesRange(events[sessionID, default: []]) != nil {
+            return true
+        }
+
+        guard let chatHistoryCache else {
+            if isShowingSearchContext { clearSearchContext() }
+            return false
+        }
+        let generation = chatCacheSelectionGeneration
+        let beforeSeq: Int? = {
+            if nextTurnStartSeq == Int.max { return nil }
+            let span = nextTurnStartSeq - startSeq
+            return span <= 160 ? nextTurnStartSeq : startSeq + 160
+        }()
+        if let window = await chatHistoryCache.loadTyped(
+            gatewayID: gatewayLocalID,
+            sessionID: sessionID,
+            before: beforeSeq,
+            limit: 160
+        ),
+           generation == chatCacheSelectionGeneration,
+           selectedSessionId == sessionID {
+            let format = window.historyFormatVersion?.intValue
+            let formatCompatible = !chatCacheHelloReceived || format == chatCacheHelloFormat
+            if formatCompatible, let hitSeq = window.events.first(where: {
+                Int($0.seq) >= startSeq && Int($0.seq) < nextTurnStartSeq
+            }).map({ Int($0.seq) }) {
+                presentSearchContext(window)
+                conversationSearchTarget = "message-\(sessionID)-\(hitSeq)"
+                return true
+            }
+        }
+
+        if isShowingSearchContext, selectedSessionId == sessionID {
+            clearSearchContext()
+        }
+        return false
+    }
+
     private var scheduleActiveFilter: Bool?
     private var scheduleListRequestID: String?
     private var scheduleListOffset = 0

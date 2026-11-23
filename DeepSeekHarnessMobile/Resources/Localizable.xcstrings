@@ -24208,6 +24208,16 @@
         }
       }
     },
+    "正在跳转到第 %lld 轮…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jumping to turn %lld…"
+          }
+        }
+      }
+    },
     "正在转成文字": {
       "extractionState": "manual",
       "localizations": {

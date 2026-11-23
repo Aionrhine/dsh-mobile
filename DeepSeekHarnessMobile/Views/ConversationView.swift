@@ -591,6 +591,9 @@ struct ConversationView: View {
     @State private var showsContextUsage = false
     @State private var showTurnJumpSheet = false
     @State private var pendingTurnJump: TurnOutlineEntry?
+    @State private var resolvedTurnJumpViewportID: String?
+    @State private var turnJumpRequestToken = 0
+    @State private var isLocatingTurnJump = false
     @State private var showsSessionStats = false
     @State private var showsSessionStatsPopover = false
     @State private var tasksExpanded = false
@@ -685,6 +688,9 @@ struct ConversationView: View {
             showsSessionStatsPopover = false
             showsAgentPresetMenu = false
             imageGalleryRequest = nil
+            pendingTurnJump = nil
+            resolvedTurnJumpViewportID = nil
+            isLocatingTurnJump = false
         }
         .onDisappear {
             if store.conversationFileIsOpening { store.cancelWorkspaceFileDownload() }
@@ -697,11 +703,36 @@ struct ConversationView: View {
         }
         .sheet(isPresented: $showTurnJumpSheet) {
             TurnJumpSheet(outline: selectedTurnOutline) { entry in
+                resolvedTurnJumpViewportID = nil
                 pendingTurnJump = entry
-                // 目标轮次比已加载历史更早时先回溯一页；后续由行数变化联动继续加载。
-                if turnJumpViewportID == nil, let sessionID = store.selectedSessionId {
-                    store.loadHistory(for: sessionID, older: true)
+                turnJumpRequestToken &+= 1
+            }
+        }
+        .task(id: turnJumpRequestToken) {
+            await performTurnJump()
+        }
+        .overlay(alignment: .top) {
+            if isLocatingTurnJump, let jump = pendingTurnJump {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text(String(localized: "正在跳转到第 \(jump.turn) 轮…"))
+                        .appFont(.caption)
+                    Button {
+                        pendingTurnJump = nil
+                        resolvedTurnJumpViewportID = nil
+                        isLocatingTurnJump = false
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(String(localized: "取消"))
                 }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(.ultraThinMaterial, in: Capsule())
+                .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
+                .padding(.top, pageTopInset + 12)
             }
         }
         .sheet(isPresented: $showsSessionStats) {
@@ -761,7 +792,7 @@ struct ConversationView: View {
                 proxy: viewportProxy,
                 sessionID: sessionID,
                 cacheScope: store.gatewayLocalID,
-                searchTargetID: turnJumpViewportID ?? searchTargetViewportID,
+                searchTargetID: resolvedTurnJumpViewportID ?? searchTargetViewportID,
                 timeline: store.displayedConversationTimeline(for: sessionID ?? "__empty__"),
                 supplementalEntries: supplementalViewportEntries,
                 makeEntries: { items in
@@ -1536,15 +1567,12 @@ struct ConversationView: View {
             selectedPhotoItems = []
             composerIsFocused = false
         }
-        .onChangeCompat(of: store.conversationSearchTarget) { _, _ in
-            // 新的搜索跳转压过更早的轮次跳转目标，避免陈旧轮次 id 抢占定位。
-            pendingTurnJump = nil
-        }
-        .onChangeCompat(of: conversationItems.count) { _, _ in
-            // 轮次跳转目标还没进内存时，行数一变就继续向更早回溯，直到目标行出现。
-            guard let sessionID = store.selectedSessionId, pendingTurnJump != nil,
-                  turnJumpViewportID == nil else { return }
-            store.loadHistory(for: sessionID, older: true)
+        .onChangeCompat(of: store.conversationSearchTarget) { _, target in
+            // 外部触发新搜索跳转时压过旧轮次目标，避免陈旧轮次 id 抢占定位。
+            if target != nil, !isLocatingTurnJump {
+                pendingTurnJump = nil
+                resolvedTurnJumpViewportID = nil
+            }
         }
         // 附件选择器呈现在稳定祖先上：挂在 attachmentMenu 的 Menu 链上时，
         // 菜单收起与选择器呈现竞争会丢失回调（选中文件后点「打开」无响应）。
@@ -1587,6 +1615,8 @@ struct ConversationView: View {
             queueExpanded = false
             quotesExpanded = false
             pendingTurnJump = nil
+            resolvedTurnJumpViewportID = nil
+            isLocatingTurnJump = false
             quoteInbox.clear()
             selectionOffer.clear()
             restoreQueuedDraft()
@@ -2743,28 +2773,15 @@ struct ConversationView: View {
         store.turnOutlines[store.selectedSessionId ?? ""] ?? []
     }
 
-    /// 轮次跳转的目标行。turn/start 事件本身不生成会话行（投影里没有对应 kind），
-    /// 所以不能指望「某行的 id 恰好等于 turn/start 的 seq」：
-    /// ① 先按提问文本匹配用户行（两端去空白后双向前后缀比较）；
-    /// ② 再把会话行 id 里的 event seq（message-<sessionId>-<seq> / process-<sessionId>-<seq>）
-    ///    解析出来，取第一条落在 [本轮 start, 下一轮 start) 区间的行，即该轮第一行；
-    /// ③ 区间内还没有行 ⇒ 目标轮次比已加载历史更早：返回 nil（不下目标），
-    ///    由 onJump 与 conversationItems.count 的联动逐页 loadHistory 回溯，行出现后 viewport 自动定位。
-    private var turnJumpViewportID: String? {
-        guard let jump = pendingTurnJump, let sessionID = store.selectedSessionId else { return nil }
+    /// 轮次跳转目标解析：
+    /// ① 优先按 event seq 落在 [jump.seq, nextTurnStart) 精确匹配，避免后续轮次重复短句（如“继续”）提前误命中；
+    /// ② 仅当 allowTextFallback == true（已无更早历史或已到达目标 seq 边界）时，再回退到 prompt 文本匹配。
+    private func resolveTurnJumpViewportID(
+        for jump: TurnOutlineEntry,
+        sessionID: String,
+        allowTextFallback: Bool
+    ) -> String? {
         let entries = ConversationDisplayEntry.make(from: conversationItems)
-
-        if let prompt = jump.prompt?.trimmingCharacters(in: .whitespacesAndNewlines), !prompt.isEmpty {
-            if let match = entries.first(where: { entry in
-                guard case .message(let item) = entry.content, item.kind == .user else { return false }
-                let text = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                return !text.isEmpty
-                    && (text == prompt || text.hasPrefix(prompt) || prompt.hasPrefix(text))
-            }) {
-                return match.id
-            }
-        }
-
         let nextTurnStart = selectedTurnOutline
             .first(where: { $0.turn > jump.turn })?.seq ?? Int.max
         let messagePrefix = "message-\(sessionID)-"
@@ -2784,7 +2801,81 @@ struct ConversationView: View {
                 return entry.id
             }
         }
-        return nil
+        guard allowTextFallback,
+              let prompt = jump.prompt?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !prompt.isEmpty else { return nil }
+        return entries.first(where: { entry in
+            guard case .message(let item) = entry.content, item.kind == .user else { return false }
+            let text = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return !text.isEmpty && (text == prompt || text.hasPrefix(prompt) || prompt.hasPrefix(text))
+        })?.id
+    }
+
+    /// 轮次跳转执行器：
+    /// 1) 目标已在内存则立刻定位；
+    /// 2) 优先查本地 SQLite 缓存直接按 seq 开窗秒达；
+    /// 3) 缓存未命中时用稳定异步循环逐页向网关回溯（绕开非 @Published 的 conversationItems 断链与 admission 竞争）。
+    @MainActor
+    private func performTurnJump() async {
+        guard let jump = pendingTurnJump, let sessionID = store.selectedSessionId else {
+            isLocatingTurnJump = false
+            return
+        }
+        if let immediate = resolveTurnJumpViewportID(
+            for: jump,
+            sessionID: sessionID,
+            allowTextFallback: !store.selectedHistoryHasMore
+        ) {
+            resolvedTurnJumpViewportID = immediate
+            isLocatingTurnJump = false
+            return
+        }
+
+        let nextTurnStart = selectedTurnOutline
+            .first(where: { $0.turn > jump.turn })?.seq ?? Int.max
+
+        isLocatingTurnJump = true
+        defer { isLocatingTurnJump = false }
+
+        if await store.jumpToTurnInCacheIfAvailable(
+            sessionID: sessionID,
+            startSeq: jump.seq,
+            nextTurnStartSeq: nextTurnStart
+        ) {
+            guard !Task.isCancelled,
+                  store.selectedSessionId == sessionID,
+                  pendingTurnJump?.id == jump.id else { return }
+            if let hit = resolveTurnJumpViewportID(for: jump, sessionID: sessionID, allowTextFallback: true) {
+                resolvedTurnJumpViewportID = hit
+            }
+            return
+        }
+
+        var lastRequestedCursor: Int?
+        while !Task.isCancelled,
+              store.selectedSessionId == sessionID,
+              pendingTurnJump?.id == jump.id {
+            if let hit = resolveTurnJumpViewportID(for: jump, sessionID: sessionID, allowTextFallback: false) {
+                resolvedTurnJumpViewportID = hit
+                return
+            }
+            let earliest = store.galleryHistoryCursor(sessionID: sessionID)
+            if !store.selectedHistoryHasMore || (earliest != nil && earliest! <= jump.seq) {
+                if let fallback = resolveTurnJumpViewportID(for: jump, sessionID: sessionID, allowTextFallback: true) {
+                    resolvedTurnJumpViewportID = fallback
+                }
+                return
+            }
+            if !store.galleryHistoryIsBusy(sessionID: sessionID) {
+                if lastRequestedCursor != nil, store.historyLoadErrors[sessionID] != nil { return }
+                guard let cursor = earliest, cursor != lastRequestedCursor else { return }
+                if store.loadGalleryHistory(sessionID: sessionID) {
+                    lastRequestedCursor = cursor
+                }
+            }
+            do { try await Task.sleep(for: .milliseconds(150)) }
+            catch { return }
+        }
     }
 
     private var searchTargetViewportID: String? {
