@@ -605,6 +605,7 @@ struct ConversationView: View {
     @State private var composerHeight: CGFloat = 168
     @State private var viewportScrollToBottomToken = 0
     @State private var viewportProxy = ConversationViewportProxy()
+    @State private var imageGalleryRequest: ConversationImageGalleryRequest?
     @State private var expandedConversationNodeIDsBySession: [String: Set<String>] = [:]
     @State private var isPreparingHistoryPresentation = false
     @State private var historyPresentationSessionID: String?
@@ -683,12 +684,16 @@ struct ConversationView: View {
         .onChangeCompat(of: store.selectedSessionId) { _, _ in
             showsSessionStatsPopover = false
             showsAgentPresetMenu = false
+            imageGalleryRequest = nil
         }
         .onDisappear {
             if store.conversationFileIsOpening { store.cancelWorkspaceFileDownload() }
         }
         .sheet(item: conversationPreviewBinding) { request in
             WorkspaceFilePreviewLoadingSheet(store: store, request: request)
+        }
+        .fullScreenCover(item: $imageGalleryRequest) { request in
+            SessionConversationImageGallery(store: store, request: request)
         }
         .sheet(isPresented: $showTurnJumpSheet) {
             TurnJumpSheet(outline: selectedTurnOutline) { entry in
@@ -796,6 +801,9 @@ struct ConversationView: View {
                 },
                 onHistoryPresented: { sessionID, consumerID, stamp in
                     store.acknowledgeHistoryPresentation(sessionID: sessionID, consumerID: consumerID, stamp: stamp)
+                },
+                onPreviewImage: { id in
+                    if let sessionID { openImageGallery(id: id, sessionID: sessionID) }
                 }
             )
             // Session 是 UIKit viewport 的身份边界。切换时直接销毁旧
@@ -2801,6 +2809,26 @@ struct ConversationView: View {
             onOpenFile: conversationFileOpener(),
             onOpenUploadedFile: uploadedFileOpener()
         )
+        .environment(\.workspaceMarkdownImageContext, store.markdownImageContext(sessionID: sessionID))
+        .environment(\.conversationImagePreviewAction, { id in openImageGallery(id: id, sessionID: sessionID) })
+        .environment(\.conversationMarkdownImagePreviewAction, { asset in
+            let id = URL(string: asset.id).flatMap { store.galleryImageReference(url: $0, sessionID: sessionID)?.id } ?? asset.id
+            openImageGallery(id: id, sessionID: sessionID, asset: asset)
+        })
+    }
+
+    private func openImageGallery(id: String, sessionID: String, asset: MarkdownImageAsset? = nil) {
+        guard sessionID == store.selectedSessionId else { return }
+        viewportProxy.prepareForOverlayPresentation()
+        composerIsFocused = false
+        imageGalleryRequest = ConversationImageGalleryRequest(
+            sessionID: sessionID,
+            initialID: id,
+            initialAsset: asset,
+            seedItems: store.displayedConversationTimeline(for: sessionID).currentSnapshot.items.filter {
+                $0.images.contains { $0.id == id }
+            }
+        )
     }
 
     private func makeConversationViewportEntries(from items: [ConversationItem]) -> [ConversationViewportEntry] {
@@ -2824,15 +2852,7 @@ struct ConversationView: View {
                 return [ConversationViewportEntry(
                     id: entry.id,
                     revision: revision,
-                    content: AnyView(ConversationRow(
-                        item: item,
-                        showsCopyButton: entry.showsCopyButton,
-                        imageData: { store.imageData(for: $0, sessionID: sessionID) },
-                        imageError: { store.imageLoadError(for: $0, sessionID: sessionID) },
-                        onRetryImage: { store.retryImageAttachment($0, sessionID: sessionID) },
-                        onOpenFile: conversationFileOpener(),
-                        onOpenUploadedFile: uploadedFileOpener()
-                    )),
+                    content: AnyView(messageRow(item, showsCopyButton: entry.showsCopyButton, sessionID: sessionID)),
                     // Completed responses are immutable for this revision.
                     // The viewport measures their SwiftUI root directly before
                     // caching, including fenced-code horizontal scroll views.
@@ -5241,6 +5261,7 @@ private struct AttachmentImageGrid: View {
     var imageError: (String) -> String? = { _ in nil }
     var onRetry: (GatewayImageAttachment) -> Void = { _ in }
     @State private var preview: GatewayImageAttachment?
+    @Environment(\.conversationImagePreviewAction) private var previewConversationImage
 
     var body: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6, alignment: .leading), count: attachments.count == 1 ? 1 : 2), spacing: 6) {
@@ -5252,7 +5273,10 @@ private struct AttachmentImageGrid: View {
                         .frame(maxWidth: min(attachments.count == 1 ? 320 : 180, 320 * ratio))
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         .contentShape(Rectangle())
-                        .onTapGesture { preview = attachment }
+                        .onTapGesture {
+                            if let previewConversationImage { previewConversationImage(attachment.id) }
+                            else { preview = attachment }
+                        }
                         .overlay {
                             if imageData(attachment.id) == nil && imageError(attachment.id) == nil {
                                 ProgressView().controlSize(.small)
@@ -5379,7 +5403,7 @@ private struct ZoomableAttachmentImage: View {
     }
 }
 
-private struct AttachmentGallery: View {
+struct AttachmentGallery: View {
     let attachments: [GatewayImageAttachment]
     let initialID: String
     let imageData: (String) -> Data?
@@ -5389,6 +5413,19 @@ private struct AttachmentGallery: View {
     @State private var selectedID = ""
     @State private var saving = false
     @State private var saveMessage: String?
+    var exportDocument: MarkdownImageAsset? = nil
+    var onVisibleImageChanged: (String) -> Void = { _ in }
+    var showsImageCount = false
+    var historyLoading = false
+    var historyError = false
+    var onRetryHistory: () -> Void = {}
+    @State private var exporting = false
+
+    private var selectedIndex: Int { attachments.firstIndex { $0.id == selectedID } ?? 0 }
+    private var visibleIDs: Set<String> {
+        guard !attachments.isEmpty else { return [] }
+        return Set(attachments[max(0, selectedIndex - 1)..<min(attachments.count, selectedIndex + 2)].map(\.id))
+    }
 
     private func save(_ attachment: GatewayImageAttachment) {
         guard !saving, let data = imageData(attachment.id) else { return }
@@ -5409,30 +5446,81 @@ private struct AttachmentGallery: View {
             Color.black.ignoresSafeArea()
             TabView(selection: $selectedID) {
                 ForEach(attachments) { attachment in
-                    VStack(spacing: 16) {
-                        ZoomableAttachmentImage(data: imageData(attachment.id), attachment: attachment,
+                    let data = visibleIDs.contains(attachment.id) ? imageData(attachment.id) : nil
+                    ZStack {
+                        ZoomableAttachmentImage(data: data, attachment: attachment,
                                                 isActive: selectedID == attachment.id)
                             .contextMenu {
                                 Button { save(attachment) } label: {
                                     Label("保存到相册", systemImage: "square.and.arrow.down")
                                 }
-                                .disabled(saving || imageData(attachment.id) == nil)
+                                .disabled(saving || data == nil)
                             }
                         if let error = imageError(attachment.id) {
-                            Text(error).foregroundStyle(.white)
+                            VStack(spacing: 12) {
+                                Text(error).foregroundStyle(.white)
+                                Button("重试") { onRetry(attachment) }
+                            }.padding(20)
+                        } else if data == nil, visibleIDs.contains(attachment.id) {
+                            ProgressView().tint(.white)
                         }
-                        if imageData(attachment.id) == nil { Button("重试") { onRetry(attachment) } }
-                    }
-                    .padding(16).tag(attachment.id)
+                    }.tag(attachment.id)
                 }
             }
-            .tabViewStyle(.page(indexDisplayMode: attachments.count > 1 ? .always : .never))
-            Button { dismiss() } label: {
-                Image(systemName: "xmark.circle.fill").font(.system(size: 30)).foregroundStyle(.white)
+            .tabViewStyle(.page(indexDisplayMode: !showsImageCount && attachments.count > 1 ? .always : .never))
+            .ignoresSafeArea(.container, edges: .all)
+            .accessibilityIdentifier("image-gallery")
+            HStack(spacing: 12) {
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark").font(.system(size: 16, weight: .semibold))
+                        .frame(width: 28, height: 28)
+                }
+                .glassCircleButton(onDarkBackground: true)
+                .accessibilityLabel("关闭")
+                .accessibilityIdentifier("image-gallery-close")
+                Spacer(minLength: 0)
+                if showsImageCount {
+                    HStack(spacing: 8) {
+                        Text(verbatim: "\(selectedIndex + 1) / \(attachments.count)")
+                            .monospacedDigit().accessibilityIdentifier("conversation-gallery-count")
+                        if historyLoading { ProgressView().tint(.white).controlSize(.small) }
+                        else if historyError { Button("重试", action: onRetryHistory) }
+                    }.appFont(.subheadline)
+                }
+                Spacer(minLength: 0)
+                Button {
+                    if let attachment = attachments.first(where: { $0.id == selectedID }) { save(attachment) }
+                } label: {
+                    Group {
+                        if saving { ProgressView().tint(.white) }
+                        else { Image(systemName: "arrow.down").font(.system(size: 18, weight: .semibold)) }
+                    }.frame(width: 28, height: 28)
+                }
+                .glassCircleButton(onDarkBackground: true)
+                .disabled(saving || imageData(selectedID) == nil)
+                .accessibilityLabel(Text(String(localized: "markdown.image.download", defaultValue: "下载图片")))
+                .accessibilityIdentifier("markdown-image-download")
+                .contextMenu {
+                    if exportDocument != nil {
+                        Button { exporting = true } label: { Label(String(localized: "markdown.image.save-file", defaultValue: "存储到文件"), systemImage: "folder") }
+                    }
+                }
             }
-            .accessibilityLabel("关闭").padding(20)
+            .foregroundStyle(.white).padding(.horizontal, 16).padding(.vertical, 10)
         }
-        .onAppear { selectedID = initialID }
+        .onAppear {
+            selectedID = attachments.contains(where: { $0.id == initialID }) ? initialID : attachments.first?.id ?? ""
+            onVisibleImageChanged(selectedID)
+        }
+        .onChangeCompat(of: selectedID) { _, id in onVisibleImageChanged(id) }
+        .onChangeCompat(of: attachments.map(\.id)) { _, ids in
+            if !ids.contains(selectedID) { selectedID = ids.first ?? "" }
+            onVisibleImageChanged(selectedID)
+        }
+        .fileExporter(isPresented: $exporting, document: exportDocument,
+                      contentType: exportDocument?.contentType ?? .image, defaultFilename: exportDocument?.name) { result in
+            if case .failure(let error) = result { saveMessage = error.localizedDescription }
+        }
         .alert("保存图片", isPresented: Binding(get: { saveMessage != nil }, set: { if !$0 { saveMessage = nil } })) {
             Button("好", role: .cancel) { saveMessage = nil }
         } message: {
@@ -5753,6 +5841,7 @@ private enum ParsedMarkdownCache {
 
 struct MarkdownContent: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.workspaceMarkdownImageContext) private var workspaceMarkdownImageContext
     @AppStorage(AppFontScale.key) private var fontScale = 1.0
     @AppStorage(AppFontScale.followsSystemKey) private var fontFollowsSystem = false
     let text: String
@@ -5782,8 +5871,8 @@ struct MarkdownContent: View {
 
     private var renderedMarkdown: some View {
         Markdown(PreparedMarkdownCache.document(for: text, filePaths: knownFiles.map(\.path)))
-            .markdownImageProvider(MathMarkdownImageProvider(fontSize: mathFontSize))
-            .markdownInlineImageProvider(MathMarkdownInlineImageProvider(fontSize: mathFontSize, dark: colorScheme == .dark))
+            .markdownImageProvider(MathMarkdownImageProvider(fontSize: mathFontSize, workspace: workspaceMarkdownImageContext))
+            .markdownInlineImageProvider(MathMarkdownInlineImageProvider(fontSize: mathFontSize, dark: colorScheme == .dark, workspace: workspaceMarkdownImageContext))
             .id("\(mathFontSize)-\(colorScheme)")
             .environment(\.openURL, OpenURLAction { url in
                 guard let onOpenFile else { return .systemAction }
@@ -6937,5 +7026,120 @@ private struct PendingFileCard: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(label))
+    }
+}
+
+private struct ConversationImagePreviewActionKey: EnvironmentKey {
+    static let defaultValue: ((String) -> Void)? = nil
+}
+
+private struct ConversationMarkdownImagePreviewActionKey: EnvironmentKey {
+    static let defaultValue: ((MarkdownImageAsset) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    var conversationMarkdownImagePreviewAction: ((MarkdownImageAsset) -> Void)? {
+        get { self[ConversationMarkdownImagePreviewActionKey.self] }
+        set { self[ConversationMarkdownImagePreviewActionKey.self] = newValue }
+    }
+    var conversationImagePreviewAction: ((String) -> Void)? {
+        get { self[ConversationImagePreviewActionKey.self] }
+        set { self[ConversationImagePreviewActionKey.self] = newValue }
+    }
+}
+
+struct ConversationImageGalleryRequest: Identifiable {
+    let sessionID: String
+    let initialID: String
+    var initialAsset: MarkdownImageAsset? = nil
+    var seedItems: [ConversationItem] = []
+    var id: String { "\(sessionID):\(initialID)" }
+}
+
+struct SessionConversationImageGallery: View {
+    private struct HistoryTaskID: Hashable {
+        let retry: Int
+        let hasMore: Bool
+    }
+    @ObservedObject var store: AppStore
+    let request: ConversationImageGalleryRequest
+    @StateObject private var gallery: ConversationImageGalleryModel
+    @State private var retryToken = 0
+    @State private var discovering = false
+    @State private var visibleImageID: String
+    @State private var markdownAssets: [String: MarkdownImageAsset]
+    @State private var markdownErrors: [String: String] = [:]
+    @State private var imageRetry = 0
+
+    init(store: AppStore, request: ConversationImageGalleryRequest) {
+        self.store = store
+        self.request = request
+        _visibleImageID = State(initialValue: request.initialID)
+        _markdownAssets = State(initialValue: request.initialAsset.map { [request.initialID: $0] } ?? [:])
+        _gallery = StateObject(wrappedValue: ConversationImageGalleryModel(
+            timeline: store.displayedConversationTimeline(for: request.sessionID), seedItems: request.seedItems,
+            reference: { store.galleryImageReference(url: $0, sessionID: request.sessionID) }))
+    }
+
+    var body: some View {
+        AttachmentGallery(attachments: gallery.attachments.map { attachment in
+            guard var loaded = markdownAssets[attachment.id]?.attachment else { return attachment }
+            loaded.attachmentId = attachment.id
+            return loaded
+        }, initialID: request.initialID,
+            imageData: { markdownAssets[$0]?.data ?? store.imageData(for: $0, sessionID: request.sessionID) },
+            imageError: { markdownErrors[$0] ?? store.imageLoadError(for: $0, sessionID: request.sessionID) },
+            onRetry: { attachment in
+                if gallery.entries.contains(where: { $0.attachment.id == attachment.id && $0.sourceURL != nil }) { imageRetry += 1 }
+                else { store.retryImageAttachment(attachment, sessionID: request.sessionID) }
+            },
+            exportDocument: markdownAssets[visibleImageID],
+            onVisibleImageChanged: { visibleImageID = $0 },
+            showsImageCount: true, historyLoading: discovering, historyError: store.historyLoadErrors[request.sessionID] != nil,
+            onRetryHistory: { retryToken += 1 })
+            .onAppear { gallery.start() }
+            .onDisappear { gallery.stop() }
+            .task(id: "\(gallery.neighbors(of: visibleImageID).map(\.id)):\(imageRetry)") {
+                await loadVisibleImages()
+            }
+            .task(id: HistoryTaskID(retry: retryToken, hasMore: store.selectedHistoryHasMore)) {
+                await discoverHistory()
+            }
+    }
+
+    @MainActor private func loadVisibleImages() async {
+        let neighbors = gallery.neighbors(of: visibleImageID)
+        let ids = Set(neighbors.map(\.id))
+        markdownAssets = markdownAssets.filter { ids.contains($0.key) }
+        let sources = gallery.entries.filter { ids.contains($0.attachment.id) && $0.sourceURL != nil }
+        let sourceIDs = Set(sources.map { $0.attachment.id })
+        store.loadGalleryImages(neighbors.filter { !sourceIDs.contains($0.id) }, sessionID: request.sessionID)
+        for entry in sources where markdownAssets[entry.attachment.id] == nil {
+            guard let url = entry.sourceURL, !Task.isCancelled else { return }
+            markdownErrors[entry.attachment.id] = nil
+            do {
+                let loaded = try await MarkdownImageRenderCache.shared.load(url: url,
+                    context: store.markdownImageContext(sessionID: request.sessionID))
+                try Task.checkCancellation()
+                markdownAssets[entry.attachment.id] = loaded.asset
+            } catch is CancellationError { return }
+            catch { markdownErrors[entry.attachment.id] = error.localizedDescription }
+        }
+    }
+
+    /// 顺序复用历史加载和呈现确认机制；离开相册后任务自动取消。
+    @MainActor private func discoverHistory() async {
+        discovering = true
+        defer { discovering = false }
+        var lastRequestedCursor: Int?
+        while !Task.isCancelled, store.selectedSessionId == request.sessionID, store.selectedHistoryHasMore {
+            if !store.galleryHistoryIsBusy(sessionID: request.sessionID) {
+                if lastRequestedCursor != nil, store.historyLoadErrors[request.sessionID] != nil { return }
+                guard let cursor = store.galleryHistoryCursor(sessionID: request.sessionID), cursor != lastRequestedCursor else { return }
+                if store.loadGalleryHistory(sessionID: request.sessionID) { lastRequestedCursor = cursor }
+            }
+            do { try await Task.sleep(for: .milliseconds(200)) }
+            catch { return }
+        }
     }
 }

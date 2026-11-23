@@ -515,6 +515,8 @@ final class AppStore: ObservableObject {
     /// AppStore. Token deltas go straight to a session-scoped timeline so they
     /// cannot invalidate the header, pager, composer, or trajectory page.
     private(set) var renderedConversationItems: [String: [ConversationItem]] = [:]
+    private var markdownImageReferences: [String: [String: GatewayImageAttachment]] = [:]
+    private let workspaceMarkdownImages = WorkspaceMarkdownImageLoader()
     @Published private(set) var conversationContentSessionIds: Set<String> = []
     @Published private(set) var conversationPreparingSessionIDs: Set<String> = []
     @Published private(set) var historyLoadErrors: [String: HistoryLoadError] = [:]
@@ -1054,6 +1056,7 @@ final class AppStore: ObservableObject {
             }
         }
         fileUploads.changed = { [weak self] in self?.objectWillChange.send() }
+        workspaceMarkdownImages.send = { [weak self] payload in self?.gateway.sendRequestPayload(payload) }
         fileUploads.send = { [weak self] payload in self?.gateway.sendRequestPayload(payload, decorate: false) }
         fileUploads.reportError = { [weak self] message in self?.lastError = message }
         self.voiceInput.bind(gateway)
@@ -1075,6 +1078,7 @@ final class AppStore: ObservableObject {
             self?.handleConnectionFailure(detail)
         }
         gateway.onConnectionInvalidated = { [weak self] in
+            self?.workspaceMarkdownImages.cancelAll()
             self?.pauseSessionControlRequests()
             if let self, self.conversationFileIsOpening, self.workspaceFilePreviewNeedsConnection {
                 self.failWorkspaceFilePreview(String(localized: "连接已中断，请恢复网络后重试。"))
@@ -1168,6 +1172,25 @@ final class AppStore: ObservableObject {
     private func imageCacheKey(_ attachmentID: String, sessionID: String) -> String {
         "\(gatewayLocalID):\(sessionID.count):\(sessionID):\(attachmentID)"
     }
+    func markdownImageContext(sessionID: String) -> WorkspaceMarkdownImageContext {
+        let references = markdownImageReferences[sessionID, default: [:]]
+        return WorkspaceMarkdownImageContext(id: "\(gatewayLocalID):\(sessionID)", dimensions: { path in
+            references[path].map { GatewayImageDimensions(width: $0.width, height: $0.height) }
+        }) { [weak self] path in
+            guard let self else { throw CancellationError() }
+            // 生图附件已通过原有缓存加载时直接复用字节，避免再次走工作区文件下载。
+            if let reference = references[path],
+               let data = await self.imageAttachmentCache.loadData(for: self.imageCacheKey(reference.id, sessionID: sessionID)) {
+                return data
+            }
+            guard self.gateway.state.isConnected, self.supportsFileDownloads else {
+                throw URLError(.notConnectedToInternet)
+            }
+            return try await self.workspaceMarkdownImages.load(sessionID: sessionID,
+                workspaceSessionID: self.teamStore.workspaceSessionId(sessionId: sessionID),
+                path: path, supportsResolve: self.supportsFileReferences)
+        }
+    }
     func imageData(for attachmentId: String, sessionID: String? = nil) -> Data? {
         guard let sessionID = sessionID ?? selectedSessionId else { return nil }
         return imageAttachmentCache.data(for: imageCacheKey(attachmentId, sessionID: sessionID))
@@ -1178,6 +1201,32 @@ final class AppStore: ObservableObject {
     func retryImageAttachment(_ attachment: GatewayImageAttachment, sessionID: String) {
         imageAttachmentErrors.removeValue(forKey: imageCacheKey(attachment.id, sessionID: sessionID))
         enqueueImageAttachments([attachment], sessionId: sessionID)
+    }
+
+    func galleryImageReference(url: URL, sessionID: String) -> GatewayImageAttachment? {
+        guard let path = WorkspaceMarkdownImageContext.path(for: url) else { return nil }
+        return markdownImageReferences[sessionID]?[path]
+    }
+
+    func loadGalleryImages(_ attachments: [GatewayImageAttachment], sessionID: String) {
+        guard selectedSessionId == sessionID else { return }
+        enqueueImageAttachments(attachments, sessionId: sessionID)
+    }
+
+    func galleryHistoryCursor(sessionID: String) -> Int? {
+        if isShowingSearchContext, selectedSessionId == sessionID { return searchContextRecords.first?.seq }
+        return events[sessionID]?.first?.seq
+    }
+
+    func galleryHistoryIsBusy(sessionID: String) -> Bool {
+        historyLoadingSessionIds.contains(sessionID) || historyPresentationAdmission.isPending(sessionID: sessionID)
+            || pendingConversationHistory[sessionID] != nil || activeConversationHistory[sessionID] != nil
+            || offlineHistoryLoadingOlderSessionIds[sessionID] != nil || searchContextLoadingOlder
+    }
+
+    func loadGalleryHistory(sessionID: String) -> Bool {
+        guard let consumerID = historyPresentationAdmission.activeConsumerID(sessionID: sessionID) else { return false }
+        return requestOlderHistoryPresentation(sessionID: sessionID, consumerID: consumerID, batchesReadingWindow: false)
     }
     func conversationTimeline(for sessionId: String) -> ConversationTimeline {
         if let timeline = conversationTimelines[sessionId] { return timeline }
@@ -1218,14 +1267,15 @@ final class AppStore: ObservableObject {
     }
 
     @discardableResult
-    func requestOlderHistoryPresentation(sessionID: String, consumerID: UUID, readingWindow: CGSize? = nil) -> Bool {
+    func requestOlderHistoryPresentation(sessionID: String, consumerID: UUID, readingWindow: CGSize? = nil,
+                                         batchesReadingWindow: Bool = true) -> Bool {
         guard sessionID == selectedSessionId,
               let operationID = historyPresentationAdmission.begin(sessionID: sessionID, consumerID: consumerID,
                 domainLoading: kmpHistoryStore.isLoading(sessionID: sessionID), hasMore: selectedHistoryHasMore,
                 producerBusy: pendingConversationHistory[sessionID] != nil || activeConversationHistory[sessionID] != nil
                     || offlineHistoryLoadingOlderSessionIds[sessionID] != nil || searchContextLoadingOlder,
                 minimumHistoryEventSequence: (kmpHistoryStore.lastEventSequence ?? 0) + 1, activate: false) else { return false }
-        if !isShowingSearchContext, selectedSession?.isRunning != true,
+        if batchesReadingWindow, !isShowingSearchContext, selectedSession?.isRunning != true,
            gateway.state.isConnected || kmpHistoryStore.canPrependCachedPage(sessionID: sessionID),
            let before = events[sessionID]?.first?.seq {
             let size = readingWindow ?? CGSize(width: 340, height: 560)
@@ -1433,6 +1483,7 @@ final class AppStore: ObservableObject {
         gateway.disconnect()
         pendingKMPEventDeliveries.removeAll()
         attachmentLoaders.removeAll()
+        workspaceMarkdownImages.cancelAll()
         imageLoadingGeneration = UUID()
         imageAttachmentRequests.removeAll()
         imageAttachmentTokens.removeAll()
@@ -2585,6 +2636,7 @@ final class AppStore: ObservableObject {
             trajectoryHistoryRevisions[id] = nil
             activeTrajectorySessionIDs.remove(id)
             renderedConversationItems[id] = nil
+            markdownImageReferences[id] = nil
             events[id] = nil
             conversationTimelines[id] = nil
             conversationProjectionDrivers.removeValue(forKey: id)?.stop()
@@ -3515,6 +3567,7 @@ final class AppStore: ObservableObject {
         }
         if Self.workspaceFileFrameKinds.contains(frame.kind) ||
             (frame.kind == "error" && frame.requestType?.hasPrefix("file-") == true) {
+            if workspaceMarkdownImages.accept(frame) { return }
             if let data = try? JSONEncoder().encode(frame) {
                 let transition = kmpWorkspaceFileStore.acceptFrame(
                     json: String(decoding: data, as: UTF8.self)
@@ -3621,6 +3674,7 @@ final class AppStore: ObservableObject {
             if workspaceFilePreviewNeedsConnection { workspaceFileOperationID = UUID() }
             applyWorkspaceFileTransition(kmpWorkspaceFileStore.reset(sessionId: selectedSessionId))
             attachmentLoaders.removeAll()
+            workspaceMarkdownImages.cancelAll()
             imageLoadingGeneration = UUID()
             imageAttachmentRequests.removeAll()
             imageAttachmentTokens.removeAll()
@@ -4571,7 +4625,15 @@ final class AppStore: ObservableObject {
         applyEvent(record)
     }
 
+    private func rememberMarkdownImageReferences(in records: [SessionEvent], sessionId: String) {
+        let references = markdownGeneratedImageReferences(in: records)
+        if !references.isEmpty {
+            markdownImageReferences[sessionId, default: [:]].merge(references) { _, latest in latest }
+        }
+    }
+
     private func enqueueImageAttachments(in records: [SessionEvent], sessionId: String) {
+        rememberMarkdownImageReferences(in: records, sessionId: sessionId)
         enqueueImageAttachments(records.flatMap { $0.event.images ?? [] }, sessionId: sessionId)
     }
 

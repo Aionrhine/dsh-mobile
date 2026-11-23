@@ -4859,6 +4859,40 @@
         }
       }
     },
+    "markdown.image.download": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Download image"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下载图片"
+          }
+        }
+      }
+    },
+    "markdown.image.save-file": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save to Files"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "存储到文件"
+          }
+        }
+      }
+    },
     "metric.steps.value": {
       "extractionState": "manual",
       "localizations": {
