@@ -5995,9 +5995,14 @@ struct MarkdownContent: View {
     /// ```dsh-ui fences become live GenUI blocks; every other fence, and any
     /// fence whose body is not a JSON object, keeps the plain code block.
     private var codeBlockOverride: MarkdownCodeBlockOverride {
-        MarkdownCodeBlockOverride { language, content in
+        let effectiveFontScale = AppFontScale.effective(fontScale, followsSystem: fontFollowsSystem)
+        return MarkdownCodeBlockOverride { language, content in
             guard GenuiArtifact.matchesFence(language),
-                  let plan = GenuiArtifact.plan(fromFence: content, isDark: colorScheme == .dark)
+                  let plan = GenuiArtifact.plan(
+                    fromFence: content,
+                    isDark: colorScheme == .dark,
+                    fontScale: effectiveFontScale
+                  )
             else { return nil }
             return AnyView(GenuiBlockContainer(plan: plan, source: content))
         }

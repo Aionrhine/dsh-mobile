@@ -14,39 +14,59 @@
 <div id="root"></div>
 <script src="standalone-runtime.js"></script>
 <script>
+  var currentUnmount = null;
+  var loadedAssets = Object.create(null);
+  var pendingAssets = Object.create(null);
+  var lastReportedHeight = 0;
+
   function reportHeight() {
     var root = document.getElementById('root');
-    var height = Math.max(
-      document.documentElement.getBoundingClientRect().height,
-      document.body ? document.body.scrollHeight : 0,
-      root ? root.scrollHeight : 0
-    );
+    if (!root) { return; }
+    // Measure #root instead of documentElement/body so collapsing cards can
+    // shrink back down instead of staying pinned to the previous WebView height.
+    var rectHeight = root.getBoundingClientRect().height || 0;
+    var scrollHeight = root.scrollHeight || 0;
+    var height = Math.ceil(Math.max(rectHeight, scrollHeight));
+    if (!height || height === lastReportedHeight) { return; }
+    lastReportedHeight = height;
     var handler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.genuiHeight;
-    if (handler) { handler.postMessage(Math.ceil(height)); }
+    if (handler) { handler.postMessage(height); }
+  }
+
+  function applyFontScale(artifact) {
+    var raw = artifact && artifact.presentation && artifact.presentation.fontScale;
+    var scale = (typeof raw === 'number' && isFinite(raw)) ? Math.min(2.0, Math.max(0.7, raw)) : 1.0;
+    if (document.body) {
+      document.body.style.fontSize = (16 * scale).toFixed(2) + 'px';
+    }
   }
 
   // Engine bundles register themselves on window.__GenuiAssets__, and the
   // standalone runtime only reads engines that are already there, so they have
-  // to be injected before the mount call.
+  // to be injected before the mount call. Deduplicate across in-place remounts.
   window.__loadGenuiAssets = function (names) {
-    return new Promise(function (resolve) {
-      var queue = (names || []).filter(function (name) { return !!name; });
-      if (queue.length === 0) { resolve(); return; }
-
-      var remaining = queue.length;
-      function settle() {
-        remaining -= 1;
-        if (remaining === 0) { resolve(); }
-      }
-      queue.forEach(function (name) {
+    var queue = (names || []).filter(function (name) { return !!name && !loadedAssets[name]; });
+    if (queue.length === 0) { return Promise.resolve(); }
+    return Promise.all(queue.map(function (name) {
+      if (pendingAssets[name]) { return pendingAssets[name]; }
+      var promise = new Promise(function (resolve) {
         var script = document.createElement('script');
         script.src = name + '.js';
         script.async = false;
-        script.onload = settle;
-        script.onerror = settle;
+        script.onload = function () {
+          loadedAssets[name] = true;
+          delete pendingAssets[name];
+          resolve();
+        };
+        script.onerror = function () {
+          delete pendingAssets[name];
+          resolve();
+        };
         document.head.appendChild(script);
       });
-    });
+      pendingAssets[name] = promise;
+      return promise;
+    })).then(function () {});
   };
 
   // A silent blank box is worse than the raw fence, so every failure path
@@ -64,8 +84,17 @@
       postFailure('standalone runtime missing');
       return 'standalone runtime missing';
     }
+    var root = document.getElementById('root');
+    if (typeof currentUnmount === 'function') {
+      try { currentUnmount(); } catch (_) {}
+      currentUnmount = null;
+    }
+    if (root) { root.innerHTML = ''; }
+    lastReportedHeight = 0;
+    applyFontScale(artifact);
     try {
-      window.__GenuiStandalone__.mount(document.getElementById('root'), artifact);
+      var cleanup = window.__GenuiStandalone__.mount(root, artifact);
+      if (typeof cleanup === 'function') { currentUnmount = cleanup; }
     } catch (error) {
       var message = String(error && error.message ? error.message : error);
       postFailure(message);

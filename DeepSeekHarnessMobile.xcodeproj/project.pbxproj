@@ -129,6 +129,7 @@
 		CF228000000000000000001 /* MarkdownMath.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF228000000000000000002 /* MarkdownMath.swift */; };
 		CF228000000000000000003 /* SwiftMath in Frameworks */ = {isa = PBXBuildFile; productRef = CF228000000000000000004 /* SwiftMath */; };
 		CF228000000000000000007 /* MarkdownMathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF228000000000000000008 /* MarkdownMathTests.swift */; };
+		AB0180000000000000000011 /* GenuiBlockViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0180000000000000000012 /* GenuiBlockViewTests.swift */; };
 		CF229000000000000000001 /* CodeSyntaxHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF229000000000000000002 /* CodeSyntaxHighlighter.swift */; };
 		CF229000000000000000003 /* CodeSyntaxHighlighterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF229000000000000000004 /* CodeSyntaxHighlighterTests.swift */; };
 		CF230000000000000000001 /* GatewayRtcLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF230000000000000000002 /* GatewayRtcLink.swift */; };
@@ -279,6 +280,7 @@
 		FEABDA4B6DAF199B320B1BA1 /* MultiGatewayTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MultiGatewayTests.swift; sourceTree = "<group>"; };
 		CF228000000000000000002 /* MarkdownMath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownMath.swift; sourceTree = "<group>"; };
 		CF228000000000000000008 /* MarkdownMathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownMathTests.swift; sourceTree = "<group>"; };
+		AB0180000000000000000012 /* GenuiBlockViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenuiBlockViewTests.swift; sourceTree = "<group>"; };
 		CF229000000000000000002 /* CodeSyntaxHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeSyntaxHighlighter.swift; sourceTree = "<group>"; };
 		CF229000000000000000004 /* CodeSyntaxHighlighterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeSyntaxHighlighterTests.swift; sourceTree = "<group>"; };
 		CF230000000000000000002 /* GatewayRtcLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayRtcLink.swift; sourceTree = "<group>"; };
@@ -386,6 +388,7 @@
 				5D3FFEFFB831B9A6454ECA0E /* AdaptiveLayoutTests.swift */,
 				CF227000000000000000002 /* TrajectoryOverviewLayoutTests.swift */,
 				CF228000000000000000008 /* MarkdownMathTests.swift */,
+				AB0180000000000000000012 /* GenuiBlockViewTests.swift */,
 				CF229000000000000000004 /* CodeSyntaxHighlighterTests.swift */,
 				CF2030000000000000000002 /* ChatSessionPrefetcherTests.swift */,
 				CA11E0000000000000000011 /* LocalizationCatalogTests.swift */,
@@ -834,6 +837,7 @@
 				EAAE88B94CBECC20963D9646 /* AdaptiveLayoutTests.swift in Sources */,
 				CF227000000000000000001 /* TrajectoryOverviewLayoutTests.swift in Sources */,
 				CF228000000000000000007 /* MarkdownMathTests.swift in Sources */,
+				AB0180000000000000000011 /* GenuiBlockViewTests.swift in Sources */,
 				CF229000000000000000003 /* CodeSyntaxHighlighterTests.swift in Sources */,
 				CF2030000000000000000001 /* ChatSessionPrefetcherTests.swift in Sources */,
 				CA11E000000000000000000F /* LocalizationCatalogTests.swift in Sources */,

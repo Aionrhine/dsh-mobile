@@ -20,10 +20,11 @@ enum GenuiArtifact {
 
     /// Returns `nil` when the fence body is not a JSON object, which lets the
     /// message keep rendering as a plain code block instead of an empty box.
-    static func plan(fromFence source: String, isDark: Bool) -> GenuiRenderPlan? {
+    static func plan(fromFence source: String, isDark: Bool, fontScale: Double = 1.0) -> GenuiRenderPlan? {
         guard let object = GenuiJSONRepair.decodeObject(source) else { return nil }
 
         let locale = Locale.preferredLanguages.first?.hasPrefix("zh") == true ? "zh" : "en"
+        let clampedScale = ((min(2.0, max(0.7, fontScale))) * 100).rounded() / 100
         let artifact: [String: Any] = [
             "format": "dsh-genui",
             "version": 1,
@@ -31,6 +32,7 @@ enum GenuiArtifact {
             "presentation": [
                 "locale": locale,
                 "theme": isDark ? "dark" : "light",
+                "fontScale": clampedScale,
             ],
         ]
         guard let encoded = try? JSONSerialization.data(withJSONObject: artifact),
@@ -86,12 +88,10 @@ enum GenuiArtifact {
 
 /// Process-wide limits for GenUI rendering.
 enum GenuiConfig {
-    /// How many fences may hold a WebContent process at once. Each one carries
-    /// the standalone runtime, and charts add half a megabyte to a megabyte of
-    /// engine on top.
-    /// fork 决定（2026-11-01）：不再为省内存限制同时渲染数，全部围栏直接渲染；
-    /// 999 只是形式上限，保留回收机制兜底极端场景。
-    static let concurrentRenderLimit = 999
+    /// How many fences may stay mounted at once. Sharing a single `WKProcessPool`
+    /// keeps memory bounded while allowing multiple visible charts without OOM.
+    static let concurrentRenderLimit = 6
+    static let processPool = WKProcessPool()
     static let mountBudget = GenuiMountBudget(limit: concurrentRenderLimit)
 }
 
@@ -349,20 +349,16 @@ struct GenuiBlockContainer: View {
             } else if budget.isActive(identity) {
                 GenuiBlockWebView(plan: plan, height: $height, failure: $failure)
                     .frame(height: max(height, 64))
-                    // The runtime reads the presentation theme once, at mount
-                    // time, so a theme switch needs a fresh document rather than
-                    // a style tweak.
-                    .id(plan.artifactJSON)
             } else {
                 mountButton
             }
         }
         .onAppear(perform: claimSlot)
         .onDisappear(perform: releaseSlot)
-        // A recycled row must not inherit the previous fence's state.
+        // A recycled row must not inherit the previous fence's failure state;
+        // keep current height so streaming in-place remounts do not jump.
         .onChangeCompat(of: plan.artifactJSON) { _, _ in
-            failure = nil
-            height = 180
+            if failure != nil { failure = nil }
             claimSlot()
         }
     }
@@ -385,7 +381,7 @@ struct GenuiBlockContainer: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(String(localized: "genui.mount", defaultValue: "点按渲染 GenUI 组件"))
                         .font(.subheadline)
-                    Text(String(localized: "genui.mount.hint", defaultValue: "已同时渲染 3 个，为省内存点按后再加载"))
+                    Text(String(localized: "genui.mount.hint", defaultValue: "已同时渲染 \(GenuiConfig.concurrentRenderLimit) 个，为省内存点按后再加载"))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -449,6 +445,7 @@ private struct GenuiBlockWebView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
+        configuration.processPool = GenuiConfig.processPool
         configuration.userContentController.add(context.coordinator, name: "genuiHeight")
         configuration.userContentController.add(context.coordinator, name: "genuiFailure")
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
@@ -463,9 +460,12 @@ private struct GenuiBlockWebView: UIViewRepresentable {
         return webView
     }
 
-    func updateUIView(_ webView: WKWebView, context: Context) {}
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        context.coordinator.update(plan: plan, in: webView)
+    }
 
     static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
+        coordinator.invalidate()
         let controller = webView.configuration.userContentController
         controller.removeScriptMessageHandler(forName: "genuiHeight")
         controller.removeScriptMessageHandler(forName: "genuiFailure")
@@ -478,7 +478,11 @@ private struct GenuiBlockWebView: UIViewRepresentable {
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         private let height: Binding<CGFloat>
         private let failure: Binding<String?>
-        private let plan: GenuiRenderPlan
+        private var plan: GenuiRenderPlan
+        private var isPageLoaded = false
+        private var mountedArtifactJSON: String?
+        private var remountWorkItem: DispatchWorkItem?
+        private var isInvalidated = false
 
         init(height: Binding<CGFloat>, failure: Binding<String?>, plan: GenuiRenderPlan) {
             self.height = height
@@ -486,21 +490,63 @@ private struct GenuiBlockWebView: UIViewRepresentable {
             self.plan = plan
         }
 
+        func invalidate() {
+            isInvalidated = true
+            remountWorkItem?.cancel()
+            remountWorkItem = nil
+        }
+
         func loadPage(in webView: WKWebView) {
-            guard let directory = GenuiRuntime.prepare(assets: plan.assets),
-                  let page = GenuiRuntime.pageURL(in: directory)
-            else {
-                fail(String(localized: "genui.failed.resources", defaultValue: "渲染资源缺失"))
-                return
+            GenuiRuntime.prepareAsync(assets: plan.assets) { [weak self, weak webView] directory in
+                guard let self, let webView, !self.isInvalidated else { return }
+                guard let directory, let page = GenuiRuntime.pageURL(in: directory) else {
+                    self.fail(String(localized: "genui.failed.resources", defaultValue: "渲染资源缺失"))
+                    return
+                }
+                webView.loadFileURL(page, allowingReadAccessTo: directory)
             }
-            webView.loadFileURL(page, allowingReadAccessTo: directory)
+        }
+
+        func update(plan nextPlan: GenuiRenderPlan, in webView: WKWebView) {
+            guard !isInvalidated, nextPlan.artifactJSON != plan.artifactJSON else { return }
+            plan = nextPlan
+            // If the page has not finished initial navigation, didFinish will
+            // mount the latest plan directly without extra JS calls.
+            guard isPageLoaded else { return }
+            remountWorkItem?.cancel()
+            let work = DispatchWorkItem { [weak self, weak webView] in
+                guard let self, let webView, !self.isInvalidated else { return }
+                let targetPlan = self.plan
+                GenuiRuntime.prepareAsync(assets: targetPlan.assets) { [weak self, weak webView] directory in
+                    guard let self, let webView, !self.isInvalidated,
+                          self.plan.artifactJSON == targetPlan.artifactJSON else { return }
+                    guard directory != nil else {
+                        self.fail(String(localized: "genui.failed.resources", defaultValue: "渲染资源缺失"))
+                        return
+                    }
+                    self.mountCurrentPlan(in: webView)
+                }
+            }
+            remountWorkItem = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(200), execute: work)
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            guard !isInvalidated else { return }
+            isPageLoaded = true
+            mountCurrentPlan(in: webView)
+        }
+
+        private func mountCurrentPlan(in webView: WKWebView) {
+            guard !isInvalidated, mountedArtifactJSON != plan.artifactJSON else { return }
+            mountedArtifactJSON = plan.artifactJSON
             // Both arguments are valid JSON, therefore valid JavaScript.
             let assets = plan.assets.map { "\"\($0)\"" }.joined(separator: ",")
             let script = "window.__mountGenuiWithAssets(\(plan.artifactJSON), [\(assets)])"
-            webView.evaluateJavaScript(script) { _, _ in }
+            webView.evaluateJavaScript(script) { [weak self] _, error in
+                guard let self, !self.isInvalidated, let error else { return }
+                self.fail(error.localizedDescription)
+            }
         }
 
         /// Links inside a card belong to the reader, not to the 180 pt frame:
@@ -599,6 +645,17 @@ enum GenuiRuntime {
 
     static func prepare(assets: [String]) -> URL? {
         queue.sync { prepareLocked(assets: assets) }
+    }
+
+    /// Non-blocking entry point for UI mounts so the main thread never stalls
+    /// behind the launch-time `warmUp()` copy on `.utility` QoS.
+    static func prepareAsync(assets: [String], completion: @escaping @MainActor (URL?) -> Void) {
+        queue.async {
+            let directory = prepareLocked(assets: assets)
+            Task { @MainActor in
+                completion(directory)
+            }
+        }
     }
 
     private static func prepareLocked(assets: [String]) -> URL? {

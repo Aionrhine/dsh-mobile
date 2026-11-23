@@ -4481,13 +4481,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Three are already rendering; tap to load this one"
+            "value": "%lld components rendered; tap to load to save memory"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "已同时渲染 3 个，为省内存点按后再加载"
+            "value": "已同时渲染 %lld 个，为省内存点按后再加载"
           }
         }
       }
