@@ -107,8 +107,8 @@
   };
 
   window.__mountGenuiWithAssets = function (artifact, names) {
-    return window.__loadGenuiAssets(names).then(function () {
-      return window.__mountGenui(artifact);
+    window.__loadGenuiAssets(names).then(function () {
+      window.__mountGenui(artifact);
     }).catch(function (error) {
       postFailure(error && error.message ? error.message : error);
     });

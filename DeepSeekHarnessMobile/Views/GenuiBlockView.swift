@@ -541,8 +541,10 @@ private struct GenuiBlockWebView: UIViewRepresentable {
             guard !isInvalidated, mountedArtifactJSON != plan.artifactJSON else { return }
             mountedArtifactJSON = plan.artifactJSON
             // Both arguments are valid JSON, therefore valid JavaScript.
+            // Trailing `null;` ensures evaluateJavaScript receives a bridgeable
+            // primitive instead of a Promise (which triggers WKErrorCode 5).
             let assets = plan.assets.map { "\"\($0)\"" }.joined(separator: ",")
-            let script = "window.__mountGenuiWithAssets(\(plan.artifactJSON), [\(assets)])"
+            let script = "window.__mountGenuiWithAssets(\(plan.artifactJSON), [\(assets)]); null;"
             webView.evaluateJavaScript(script) { [weak self] _, error in
                 guard let self, !self.isInvalidated, let error else { return }
                 self.fail(error.localizedDescription)
