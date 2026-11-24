@@ -1,8 +1,8 @@
 # dsh-mobile 交接文档
 
-> 交接时间：2026-11-24
+> 交接时间：2026-11-24（午间更新）
 > 仓库：`Aionrhine/dsh-mobile`（fork，上游 `Clarklevis1995/dsh-mobile`）
-> 当前代码基线：`ae109a5`，CI 绿色，IPA 已更新发布（含 GenUI v0.17.0）
+> 当前代码基线：`661065c`，CI 绿色（run `45323786890`），IPA 已发布（含设备连接器 + 系统分享扩展 + GenUI v0.17.0）
 
 ---
 
@@ -27,13 +27,13 @@
 
 | 项 | 值 |
 |---|---|
-| 代码基线 | `ae109a5` |
-| CI | 绿色（`ios-unsigned-ipa` run `45269849660` / `Localization checks` run `45179521489`） |
-| IPA | [unsigned-20261123-v1.8.4-batch1](https://github.com/Aionrhine/dsh-mobile/releases/tag/unsigned-20261123-v1.8.4-batch1) 27.1MB（移除 WebRTC 瘦身 5.5MB） |
+| 代码基线 | `661065c` |
+| CI | 绿色（`ios-unsigned-ipa` run `45323786890` / `Localization checks` run `45323788255`） |
+| IPA | [unsigned-20261124-v1.8.4-batch2](https://github.com/Aionrhine/dsh-mobile/releases/tag/unsigned-20261124-v1.8.4-batch2)（含主 App + 3 个 `.appex` 扩展） |
 | 版本号 | `AppRelease/release-info.json` = 1.8.4 (build 43) / 网关 0.12.2 |
-| 上游落后 | C 档第一批 10 项纯 iOS + `shared` 改动已蒸馏完成；仅余三大整块按需项（`devicetools` / DS Bot / ShareExtension） |
+| 上游落后 | C 档第一批 + 第二批（`devicetools` / Share & Action Extension）全部完成；仅余 DS Bot 模式按需项 |
 
-### 本轮会话完成：C 档第一批 10 项 iOS + shared 蒸馏（`db2215c` ~ `61fd132`）
+### 本轮会话完成：C 档第一批 + GenUI v0.17.0 + C 档第二批（`db2215c` ~ `661065c`）
 
 | 提交 | 内容 |
 |---|---|
@@ -43,6 +43,9 @@
 | `61fd132` | 移除 `AppStore.swift` 中遗留的 `isDraftWorkspaceReplacement` 旧 stub（消除重名编译冲突） |
 | `5492b8b` | 修复 GenUI `evaluateJavaScript` 返回 `Promise` 触发 `WKErrorJavaScriptResultTypeIsUnsupported` 导致全部渲染失败的问题 |
 | `ae109a5` | 升级内置 GenUI 运行库与引擎至 `@changfenhuang/dsh-genui@0.17.0`（支持 `computed`/`$computed`/`currency`/`carousel`/`map`，新增 `icons.js` & `maplibre.js` 按需加载） |
+| `1abaf58` | 蒸馏 iOS 设备连接器体系（`devicetools`：日历/提醒/健康/位置/地图卡片/Apple Music 卡片/相册/闹钟、`ConnectorsView`、16 套资产与 `Info.plist` 权限） |
+| `658bd35` | 接入 `ShareExtension` & `ActionExtension`（`ShareInbox`、`IncomingShareCoordinator`、`Sharing.entitlements` 与双扩展 Target） |
+| `661065c` | 修复 `project.pbxproj` 中 4 个扩展 `XCBuildConfiguration` 块闭合语法并统一版本号为 `1.8.4 (43)` |
 
 ### 上一轮（2026-11-23 下午）完成的四件事（`998ca83` ~ `d10b1aa`）
 
@@ -218,13 +221,11 @@ PYTHONUTF8=1 python3 scripts/verify-localizations.py
 |---|---|---|
 | `f36c872`（余项） | 工作区审阅自定义字体包 + `SharedTeamStore.kt` 团队兼容微调 | 17.7 MB `Design/review-fonts` 字体包（暂按轻量原则跳过，iOS 审阅视图与 4 个图标均已就位） |
 
-### C 档：剩余整块按需项（核心 10 项散点已在 `db2215c` ~ `61fd132` 蒸馏完成）
+### C 档：剩余按需项（第一批 10 项 + `devicetools` + Share/Action Extension 均已完成）
 
 | 模块 | 来源提交 | 说明 |
 |---|---|---|
-| **iOS 设备连接器（`devicetools`）** | `2029918` `d5d677d` `d65631f` `d584e71` | 日历/提醒/健康/地图卡片/Apple Music/相册，可与 Android 及 DS Bot 解耦单独接入（约 2500 行 Swift + `SharedDeviceConnectors.kt`） |
-| **DS Bot 模式（纯 iOS 版）** | `350275b` `bd5b71f` `8aa6be3` `fc3c5a3` | 上游 v1.8.4 主打功能，剔除 Android 后约 5000 行核心代码（`BotModeView`/`BotManagementView`/`SharedBotStore`） |
-| **ShareExtension / ActionExtension** | `2029918` | 系统分享菜单直发 DSH；依赖 App Groups，需 TrollStore 或带 App Group 权限的稳定证书重签 |
+| **DS Bot 模式（纯 iOS 版）** | `350275b` `bd5b71f` `8aa6be3` `fc3c5a3` | 上游 v1.8.4 主打功能，剔除 Android 后约 5000 行核心代码（`BotModeView`/`BotManagementView`/`SharedBotStore`），可按需独立接入 |
 | 可直接跳过 | `6fdd34c`、`d5d677d`/`cba7284` 的 `androidApp/` 与 `Docs/` | 与 iOS fork 无关 |
 
 > 注：`Vendor/SwiftMath` 公式补丁、语音防闪退、WebRTC 清理、问答历史还原、新建会话工作区、Agent Team 模式开关、网关连接方式记忆、定时任务修复、表格图片列宽及 `SharedChatHistoryCache` `@Throws` 已全部合入 `main`。
