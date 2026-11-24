@@ -1,8 +1,8 @@
 # dsh-mobile 交接文档
 
-> 交接时间：2026-11-23（晚间更新）
+> 交接时间：2026-11-24
 > 仓库：`Aionrhine/dsh-mobile`（fork，上游 `Clarklevis1995/dsh-mobile`）
-> 当前代码基线：`5492b8b`，CI 绿色（run `45171463510`），IPA 已瘦身至 27.1MB 并发布
+> 当前代码基线：`ae109a5`，CI 绿色，IPA 已更新发布（含 GenUI v0.17.0）
 
 ---
 
@@ -27,8 +27,8 @@
 
 | 项 | 值 |
 |---|---|
-| 代码基线 | `5492b8b` |
-| CI | 绿色（`ios-unsigned-ipa` run `45171463510` / `Localization checks` run `45171463492`） |
+| 代码基线 | `ae109a5` |
+| CI | 绿色（`ios-unsigned-ipa` run `45269849660` / `Localization checks` run `45179521489`） |
 | IPA | [unsigned-20261123-v1.8.4-batch1](https://github.com/Aionrhine/dsh-mobile/releases/tag/unsigned-20261123-v1.8.4-batch1) 27.1MB（移除 WebRTC 瘦身 5.5MB） |
 | 版本号 | `AppRelease/release-info.json` = 1.8.4 (build 43) / 网关 0.12.2 |
 | 上游落后 | C 档第一批 10 项纯 iOS + `shared` 改动已蒸馏完成；仅余三大整块按需项（`devicetools` / DS Bot / ShareExtension） |
@@ -42,6 +42,7 @@
 | `90cca0f` | 网关连接方式分类与记忆（LAN/公网/Tailscale、`recentSuccessfulEndpoints`、重配保留其他方式地址）、`ImagePreprocessor` 可配置压缩上限、定时任务轨迹竞态与归档会话过滤修复、本地化收口（1618 条 iOS 文案通过） |
 | `61fd132` | 移除 `AppStore.swift` 中遗留的 `isDraftWorkspaceReplacement` 旧 stub（消除重名编译冲突） |
 | `5492b8b` | 修复 GenUI `evaluateJavaScript` 返回 `Promise` 触发 `WKErrorJavaScriptResultTypeIsUnsupported` 导致全部渲染失败的问题 |
+| `ae109a5` | 升级内置 GenUI 运行库与引擎至 `@changfenhuang/dsh-genui@0.17.0`（支持 `computed`/`$computed`/`currency`/`carousel`/`map`，新增 `icons.js` & `maplibre.js` 按需加载） |
 
 ### 上一轮（2026-11-23 下午）完成的四件事（`998ca83` ~ `d10b1aa`）
 
