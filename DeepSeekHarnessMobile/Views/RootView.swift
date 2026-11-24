@@ -6,6 +6,7 @@ import DeepSeekHarnessShared
 struct RootView: View {
     @EnvironmentObject private var store: AppStore
     @EnvironmentObject private var hosts: MultiGatewayStore
+    @ObservedObject private var shares = IncomingShareCoordinator.shared
 
     var body: some View {
         RootNavigationHost(store: store, hosts: hosts)
@@ -15,6 +16,22 @@ struct RootView: View {
             .alert("Whaleness", isPresented: Binding(get: { store.lastError != nil }, set: { if !$0 { store.lastError = nil } })) {
                 Button(String(localized: "好"), role: .cancel) { store.lastError = nil }
             } message: { Text(store.lastError ?? "") }
+            .task {
+                publishShareCatalog()
+                shares.refresh()
+                ConversationShareSuggestions.shared.restoreRecentConversationsIfNeeded()
+            }
+            .onReceive(store.$sessions) { _ in Task { @MainActor in publishShareCatalog() } }
+            .onReceive(store.$workspaces) { _ in Task { @MainActor in publishShareCatalog() } }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                shares.refresh()
+                ConversationShareSuggestions.shared.restoreRecentConversationsIfNeeded()
+            }
+            .onReceive(shares.$pending) { draft in
+                guard let draft, !draft.target.gatewayID.isEmpty, draft.target.gatewayID != hosts.activeID,
+                      let profile = hosts.profiles.first(where: { $0.id == draft.target.gatewayID }) else { return }
+                hosts.select(profile)
+            }
             .modifier(AppConnectionLifecycleModifier(tunnel: .shared, phaseChanged: store.handleScenePhase))
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
                 store.handleMemoryWarning()
@@ -24,6 +41,21 @@ struct RootView: View {
                       let profile = hosts.profiles.first(where: { $0.id == route.gatewayID }) else { return }
                 hosts.select(profile)
             }
+    }
+
+    private func publishShareCatalog() {
+        ShareInbox.setActiveGateway(store.gatewayLocalID)
+        let entries = store.sessions.filter { $0.isVisibleInHistory && !store.isSubagentSession($0.id) }.map { session in
+            let workspace = store.workspaces.first { $0.sessionIds.contains(session.id) }
+            return SharedConversation(
+                gatewayID: store.gatewayLocalID,
+                sessionID: session.id,
+                title: session.title,
+                workspace: workspace.map { $0.title.isEmpty ? $0.path : $0.title } ?? String(localized: "未分组"),
+                workspaceID: workspace?.id
+            )
+        }
+        ShareInbox.updateCatalog(gatewayID: store.gatewayLocalID, conversations: entries)
     }
 }
 
@@ -58,6 +90,9 @@ private struct RootNavigationHost: View, Equatable {
     let hosts: MultiGatewayStore
     @State private var navigationPath: [AppRoute] = []
     @State private var newConversationTask: Task<Void, Never>?
+    @ObservedObject private var shares = IncomingShareCoordinator.shared
+    @State private var routedShareID: UUID?
+    @State private var preparingShareID: UUID?
     /// 侧栏切换 / 新建会话的当前操作编号：被取消的旧任务收尾时，
     /// 只有编号仍是自己的才清空 newConversationTask，避免误清掉新任务的句柄。
     @State private var conversationOperationID = UUID()
@@ -117,7 +152,28 @@ private struct RootNavigationHost: View, Equatable {
         .onChangeCompat(of: navigationPath) { _, path in
             if path.isEmpty { store.resumeWorkspace() }
         }
-        .onOpenURL(perform: openLiveActivityURL)
+        .onOpenURL { url in
+            if url.scheme == "dshmobile", url.host == "share" {
+                let rawID = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?
+                    .first(where: { $0.name == "id" })?.value
+                shares.refresh(preferredID: rawID.flatMap(UUID.init(uuidString:)))
+                openSharedConversation()
+            } else {
+                openLiveActivityURL(url)
+            }
+        }
+        .onReceive(shares.$pending) { _ in
+            Task { @MainActor in openSharedConversation() }
+        }
+        .onReceive(store.$sessions) { _ in
+            Task { @MainActor in openSharedConversation() }
+        }
+        .onReceive(store.gateway.$state) { _ in
+            Task { @MainActor in openSharedConversation() }
+        }
+        .onReceive(store.gateway.$isReadyForSessionCreation) { _ in
+            Task { @MainActor in openSharedConversation() }
+        }
         .onReceive(AgentUserNotificationManager.shared.$pendingSessionRoute) { route in
             guard let route, route.gatewayID == store.gatewayLocalID else { return }
             pendingLiveActivitySessionID = route.sessionID
@@ -133,6 +189,47 @@ private struct RootNavigationHost: View, Equatable {
                 AgentUserNotificationManager.shared.clearPendingSessionRoute(route)
             }
             openLiveActivitySession(session)
+        }
+    }
+
+    private func openSharedConversation() {
+        guard let draft = shares.pending,
+              draft.target.gatewayID.isEmpty || draft.target.gatewayID == store.gatewayLocalID,
+              routedShareID != draft.id, preparingShareID != draft.id else { return }
+        if draft.createsNewConversation != true {
+            guard let session = store.sessions.first(where: { $0.id == draft.target.sessionID }) else { return }
+            routedShareID = draft.id
+            switchToSession(session)
+            return
+        }
+        guard store.gateway.isReadyForSessionCreation else { return }
+        preparingShareID = draft.id
+        newConversationTask?.cancel()
+        let operationID = UUID()
+        conversationOperationID = operationID
+        newConversationTask = Task { @MainActor in
+            defer {
+                if conversationOperationID == operationID { newConversationTask = nil }
+                preparingShareID = nil
+            }
+            guard await store.prepareNewConversation(useDefaultWorkspace: true), !Task.isCancelled,
+                  let sessionID = store.selectedSessionId else { return }
+            let target = SharedConversation(
+                gatewayID: store.gatewayLocalID,
+                sessionID: sessionID,
+                title: String(localized: "新会话"),
+                workspace: String(localized: "默认工作区")
+            )
+            do { try shares.resolveNewConversation(draft, to: target) }
+            catch { store.lastError = error.localizedDescription; return }
+            routedShareID = draft.id
+            let header = ConversationNavigationHeader(
+                sessionID: sessionID,
+                title: String(localized: "session.new.fallback", defaultValue: "新建 DeepSeek Harness"),
+                agentPresetTitle: agentPresetDisplayName(for: store.agentPresetDefault)
+            )
+            navigationPath = [.conversation(header)]
+            await store.activatePreparedConversation(sessionID: sessionID)
         }
     }
 

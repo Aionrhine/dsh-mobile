@@ -144,6 +144,15 @@
 		CF229000000000000000001 /* CodeSyntaxHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF229000000000000000002 /* CodeSyntaxHighlighter.swift */; };
 		CF229000000000000000003 /* CodeSyntaxHighlighterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF229000000000000000004 /* CodeSyntaxHighlighterTests.swift */; };
 		CF231000000000000000001 /* GatewayNetworkDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF231000000000000000002 /* GatewayNetworkDiagnostics.swift */; };
+		23CEA1EEABD844569928E9AF /* DeepSeekHarnessMobile/Core/IncomingShareCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEC29931BE6A4F6B9717D84C /* DeepSeekHarnessMobile/Core/IncomingShareCoordinator.swift */; };
+		3A338F0179124FBAB310F865 /* ActionExtension/Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D832F6AE2A3E4C9CA793C2AA /* ActionExtension/Assets.xcassets */; };
+		580623DD7AA64CB4B43421ED /* ActionExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A8EDB2282ECE4510A12EBE54 /* ActionExtension.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		6C4040ACEC5D41AA88E92BD9 /* ShareSupport/ShareInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29A3695466D444A28ED591A0 /* ShareSupport/ShareInbox.swift */; };
+		840D7EE19AE943D1B34629D5 /* ShareExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 77884A70AB3E42DC8B152318 /* ShareExtension.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		B74F19DEDD8B4D5786E95BF5 /* ShareExtension/ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94588D6D6FA34422B97262F3 /* ShareExtension/ShareViewController.swift */; };
+		DC1424D1E1924288B9D343DF /* ShareExtension/ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94588D6D6FA34422B97262F3 /* ShareExtension/ShareViewController.swift */; };
+		F1020E5C2F5640E9B9F2AF82 /* ShareSupport/ShareInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29A3695466D444A28ED591A0 /* ShareSupport/ShareInbox.swift */; };
+		FA1B9218927B435FBF5B7DEE /* ShareSupport/ShareInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29A3695466D444A28ED591A0 /* ShareSupport/ShareInbox.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -162,6 +171,20 @@
 			remoteGlobalIDString = F1A000000000000000000040;
 			remoteInfo = AgentLiveActivityWidget;
 		};
+		46725974789D4CED9C0CC029 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = DBC59CB58F3644757A020517 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D15078224A1E478AB02C6DFA;
+			remoteInfo = ShareExtension;
+		};
+		ED30D6FF10884A48B8EEEACB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = DBC59CB58F3644757A020517 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 00D23AB49D8C477380068BF5;
+			remoteInfo = ActionExtension;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -172,6 +195,8 @@
 			dstSubfolderSpec = 13;
 			files = (
 				F1A000000000000000000007 /* AgentLiveActivityWidget.appex in Embed App Extensions */,
+				840D7EE19AE943D1B34629D5 /* ShareExtension.appex in Embed App Extensions */,
+				580623DD7AA64CB4B43421ED /* ActionExtension.appex in Embed App Extensions */,
 			);
 			name = "Embed App Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -305,6 +330,13 @@
 		CF229000000000000000002 /* CodeSyntaxHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeSyntaxHighlighter.swift; sourceTree = "<group>"; };
 		CF229000000000000000004 /* CodeSyntaxHighlighterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeSyntaxHighlighterTests.swift; sourceTree = "<group>"; };
 		CF231000000000000000002 /* GatewayNetworkDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayNetworkDiagnostics.swift; sourceTree = "<group>"; };
+		29A3695466D444A28ED591A0 /* ShareSupport/ShareInbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSupport/ShareInbox.swift; sourceTree = SOURCE_ROOT; };
+		75DD9F9C71BD4EB2BF4465C3 /* ActionExtension/Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = ActionExtension/Info.plist; sourceTree = SOURCE_ROOT; };
+		77884A70AB3E42DC8B152318 /* ShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; path = ShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		94588D6D6FA34422B97262F3 /* ShareExtension/ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareExtension/ShareViewController.swift; sourceTree = SOURCE_ROOT; };
+		A8EDB2282ECE4510A12EBE54 /* ActionExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; path = ActionExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		D832F6AE2A3E4C9CA793C2AA /* ActionExtension/Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = ActionExtension/Assets.xcassets; sourceTree = SOURCE_ROOT; };
+		EEC29931BE6A4F6B9717D84C /* DeepSeekHarnessMobile/Core/IncomingShareCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepSeekHarnessMobile/Core/IncomingShareCoordinator.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -342,6 +374,20 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		3301F24EB1FC421A866EC2D7 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7588146A51C14491B167B18C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -357,6 +403,8 @@
 				A9DF00000000000000000042 /* IOSMapConnector.swift */,
 				A9DF00000000000000000043 /* IOSMusicLibraryConnector.swift */,
 				A9DF00000000000000000044 /* PhoneMapMarkerStore.swift */,
+				EEC29931BE6A4F6B9717D84C /* DeepSeekHarnessMobile/Core/IncomingShareCoordinator.swift */,
+				29A3695466D444A28ED591A0 /* ShareSupport/ShareInbox.swift */,
 				A9F100000000000000000002 /* AppPreferences.swift */,
 				A9F200000000000000000002 /* PairingPayloadParser.swift */,
 				A9F300000000000000000002 /* KMPDomainIntents.swift */,
@@ -552,6 +600,8 @@
 			children = (
 				38457CD5C46830D1CA7E6D73 /* DshMobile.app */,
 				F1A000000000000000000016 /* AgentLiveActivityWidget.appex */,
+				77884A70AB3E42DC8B152318 /* ShareExtension.appex */,
+				A8EDB2282ECE4510A12EBE54 /* ActionExtension.appex */,
 				B64F29E9B8346B9A678CA487 /* DeepSeekHarnessMobileTests.xctest */,
 				F2B000000000000000000003 /* DeepSeekHarnessMobileUITests.xctest */,
 			);
@@ -616,6 +666,8 @@
 			dependencies = (
 				B69A09F1043147D1B6849033 /* PBXTargetDependency */,
 				F1A000000000000000000042 /* PBXTargetDependency */,
+				D5D6A6CC1E4C4BACAA11F7BE /* PBXTargetDependency */,
+				EE965DA0277E404A9A49499F /* PBXTargetDependency */,
 			);
 			name = DeepSeekHarnessMobile;
 			packageProductDependencies = (
@@ -681,6 +733,40 @@
 			productReference = F2B000000000000000000003 /* DeepSeekHarnessMobileUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		00D23AB49D8C477380068BF5 /* ActionExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4D82884DF5F341A3A0610E02 /* Build configuration list for PBXNativeTarget "ActionExtension" */;
+			buildPhases = (
+				75E1BAFC5F544F2DAE388EC0 /* Sources */,
+				7588146A51C14491B167B18C /* Frameworks */,
+				16E08CBDF55D430F9C32BB3C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ActionExtension;
+			productName = ActionExtension;
+			productReference = A8EDB2282ECE4510A12EBE54 /* ActionExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		D15078224A1E478AB02C6DFA /* ShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E5A344F492744B5DB7B9BD49 /* Build configuration list for PBXNativeTarget "ShareExtension" */;
+			buildPhases = (
+				949013EABB6B4D91AF1F31E5 /* Sources */,
+				3301F24EB1FC421A866EC2D7 /* Frameworks */,
+				505304BE79CA46D191DEC846 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ShareExtension;
+			productName = ShareExtension;
+			productReference = 77884A70AB3E42DC8B152318 /* ShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -720,6 +806,8 @@
 				F1A000000000000000000040 /* AgentLiveActivityWidget */,
 				7515E0402B76392350DE0E00 /* DeepSeekHarnessMobileTests */,
 				F2B000000000000000000005 /* DeepSeekHarnessMobileUITests */,
+				D15078224A1E478AB02C6DFA /* ShareExtension */,
+				00D23AB49D8C477380068BF5 /* ActionExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -761,6 +849,21 @@
 				F1A000000000000000000008 /* Assets.xcassets in Resources */,
 				F1A000000000000000000009 /* Localizable.xcstrings in Resources */,
 				F1A00000000000000000000A /* InfoPlist.xcstrings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		16E08CBDF55D430F9C32BB3C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3A338F0179124FBAB310F865 /* ActionExtension/Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		505304BE79CA46D191DEC846 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -870,6 +973,8 @@
 				B9DF00000000000000000044 /* PhoneMapMarkerStore.swift in Sources */,
 				CFA110000000000000000001 /* AppleMapsAppCard.swift in Sources */,
 				CFA120000000000000000001 /* AppleMusicAppCard.swift in Sources */,
+				F1020E5C2F5640E9B9F2AF82 /* ShareSupport/ShareInbox.swift in Sources */,
+				23CEA1EEABD844569928E9AF /* DeepSeekHarnessMobile/Core/IncomingShareCoordinator.swift in Sources */,
 				F1A000000000000000000001 /* AgentActivityAttributes.swift in Sources */,
 				F1A000000000000000000003 /* AgentApprovalIntents.swift in Sources */,
 				F1A000000000000000000005 /* AgentLiveActivityManager.swift in Sources */,
@@ -956,6 +1061,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		75E1BAFC5F544F2DAE388EC0 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FA1B9218927B435FBF5B7DEE /* ShareSupport/ShareInbox.swift in Sources */,
+				B74F19DEDD8B4D5786E95BF5 /* ShareExtension/ShareViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		949013EABB6B4D91AF1F31E5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6C4040ACEC5D41AA88E92BD9 /* ShareSupport/ShareInbox.swift in Sources */,
+				DC1424D1E1924288B9D343DF /* ShareExtension/ShareViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -970,6 +1093,16 @@
 			isa = PBXTargetDependency;
 			target = F1A000000000000000000040 /* AgentLiveActivityWidget */;
 			targetProxy = F1A000000000000000000041 /* PBXContainerItemProxy */;
+		};
+		D5D6A6CC1E4C4BACAA11F7BE /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 00D23AB49D8C477380068BF5 /* ActionExtension */;
+			targetProxy = ED30D6FF10884A48B8EEEACB /* PBXContainerItemProxy */;
+		};
+		EE965DA0277E404A9A49499F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D15078224A1E478AB02C6DFA /* ShareExtension */;
+			targetProxy = 46725974789D4CED9C0CC029 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -1009,6 +1142,8 @@
 				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*][arch=arm64]" = "$(SRCROOT)/shared/build/bin/iosSimulatorArm64/debugFramework";
 				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*][arch=x86_64]" = "$(SRCROOT)/shared/build/bin/iosX64/debugFramework";
 				GENERATE_INFOPLIST_FILE = NO;
+				CODE_SIGN_ENTITLEMENTS = DeepSeekHarnessMobile/Resources/Sharing.entitlements;
+				DSH_SHARE_APP_GROUP = "group.$(LOCAL_BUNDLE_IDENTIFIER)";
 				INFOPLIST_FILE = DeepSeekHarnessMobile/Resources/Info.plist;
 				SWIFT_OBJC_BRIDGING_HEADER = "DeepSeekHarnessMobile/Resources/DeepSeekHarnessMobile-Bridging-Header.h";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
@@ -1268,6 +1403,9 @@
 				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*][arch=arm64]" = "$(SRCROOT)/shared/build/bin/iosSimulatorArm64/releaseFramework";
 				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*][arch=x86_64]" = "$(SRCROOT)/shared/build/bin/iosX64/releaseFramework";
 				GENERATE_INFOPLIST_FILE = NO;
+				CODE_SIGN_ENTITLEMENTS = DeepSeekHarnessMobile/Resources/Sharing.entitlements;
+				DSH_SHARE_APP_GROUP = "group.$(LOCAL_BUNDLE_IDENTIFIER)";
+				"DSH_SHARE_APP_GROUP[sdk=iphoneos*]" = group.com.lichaofan.dshmobile;
 				INFOPLIST_FILE = DeepSeekHarnessMobile/Resources/Info.plist;
 				SWIFT_OBJC_BRIDGING_HEADER = "DeepSeekHarnessMobile/Resources/DeepSeekHarnessMobile-Bridging-Header.h";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
@@ -1289,6 +1427,116 @@
 			};
 			name = Release;
 		};
+		0683B10D5F3342F2AD41DE52 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = F2A000000000000000000001 /* config/Debug.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				ASSETCATALOG_COMPILER_APPICON_NAME = ActionIcon;
+				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 45;
+				DEVELOPMENT_TEAM = "$(LOCAL_DEVELOPMENT_TEAM)";
+				DSH_SHARE_APP_GROUP = "group.$(LOCAL_BUNDLE_IDENTIFIER)";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ActionExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.8.6;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(LOCAL_BUNDLE_IDENTIFIER).ActionExtension";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.10;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+		AF55F595B5FD4535AB2F156B /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = F2A000000000000000000001 /* config/Debug.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				ASSETCATALOG_COMPILER_APPICON_NAME = ActionIcon;
+				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 45;
+				DEVELOPMENT_TEAM = T58RY5HUA7;
+				DSH_SHARE_APP_GROUP = "group.$(LOCAL_BUNDLE_IDENTIFIER)";
+				"DSH_SHARE_APP_GROUP[sdk=iphoneos*]" = group.com.lichaofan.dshmobile;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ActionExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.8.6;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(LOCAL_BUNDLE_IDENTIFIER).ActionExtension";
+				"PRODUCT_BUNDLE_IDENTIFIER[sdk=iphoneos*]" = com.lichaofan.dshmobile.ActionExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.10;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+		455E38E6A6944628B8043C3D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = F2A000000000000000000001 /* config/Debug.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 45;
+				DEVELOPMENT_TEAM = "$(LOCAL_DEVELOPMENT_TEAM)";
+				DSH_SHARE_APP_GROUP = "group.$(LOCAL_BUNDLE_IDENTIFIER)";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ShareExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.8.6;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(LOCAL_BUNDLE_IDENTIFIER).ShareExtension";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.10;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+		3A8D41C3B603406EB5BF4E3A /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = F2A000000000000000000001 /* config/Debug.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 45;
+				DEVELOPMENT_TEAM = T58RY5HUA7;
+				DSH_SHARE_APP_GROUP = "group.$(LOCAL_BUNDLE_IDENTIFIER)";
+				"DSH_SHARE_APP_GROUP[sdk=iphoneos*]" = group.com.lichaofan.dshmobile;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ShareExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.8.6;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(LOCAL_BUNDLE_IDENTIFIER).ShareExtension";
+				"PRODUCT_BUNDLE_IDENTIFIER[sdk=iphoneos*]" = com.lichaofan.dshmobile.ShareExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.10;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -1334,6 +1582,24 @@
 			buildConfigurations = (
 				F2B00000000000000000000A /* Release */,
 				F2B000000000000000000009 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		4D82884DF5F341A3A0610E02 /* Build configuration list for PBXNativeTarget "ActionExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0683B10D5F3342F2AD41DE52 /* Debug */,
+				AF55F595B5FD4535AB2F156B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E5A344F492744B5DB7B9BD49 /* Build configuration list for PBXNativeTarget "ShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				455E38E6A6944628B8043C3D /* Debug */,
+				3A8D41C3B603406EB5BF4E3A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

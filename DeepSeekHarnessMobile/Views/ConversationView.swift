@@ -572,6 +572,8 @@ struct ConversationView: View {
     @ObservedObject private var selectionOffer = ConversationSelectionObserver.shared
     @State private var quotesExpanded = false
     @State private var initialDraftFocusPending = false
+    @ObservedObject private var incomingShares = IncomingShareCoordinator.shared
+    @State private var importingShareID: UUID?
     @State private var draftSelection = NSRange(location: NSNotFound, length: 0)
     @State private var voiceSnapshot: SharedVoiceInputSnapshot?
     @State private var voiceTouchActive = false
@@ -1574,8 +1576,75 @@ struct ConversationView: View {
         }
     }
 
+    private var sharedDraftReadyKey: String {
+        guard let share = incomingShares.pending, share.target.gatewayID == store.gatewayLocalID,
+              share.target.sessionID == store.selectedSessionId,
+              !store.historyLoadingSessionIds.contains(share.target.sessionID),
+              !store.conversationPreparingSessionIDs.contains(share.target.sessionID),
+              !isPreparingHistoryPresentation else { return "" }
+        return "\(share.id.uuidString):\(store.fileUploads.supported):\(store.gateway.state.isConnected)"
+    }
+
+    @MainActor
+    private func importSharedDraft() async {
+        guard !sharedDraftReadyKey.isEmpty, let share = incomingShares.pending,
+              importingShareID != share.id else { return }
+        let urls = ShareInbox.fileURLs(share)
+        let files = urls.filter { UTType(filenameExtension: $0.pathExtension)?.conforms(to: .image) != true }
+        guard files.isEmpty || (store.fileUploads.supported && store.gateway.state.isConnected) else {
+            store.lastError = String(localized: "分享文件需要连接支持文件上传的网关，内容已保留，请连接后重新打开会话。")
+            return
+        }
+        guard store.fileUploads.drafts.count + files.count <= 20, !store.fileUploads.preparing else {
+            store.lastError = String(localized: "请先处理已有附件后重新打开会话，分享内容已保留。")
+            return
+        }
+        importingShareID = share.id
+        defer { importingShareID = nil }
+        var images: [GatewayOutgoingImage] = []
+        do {
+            for url in urls where !files.contains(url) {
+                let image = try await Task.detached(priority: .userInitiated) {
+                    try GatewayImagePreprocessor.prepare(data: Data(contentsOf: url))
+                }.value
+                images.append(GatewayOutgoingImage(mediaType: image.mediaType, data: image.data))
+            }
+            guard store.selectedSessionId == share.target.sessionID, !Task.isCancelled else { return }
+            guard pendingImages.count + images.count <= 20,
+                  (pendingImages + images).reduce(0, { $0 + $1.data.count }) <= 100 * 1024 * 1024 else {
+                store.lastError = String(localized: "分享图片超出单条消息附件限制，请先处理已有附件。")
+                return
+            }
+            if !files.isEmpty {
+                store.fileUploads.select(sessionID: share.target.sessionID, allowed: !store.isViewingTeamMember)
+                let previousIDs = Set(store.fileUploads.drafts.map(\.id))
+                await store.fileUploads.importFiles(files)
+                guard store.selectedSessionId == share.target.sessionID, !Task.isCancelled else {
+                    if store.selectedSessionId == share.target.sessionID {
+                        for item in store.fileUploads.drafts where !previousIDs.contains(item.id) { store.fileUploads.remove(item.id) }
+                    }
+                    return
+                }
+                guard store.fileUploads.drafts.count - previousIDs.count == files.count else {
+                    for item in store.fileUploads.drafts where !previousIDs.contains(item.id) { store.fileUploads.remove(item.id) }
+                    return
+                }
+            }
+            if !share.text.isEmpty {
+                draft = store.supportsMessageQuotes
+                    ? ComposerQuoteDraft.shared.insertQuote(draft: draft, quote: share.text, selectionStart: 0, selectionEnd: 0)
+                    : [draft, share.text].filter { !$0.isEmpty }.joined(separator: "\n\n")
+            }
+            pendingImages.append(contentsOf: images)
+            store.voiceInput.setVoiceMode(false)
+            composerIsFocused = true
+            incomingShares.complete(share)
+        } catch { store.lastError = error.localizedDescription }
+    }
+
     private var composerCard: some View {
         AnyView(composerCardSessionLifecycle)
+        .task(id: sharedDraftReadyKey) { await importSharedDraft() }
         .onChangeCompat(of: selectedPhotoItems) { _, items in
             guard !items.isEmpty else { return }
             store.voiceInput.setVoiceMode(false)

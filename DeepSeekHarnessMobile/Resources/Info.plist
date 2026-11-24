@@ -78,6 +78,10 @@
 	<true/>
 	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
 	<true/>
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>INSendMessageIntent</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -103,6 +107,8 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>ShareAppGroup</key>
+	<string>$(DSH_SHARE_APP_GROUP)</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>读取你选择共享的步数、睡眠、活动、心率、心率变异性、血氧、呼吸频率和体重摘要，供已授权的主机和模型服务回顾日常健康。可随时关闭连接器。</string>
 	<key>NSHealthUpdateUsageDescription</key>

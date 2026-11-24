@@ -13034,6 +13034,52 @@
         }
       }
     },
+    "分享图片超出单条消息附件限制，请先处理已有附件。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The shared images exceed the attachment limit for one message. Finish preparing the existing attachments first."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "共有する画像が1件のメッセージの添付上限を超えています。既存の添付ファイルを先に処理してください。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "分享图片超出单条消息附件限制，请先处理已有附件。"
+          }
+        }
+      }
+    },
+    "分享文件需要连接支持文件上传的网关，内容已保留，请连接后重新打开会话。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sharing files requires a gateway that supports file uploads. Your content has been kept. Connect and reopen the conversation."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイルを共有するには、ファイルのアップロードに対応したゲートウェイへの接続が必要です。内容は保持されています。接続後に会話を開き直してください。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "分享文件需要连接支持文件上传的网关，内容已保留，请连接后重新打开会话。"
+          }
+        }
+      }
+    },
     "分享日志": {
       "extractionState": "stale",
       "localizations": {
@@ -29699,6 +29745,29 @@
           "stringUnit": {
             "state": "translated",
             "value": "先に設定で DeepSeek Harness に接続してください"
+          }
+        }
+      }
+    },
+    "请先处理已有附件后重新打开会话，分享内容已保留。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Finish preparing the existing attachments, then reopen the conversation. Your shared content has been kept."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "既存の添付ファイルの準備を終えてから会話を開き直してください。共有内容は保持されています。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先处理已有附件后重新打开会话，分享内容已保留。"
           }
         }
       }

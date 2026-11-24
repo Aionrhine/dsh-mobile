@@ -4714,6 +4714,17 @@ final class AppStore: ObservableObject {
     }
 
     private func handleSent(sessionID: String, command: JSONValue?) {
+        if !isSubagentSession(sessionID) {
+            let workspace = workspaces.first { $0.sessionIds.contains(sessionID) }
+            let conversation = SharedConversation(
+                gatewayID: gatewayLocalID,
+                sessionID: sessionID,
+                title: sessions.first(where: { $0.id == sessionID })?.title ?? String(localized: "会话"),
+                workspace: workspace?.title ?? String(localized: "默认工作区"),
+                workspaceID: workspace?.id
+            )
+            ConversationShareSuggestions.shared.record(conversation)
+        }
         if sessions.first(where: { $0.id == sessionID })?.isRunning != true,
            turnTiming.snapshot(sessionId: sessionID) == nil {
             turnTiming.awaitStart(sessionId: sessionID, afterSequence: Int32(events[sessionID]?.last?.seq ?? -1))
