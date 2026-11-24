@@ -333,6 +333,34 @@
         }
       }
     },
+    "%d 个连接器": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d connectors"
+          }
+        }
+      }
+    },
+    "%d 项能力": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d capabilities"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d 项能力"
+          }
+        }
+      }
+    },
     "%lld 个文件": {
       "localizations": {
         "en": {
@@ -4741,6 +4769,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ を選択"
+          }
+        }
+      }
+    },
+    "iOS · %d 个连接器 · %d 项能力": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iOS · %d connectors · %d capabilities"
           }
         }
       }
@@ -10846,6 +10885,46 @@
         }
       }
     },
+    "主机未允许": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not allowed by host"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主机未允许"
+          }
+        }
+      }
+    },
+    "主机权限同步失败，请检查连接后重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Host permission synchronization failed. Check the connection and try again."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ホストの権限を同期できませんでした。接続を確認してもう一度お試しください。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主机权限同步失败，请检查连接后重试。"
+          }
+        }
+      }
+    },
     "主机类型": {
       "localizations": {
         "en": {
@@ -11168,6 +11247,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "選択した %lld 台のホストと接続認証情報を App から削除します。ゲートウェイ上のセッションとワークスペースは削除されません。再接続には再ペアリングが必要です。"
+          }
+        }
+      }
+    },
+    "从当前位置出发 · %@": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "From your location · %@"
           }
         }
       }
@@ -11612,6 +11702,29 @@
         }
       }
     },
+    "位置": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Location"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "位置情報"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "位置"
+          }
+        }
+      }
+    },
     "低": {
       "extractionState": "stale",
       "localizations": {
@@ -11710,6 +11823,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "システムビューアで開く"
+          }
+        }
+      }
+    },
+    "使用网页地图": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open web map"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用网页地图"
           }
         }
       }
@@ -11845,6 +11974,23 @@
         }
       }
     },
+    "保存应用内地点": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save places in the app"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存应用内地点"
+          }
+        }
+      }
+    },
     "保留原有%@规则和时区 %@。": {
       "extractionState": "stale",
       "localizations": {
@@ -11917,6 +12063,23 @@
         }
       }
     },
+    "修改应用内地点": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Update saved places"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "修改应用内地点"
+          }
+        }
+      }
+    },
     "修改默认模型？": {
       "localizations": {
         "en": {
@@ -11968,6 +12131,29 @@
           "stringUnit": {
             "state": "translated",
             "value": "値"
+          }
+        }
+      }
+    },
+    "停止": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "停止"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "停止"
           }
         }
       }
@@ -12087,6 +12273,29 @@
           "stringUnit": {
             "state": "translated",
             "value": "Mobile Gateway を無効化しますか？"
+          }
+        }
+      }
+    },
+    "健康": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Health"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ヘルスケア"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "健康"
           }
         }
       }
@@ -12275,6 +12484,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "すべてのセッション"
+          }
+        }
+      }
+    },
+    "公交": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transit"
           }
         }
       }
@@ -13161,6 +13381,40 @@
         }
       }
     },
+    "创建日历日程": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Create calendar events"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "创建日历日程"
+          }
+        }
+      }
+    },
+    "创建系统闹钟": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Create system alarms"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "创建系统闹钟"
+          }
+        }
+      }
+    },
     "创造模式": {
       "extractionState": "stale",
       "localizations": {
@@ -13329,6 +13583,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "終了したスケジュールタスクを削除しますか？"
+          }
+        }
+      }
+    },
+    "删除应用内地点": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete saved places"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除应用内地点"
           }
         }
       }
@@ -13505,6 +13776,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "プラグインを更新"
+          }
+        }
+      }
+    },
+    "刷新状态": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh status"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "刷新状态"
           }
         }
       }
@@ -13959,6 +14247,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "キャンセル"
+          }
+        }
+      }
+    },
+    "取消应用闹钟": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel app alarms"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消应用闹钟"
           }
         }
       }
@@ -14760,6 +15065,23 @@
         }
       }
     },
+    "在 Apple Music 中播放": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play in Apple Music"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Apple Music 中播放"
+          }
+        }
+      }
+    },
     "在会话中创建的定时任务会显示在这里": {
       "localizations": {
         "en": {
@@ -14844,6 +15166,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "オンライン"
+          }
+        }
+      }
+    },
+    "地图地点": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Map location"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "地图地点"
           }
         }
       }
@@ -16361,6 +16700,23 @@
         }
       }
     },
+    "已允许": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allowed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已允许"
+          }
+        }
+      }
+    },
     "已允许本次操作": {
       "extractionState": "manual",
       "localizations": {
@@ -16748,6 +17104,27 @@
         }
       }
     },
+    "已登记的控制能力": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registered controls"
+          }
+        }
+      }
+    },
+    "已登记的能力": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registered capabilities"
+          }
+        }
+      }
+    },
     "已结束": {
       "extractionState": "manual",
       "localizations": {
@@ -16960,6 +17337,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "接続中のゲートウェイバージョン"
+          }
+        }
+      }
+    },
+    "已连接，连接器未注册": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connected, connectors not registered"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已连接，连接器未注册"
           }
         }
       }
@@ -17770,6 +18164,29 @@
         }
       }
     },
+    "当前网关不支持手机同步权限，请更新网关。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This gateway does not support permission synchronization from your phone. Update the gateway."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このゲートウェイはスマートフォンからの権限の同期に対応していません。ゲートウェイを更新してください。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前网关不支持手机同步权限，请更新网关。"
+          }
+        }
+      }
+    },
     "当前网关不支持文件上传，请升级到支持文件上传的 Mobile Gateway，并重新连接。": {
       "localizations": {
         "en": {
@@ -18378,6 +18795,23 @@
         }
       }
     },
+    "手机未开启": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disabled on phone"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手机未开启"
+          }
+        }
+      }
+    },
     "打开": {
       "localizations": {
         "en": {
@@ -18464,6 +18898,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "ログインリンクを開く"
+          }
+        }
+      }
+    },
+    "打开系统权限设置": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open system permission settings"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "システムの権限設定を開く"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开系统权限设置"
+          }
+        }
+      }
+    },
+    "打开苹果地图": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Apple Maps"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开苹果地图"
           }
         }
       }
@@ -19453,6 +19927,29 @@
         }
       }
     },
+    "提醒事项": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reminders"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "リマインダー"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "提醒事项"
+          }
+        }
+      }
+    },
     "插件": {
       "extractionState": "manual",
       "localizations": {
@@ -19611,6 +20108,23 @@
         }
       }
     },
+    "搜索 Apple Music 歌曲": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search Apple Music songs"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索 Apple Music 歌曲"
+          }
+        }
+      }
+    },
     "搜索会话内容": {
       "localizations": {
         "en": {
@@ -19623,6 +20137,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "セッション内容を検索"
+          }
+        }
+      }
+    },
+    "搜索地点": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search places"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索地点"
           }
         }
       }
@@ -19678,6 +20209,23 @@
         }
       }
     },
+    "搜索本地音乐": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search local music"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索本地音乐"
+          }
+        }
+      }
+    },
     "搜索结果已失效": {
       "extractionState": "manual",
       "localizations": {
@@ -19725,6 +20273,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "要約"
+          }
+        }
+      }
+    },
+    "播放曲库歌曲或歌单": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play library songs or playlists"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "播放曲库歌曲或歌单"
+          }
+        }
+      }
+    },
+    "播放音乐": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play music"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "播放音乐"
           }
         }
       }
@@ -20673,6 +21255,23 @@
         }
       }
     },
+    "新建提醒事项": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Create reminders"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建提醒事项"
+          }
+        }
+      }
+    },
     "新建文件": {
       "extractionState": "stale",
       "localizations": {
@@ -20826,6 +21425,29 @@
         }
       }
     },
+    "无法取得系统权限，请在设置中检查。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unable to obtain system permission. Check Settings."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "システムの権限を取得できません。設定を確認してください。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法取得系统权限，请在设置中检查。"
+          }
+        }
+      }
+    },
     "无法在应用内预览": {
       "extractionState": "manual",
       "localizations": {
@@ -20904,6 +21526,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "マイクを起動できませんでした。権限または通話状態を確認してください。"
+          }
+        }
+      }
+    },
+    "无法打开地图，请重新选择": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unable to open map. Please choose again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法打开地图，请重新选择"
+          }
+        }
+      }
+    },
+    "无法打开苹果地图，请稍后重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unable to open Apple Maps. Try again later."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple マップを開けません。しばらくしてからもう一度お試しください。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法打开苹果地图，请稍后重试。"
           }
         }
       }
@@ -21368,6 +22030,29 @@
         }
       }
     },
+    "日历": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Calendar"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "カレンダー"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "日历"
+          }
+        }
+      }
+    },
     "日志": {
       "localizations": {
         "en": {
@@ -21692,6 +22377,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "目標を一時停止"
+          }
+        }
+      }
+    },
+    "暂停音乐": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pause music"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂停音乐"
           }
         }
       }
@@ -22039,6 +22741,22 @@
         }
       }
     },
+    "最近确认": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last confirmed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最近确认"
+          }
+        }
+      }
+    },
     "服务器": {
       "extractionState": "manual",
       "localizations": {
@@ -22304,6 +23022,39 @@
         }
       }
     },
+    "未收到网关确认，请检查连接并重新注册。": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No gateway confirmation received. Check the connection and register again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未收到网关确认，请检查连接并重新注册。"
+          }
+        }
+      }
+    },
+    "未检测到可用地图应用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No compatible map apps installed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未检测到可用地图应用"
+          }
+        }
+      }
+    },
     "未知": {
       "extractionState": "manual",
       "localizations": {
@@ -22390,6 +23141,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "未キャッシュ入力"
+          }
+        }
+      }
+    },
+    "未能播放所选歌曲，请检查 Apple Music 订阅、网络和歌曲可用性。": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not play the selected song. Check your Apple Music subscription, connection and song availability."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未能播放所选歌曲，请检查 Apple Music 订阅、网络和歌曲可用性。"
           }
         }
       }
@@ -22685,6 +23453,29 @@
           "stringUnit": {
             "state": "translated",
             "value": "ローカルキャッシュ"
+          }
+        }
+      }
+    },
+    "本机能力": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Device capabilities"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "デバイスの機能"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本机能力"
           }
         }
       }
@@ -23103,6 +23894,91 @@
           "stringUnit": {
             "state": "translated",
             "value": "実行履歴を表示"
+          }
+        }
+      }
+    },
+    "查询坐标地址": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Look up addresses from coordinates"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查询坐标地址"
+          }
+        }
+      }
+    },
+    "查询应用内地点": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Find places saved in the app"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查询应用内地点"
+          }
+        }
+      }
+    },
+    "查询应用闹钟": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "List app alarms"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查询应用闹钟"
+          }
+        }
+      }
+    },
+    "查询提醒事项": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read reminders"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查询提醒事项"
+          }
+        }
+      }
+    },
+    "查询日历忙闲": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check calendar availability"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查询日历忙闲"
           }
         }
       }
@@ -23985,6 +24861,23 @@
         }
       }
     },
+    "正在注册连接器": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registering connectors"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在注册连接器"
+          }
+        }
+      }
+    },
     "正在生成回复": {
       "extractionState": "manual",
       "localizations": {
@@ -24112,6 +25005,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "次のステップを待機中"
+          }
+        }
+      }
+    },
+    "正在等待网关确认本机能力。": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting for the gateway to confirm local capabilities."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在等待网关确认本机能力。"
           }
         }
       }
@@ -24722,6 +25632,17 @@
         }
       }
     },
+    "步行": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Walking"
+          }
+        }
+      }
+    },
     "步骤": {
       "extractionState": "stale",
       "localizations": {
@@ -25135,6 +26056,23 @@
         }
       }
     },
+    "注册状态未确认": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registration unverified"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注册状态未确认"
+          }
+        }
+      }
+    },
     "流量": {
       "extractionState": "stale",
       "localizations": {
@@ -25171,6 +26109,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "ライト"
+          }
+        }
+      }
+    },
+    "浏览 Apple Music 曲库": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Browse Apple Music library"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "浏览 Apple Music 曲库"
           }
         }
       }
@@ -25520,6 +26475,29 @@
         }
       }
     },
+    "照片": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Photos"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "写真"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "照片"
+          }
+        }
+      }
+    },
     "版本": {
       "extractionState": "stale",
       "localizations": {
@@ -25809,6 +26787,23 @@
         }
       }
     },
+    "百度地图": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Baidu Maps"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "百度地图"
+          }
+        }
+      }
+    },
     "目录已加载": {
       "extractionState": "stale",
       "localizations": {
@@ -25856,6 +26851,29 @@
           "stringUnit": {
             "state": "translated",
             "value": "対象バージョンの更新が反映されませんでした。更新およびロールバックの結果を確認してください。"
+          }
+        }
+      }
+    },
+    "目的地": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Destination"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目的地"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目的地"
           }
         }
       }
@@ -26766,6 +27784,29 @@
         }
       }
     },
+    "系统权限未允许，请在设置中检查。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System permission was not granted. Check Settings."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "システムの権限が許可されていません。設定を確認してください。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "系统权限未允许，请在设置中检查。"
+          }
+        }
+      }
+    },
     "组件 ID": {
       "extractionState": "manual",
       "localizations": {
@@ -27242,6 +28283,23 @@
         }
       }
     },
+    "网关不支持连接器": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connectors unsupported by gateway"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网关不支持连接器"
+          }
+        }
+      }
+    },
     "网关地址": {
       "localizations": {
         "en": {
@@ -27281,6 +28339,23 @@
         }
       }
     },
+    "网关尚未返回有效的能力清单。请刷新状态；旧版网关需要更新后重连。": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The gateway has not returned a valid capability list. Refresh the status; older gateways need an update and reconnection."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网关尚未返回有效的能力清单。请刷新状态；旧版网关需要更新后重连。"
+          }
+        }
+      }
+    },
     "网关已断开，插件状态待重新连接确认": {
       "localizations": {
         "en": {
@@ -27293,6 +28368,56 @@
           "stringUnit": {
             "state": "translated",
             "value": "ゲートウェイが切断されました。プラグインのステータスは再接続後に確認します。"
+          }
+        }
+      }
+    },
+    "网关已注册": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registered with gateway"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网关已注册"
+          }
+        }
+      }
+    },
+    "网关已登记的能力": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registered capabilities"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网关已登记的能力"
+          }
+        }
+      }
+    },
+    "网关已确认": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmed by gateway"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网关已确认"
           }
         }
       }
@@ -27326,6 +28451,89 @@
           "stringUnit": {
             "state": "translated",
             "value": "ゲートウェイで利用できるプリセットがありません。下に引っ張って更新してください。"
+          }
+        }
+      }
+    },
+    "网关未接入": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unsupported by gateway"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网关未接入"
+          }
+        }
+      }
+    },
+    "网关未接入该能力": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not supported by this gateway"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网关未接入该能力"
+          }
+        }
+      }
+    },
+    "网关未接受本次注册。请检查网关版本并重新注册。": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The gateway did not accept this registration. Check its version and register again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网关未接受本次注册。请检查网关版本并重新注册。"
+          }
+        }
+      }
+    },
+    "网关未连接": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gateway disconnected"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网关未连接"
+          }
+        }
+      }
+    },
+    "网关注册": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gateway registration"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网关注册"
           }
         }
       }
@@ -27585,6 +28793,34 @@
         }
       }
     },
+    "聊天连接正常，但网关没有当前连接的能力登记。请重新注册。": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chat is connected, but the gateway has no capabilities registered for this connection. Register again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "聊天连接正常，但网关没有当前连接的能力登记。请重新注册。"
+          }
+        }
+      }
+    },
+    "能力详情": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Capability details"
+          }
+        }
+      }
+    },
     "自动换行": {
       "extractionState": "stale",
       "localizations": {
@@ -27732,6 +28968,23 @@
         }
       }
     },
+    "苹果地图": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Maps"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "苹果地图"
+          }
+        }
+      }
+    },
     "草稿已更改，请确认插入识别文字": {
       "extractionState": "manual",
       "localizations": {
@@ -27767,6 +29020,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "取得"
+          }
+        }
+      }
+    },
+    "获取精确位置": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Get precise location"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "获取精确位置"
+          }
+        }
+      }
+    },
+    "获取近似位置": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Get approximate location"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "获取近似位置"
           }
         }
       }
@@ -27810,6 +29097,23 @@
         }
       }
     },
+    "规划路线": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Plan routes"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "规划路线"
+          }
+        }
+      }
+    },
     "规则预览 · %@": {
       "extractionState": "manual",
       "localizations": {
@@ -27840,6 +29144,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "表示"
+          }
+        }
+      }
+    },
+    "解析地址": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Look up addresses"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "解析地址"
           }
         }
       }
@@ -27906,6 +29227,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "デフォルトに設定"
+          }
+        }
+      }
+    },
+    "设备不支持": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unsupported on this device"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设备不支持"
           }
         }
       }
@@ -28331,6 +29669,23 @@
         }
       }
     },
+    "请允许访问 Apple Music 后再播放。": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow access to Apple Music to play this song."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请允许访问 Apple Music 后再播放。"
+          }
+        }
+      }
+    },
     "请先在设置中连接 DeepSeek Harness": {
       "extractionState": "stale",
       "localizations": {
@@ -28658,6 +30013,23 @@
         }
       }
     },
+    "请更新并重启主机端网关，然后重新连接。": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Update and restart the host gateway, then reconnect."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请更新并重启主机端网关，然后重新连接。"
+          }
+        }
+      }
+    },
     "请更新网关以启用可关联的网络探测；旧网关不会被误判为丢包。": {
       "localizations": {
         "en": {
@@ -28966,6 +30338,23 @@
         }
       }
     },
+    "读取健康与活动摘要": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read health and activity summaries"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "读取健康与活动摘要"
+          }
+        }
+      }
+    },
     "读取或迁移主机资料失败：%@": {
       "extractionState": "manual",
       "localizations": {
@@ -28979,6 +30368,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "ホストデータの読み取りまたは移行に失敗しました：%@"
+          }
+        }
+      }
+    },
+    "读取播放状态": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read playback status"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "读取播放状态"
           }
         }
       }
@@ -29055,6 +30461,23 @@
         }
       }
     },
+    "调整播放进度": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seek in playback"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "调整播放进度"
+          }
+        }
+      }
+    },
     "调用参数": {
       "localizations": {
         "en": {
@@ -29067,6 +30490,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "呼び出しパラメータ"
+          }
+        }
+      }
+    },
+    "谷歌地图": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google Maps"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "谷歌地图"
           }
         }
       }
@@ -29735,6 +31175,188 @@
         }
       }
     },
+    "连接中断，权限同步尚未确认，请重连后检查开关。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection lost before permission synchronization was confirmed. Reconnect and check the switches."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接続が切れ、権限の同期が確認できませんでした。再接続してスイッチを確認してください。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接中断，权限同步尚未确认，请重连后检查开关。"
+          }
+        }
+      }
+    },
+    "连接主机后，将显示网关确认的能力。": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect to a host to see the capabilities confirmed by its gateway."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接主机后，将显示网关确认的能力。"
+          }
+        }
+      }
+    },
+    "连接器": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connectors"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コネクタ"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接器"
+          }
+        }
+      }
+    },
+    "连接器权限同步超时，请检查连接后重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connector permission synchronization timed out. Check the connection and try again."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コネクタの権限の同期がタイムアウトしました。接続を確認してもう一度お試しください。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接器权限同步超时，请检查连接后重试。"
+          }
+        }
+      }
+    },
+    "连接器正在执行任务，请完成后重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A connector task is running. Try again when it finishes."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コネクタがタスクを実行中です。完了後にもう一度お試しください。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接器正在执行任务，请完成后重试。"
+          }
+        }
+      }
+    },
+    "连接器注册失败": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connector registration failed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接器注册失败"
+          }
+        }
+      }
+    },
+    "连接器注册失败，可能与网关版本不兼容。请更新并重启主机端 DSH，然后重新连接。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connector registration failed, possibly due to an incompatible gateway version. Update and restart DSH on the host, then reconnect."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コネクタを登録できませんでした。ゲートウェイのバージョンに互換性がない可能性があります。ホスト側の DSH を更新して再起動し、再接続してください。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接器注册失败，可能与网关版本不兼容。请更新并重启主机端 DSH，然后重新连接。"
+          }
+        }
+      }
+    },
+    "连接器注册超时": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connector registration timed out"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接器注册超时"
+          }
+        }
+      }
+    },
+    "连接器状态": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connector status"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接器状态"
+          }
+        }
+      }
+    },
     "连接失败": {
       "extractionState": "stale",
       "localizations": {
@@ -29967,6 +31589,22 @@
         }
       }
     },
+    "选择地图应用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose a map app"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择地图应用"
+          }
+        }
+      }
+    },
     "选择工作区": {
       "extractionState": "stale",
       "localizations": {
@@ -30093,6 +31731,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "直近 24 時間を選択"
+          }
+        }
+      }
+    },
+    "选择照片": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select photos"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择照片"
           }
         }
       }
@@ -30384,6 +32039,23 @@
         }
       }
     },
+    "重新注册": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Register again"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新注册"
+          }
+        }
+      }
+    },
     "重新配对并连接": {
       "extractionState": "stale",
       "localizations": {
@@ -30539,6 +32211,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "質問リクエストが無効です"
+          }
+        }
+      }
+    },
+    "闹钟": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alarms"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "闹钟"
           }
         }
       }
@@ -30805,6 +32494,29 @@
         }
       }
     },
+    "音乐": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Music"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ミュージック"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "音乐"
+          }
+        }
+      }
+    },
     "预览": {
       "localizations": {
         "en": {
@@ -30972,6 +32684,17 @@
         }
       }
     },
+    "驾车": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Driving"
+          }
+        }
+      }
+    },
     "高": {
       "extractionState": "stale",
       "localizations": {
@@ -30985,6 +32708,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "高"
+          }
+        }
+      }
+    },
+    "高德地图": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AMap Global"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "高德地图"
           }
         }
       }

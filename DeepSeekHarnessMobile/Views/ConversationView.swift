@@ -3077,7 +3077,7 @@ struct ConversationView: View {
                     // Completed responses are immutable for this revision.
                     // The viewport measures their SwiftUI root directly before
                     // caching, including fenced-code horizontal scroll views.
-                    clipsContentToBounds: true,
+                    clipsContentToBounds: !markdownContainsAppLinkCards(item.text),
                     layoutRevision: viewportEntryRevision(entry),
                     preservesContentIdentity: item.kind == .assistant
                 )]
@@ -6606,6 +6606,15 @@ private struct SentReplyContentLayout: Layout {
     }
 }
 
+/// 卡片的玻璃阴影需要越过消息边界；普通文本、行内链接和代码仍使用原有裁切。
+func markdownContainsAppLinkCards(_ text: String) -> Bool {
+    guard text.contains("://") else { return false }
+    return ParsedMarkdownCache.document(for: MarkdownMath.prepare(text)).standaloneLinks.contains { link in
+        AppleMusicCardDestination(link: link.destination, title: link.title) != nil
+            || AppleMapsCardDestination(link: link.destination, title: link.title) != nil
+    }
+}
+
 private extension Theme {
     static func deepSeek(compact: Bool, scale: CGFloat) -> Theme {
         let inlineCodeFallback: Color? = if #available(iOS 18.0, *) {
@@ -6628,10 +6637,20 @@ private extension Theme {
                 BackgroundColor(inlineCodeFallback)
             }
             .paragraph { configuration in
-                configuration.label
-                    .fixedSize(horizontal: false, vertical: true)
-                    .relativeLineSpacing(.em(0.22))
-                    .markdownMargin(top: 0, bottom: compact ? 6 : 10)
+                if !compact, let link = configuration.content.standaloneLink,
+                   let destination = AppleMapsCardDestination(link: link.destination, title: link.title) {
+                    AppleMapsAppCard(destination: destination)
+                        .markdownMargin(top: 2, bottom: 10)
+                } else if !compact, let link = configuration.content.standaloneLink,
+                          let destination = AppleMusicCardDestination(link: link.destination, title: link.title) {
+                    AppleMusicAppCard(destination: destination)
+                        .markdownMargin(top: 2, bottom: 4)
+                } else {
+                    configuration.label
+                        .fixedSize(horizontal: false, vertical: true)
+                        .relativeLineSpacing(.em(0.22))
+                        .markdownMargin(top: 0, bottom: compact ? 6 : 10)
+                }
             }
             .listItem { configuration in
                 configuration.label.markdownMargin(top: .em(0.18))

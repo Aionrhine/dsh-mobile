@@ -12,6 +12,7 @@ struct WorkspaceView: View {
     let onSettings: () -> Void
     let onPlugins: () -> Void
     let onScheduledTasks: () -> Void
+    var onConnectors: () -> Void = {}
     @State private var searchQuery = ""
     @StateObject private var sessionList = WorkspaceSessionListModel()
     @State private var renamingSession: SessionSummary?
@@ -316,13 +317,11 @@ struct WorkspaceView: View {
                     .frame(width: 24)
             }, action: { selectDrawerItem(onPlugins) })
             drawerItem(String(localized: "定时任务"), icon: {
-                Image(systemName: "clock")
-                    .resizable()
-                    .scaledToFit()
-                    .fontWeight(.medium)
-                    .frame(width: 22, height: 22)
-                    .frame(width: 24)
+                SidebarNavigationIcon(symbol: .clock).frame(width: 24)
             }, action: { selectDrawerItem(onScheduledTasks) })
+            drawerItem(String(localized: "连接器"), icon: {
+                SidebarNavigationIcon(symbol: .connector).frame(width: 24)
+            }, action: { selectDrawerItem(onConnectors) })
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 18)

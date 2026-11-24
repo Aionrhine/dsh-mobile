@@ -246,6 +246,7 @@ final class GatewayClient: ObservableObject {
     /// 仅命令菜单需要原始 JSON；对话流不能触发它的解析和 UI 发布。
     var onCommandFrame: ((String) -> Void)?
     var onSpeechFrame: ((String) -> Void)?
+    var onDeviceToolFrame: ((String) -> Void)?
     var onConnectionFailure: ((String) -> Void)?
     /// 传输生命周期与错误弹窗分离；静默恢复也必须废弃旧请求。
     var onConnectionInvalidated: (() -> Void)?
@@ -988,15 +989,24 @@ final class GatewayClient: ObservableObject {
         let type: String
     }
 
-    // 解复用只负责传输格式；ASR 协议字段与状态由公共层处理。
+    // 解复用只负责传输格式；ASR 与设备工具协议字段与状态由各自公共层处理。
     nonisolated static func decodeIncomingFrame(_ data: Data) throws -> (GatewayFrame?, String?) {
         struct SpeechEnvelope: Decodable { let kind: String?; let requestType: String? }
         let header = try? JSONDecoder().decode(SpeechEnvelope.self, from: data)
-        if header?.kind?.hasPrefix("speech-") == true ||
-            (header?.kind == "error" && header?.requestType?.hasPrefix("speech-") == true) {
+        if header?.kind?.hasPrefix("device-tool") == true || header?.kind?.hasPrefix("speech-") == true ||
+            (header?.kind == "error" && (header?.requestType?.hasPrefix("speech-") == true || header?.requestType?.hasPrefix("device-tool") == true)) {
             return (nil, String(decoding: data, as: UTF8.self))
         }
         return (try GatewayWireDecoder.decode(data), nil)
+    }
+
+    private func deliverAuxiliaryFrame(_ json: String) {
+        let header = (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [String: Any]
+        if (header?["kind"] as? String)?.hasPrefix("device-tool") == true || (header?["kind"] as? String == "error" && (header?["requestType"] as? String)?.hasPrefix("device-tool") == true) {
+            onDeviceToolFrame?(json)
+        } else {
+            onSpeechFrame?(json)
+        }
     }
 
     private func receiveLoop(_ socket: URLSessionWebSocketTask) async {
@@ -1038,8 +1048,8 @@ final class GatewayClient: ObservableObject {
             // 语音帧使用独立公共解码器，所有 JSON 扫描仍在后台完成。
             let decoded = try await decodeBusinessFrame(data)
             guard !Task.isCancelled, self.socket === socket else { return }
-            if let speech = decoded.1 {
-                if state.isConnected { onSpeechFrame?(speech) }
+            if let auxiliary = decoded.1 {
+                if state.isConnected { deliverAuxiliaryFrame(auxiliary) }
                 return
             }
             guard let frame = decoded.0 else { return }

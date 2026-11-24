@@ -746,6 +746,9 @@ final class AppStore: ObservableObject {
 
     let gateway: GatewayClient
     let voiceInput: VoiceInputAdapter
+    lazy var connectors = IOSDeviceConnectors(hostID: gatewayLocalID) { [weak self] json in
+        self?.gateway.sendRequestPayload(json, decorate: false)
+    }
     let gatewayLocalID: String
     var pairingHandler: ((String) throws -> Void)?
     var gatewayDisplayName = ""
@@ -1163,6 +1166,7 @@ final class AppStore: ObservableObject {
             if payload.contains("\"sessions\"") { self.teamStore.sessionsRequested() }
             return self.teamStore.decorateRequestJson(payload: payload)
         }
+        gateway.onDeviceToolFrame = { [weak self] json in self?.connectors.receive(json) }
         gateway.onFrame = { [weak self] frame in self?.handle(frame) }
         gateway.onCommandFrame = { [weak self] json in
             guard let self else { return }
@@ -1174,6 +1178,7 @@ final class AppStore: ObservableObject {
         gateway.onConnectionInvalidated = { [weak self] in
             self?.teamStore.modeConnectionLost()
             self?.publishTeamModeSnapshot()
+            self?.connectors.disconnected()
             self?.workspaceMarkdownImages.cancelAll()
             self?.pauseSessionControlRequests()
             if let self, self.conversationFileIsOpening, self.workspaceFilePreviewNeedsConnection {
@@ -1572,6 +1577,8 @@ final class AppStore: ObservableObject {
         pairingHandler = nil
         resetOutstandingRequests()
         backgroundExecutionController.cancel()
+        connectors.disconnected(discardPendingChanges: true)
+        gateway.onDeviceToolFrame = nil
         gateway.onFrame = nil
         gateway.onCommandFrame = nil
         gateway.onConnectionFailure = nil
@@ -3434,6 +3441,7 @@ final class AppStore: ObservableObject {
 
     private func handle(_ frame: GatewayFrame) {
         if frame.kind == "hello" {
+            connectors.connected(frame.capabilities ?? [])
             supportsWorkspaceChanges = frame.capabilities?.contains("workspace-changes-v1") == true
             refreshWorkspaceChanges()
         }

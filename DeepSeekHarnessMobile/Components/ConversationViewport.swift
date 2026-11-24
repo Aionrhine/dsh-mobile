@@ -122,7 +122,7 @@ struct ConversationViewportEntry: Identifiable {
     init(id: String, revision: Int, userMessage: UserMessage, markdownContent: AnyView, layoutRevision: Int? = nil) {
         if userMessageRequiresMarkdown(userMessage.text) {
             self.init(id: id, revision: revision, content: markdownContent,
-                clipsContentToBounds: true, layoutRevision: layoutRevision)
+                clipsContentToBounds: !markdownContainsAppLinkCards(userMessage.text), layoutRevision: layoutRevision)
         } else {
             self.init(id: id, revision: revision, userMessage: userMessage)
         }
@@ -2943,7 +2943,6 @@ final class HostedConversationCell: StableSelfSizingCollectionViewCell {
                 created.safeAreaRegions = []
             }
             created.view.backgroundColor = .clear
-            created.view.clipsToBounds = true
             parent.addChild(created)
             contentView.addSubview(created.view)
             created.didMove(toParent: parent)
@@ -2951,6 +2950,8 @@ final class HostedConversationCell: StableSelfSizingCollectionViewCell {
             host = created
         }
 
+        // 与 cell/contentView 使用同一裁切策略；复用时也必须更新。
+        host.view.clipsToBounds = entry.clipsContentToBounds
         host.view.frame = contentView.bounds
         host.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         host.view.bounds.origin = .zero
@@ -4017,7 +4018,7 @@ final class DebugPreparedConversationHost {
             onHeightChange: { [weak relay] in relay?.report($0) })))
         if #available(iOS 16.4, *) { host.safeAreaRegions = [] }
         host.view.backgroundColor = .clear
-        host.view.clipsToBounds = true
+        host.view.clipsToBounds = entry.clipsContentToBounds
         host.view.frame = carrier.contentView.bounds
         // 使用同一 collection 下的同类 cell 环境；ownerTraits 不冒充 renderTraits。
         parent.addChild(host)

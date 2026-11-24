@@ -104,6 +104,9 @@ private struct RootNavigationHost: View, Equatable {
                 },
                 onScheduledTasks: {
                     navigate(to: .scheduledTasks)
+                },
+                onConnectors: {
+                    navigate(to: .connectors)
                 }
             )
                 .navigationDestination(for: AppRoute.self) { route in
@@ -156,6 +159,8 @@ private struct RootNavigationHost: View, Equatable {
                 guard navigationPath.last == .settingsDetail(route) else { return }
                 navigationPath.removeLast()
             })
+        case .connectors:
+            ConnectorsView(model: store.connectors)
         case .plugins:
             PluginsView(store: store)
         case .scheduledTasks:
@@ -255,6 +260,7 @@ private struct RootNavigationHost: View, Equatable {
             },
             openPlugins: { navigate(to: .plugins) },
             openScheduledTasks: { navigate(to: .scheduledTasks) },
+            openConnectors: { navigate(to: .connectors) },
             openSettings: {
                 newConversationTask?.cancel()
                 navigate(to: .settings)
@@ -301,6 +307,7 @@ private struct RootNavigationHost: View, Equatable {
         case settingsDetail(SettingsRoute)
         case plugins
         case scheduledTasks
+        case connectors
     }
 }
 
@@ -1732,6 +1739,10 @@ private struct ConversationNavigationShell<Content: View>: View {
             openScheduledTasks: {
                 showsSidebar = false
                 sidebarActions.openScheduledTasks()
+            },
+            openConnectors: {
+                showsSidebar = false
+                sidebarActions.openConnectors()
             },
             openSettings: {
                 showsSidebar = false
